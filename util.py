@@ -4,7 +4,9 @@ import scipy.optimize
 import scipy.linalg
 import scipy.fftpack as spfft
 # import scipy.ndimage as spimg
+from scipy.spatial.transform import Rotation as R
 # import cvxpy as cvx
+import halton
 from numba import jit
 from typing import Tuple, Union
 
@@ -12,68 +14,94 @@ from typing import Tuple, Union
 LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
 LAMBDA = 1
 DIMS = 3
-N = 50**(DIMS - 1)
-N = 80**(DIMS - 1)
-# N = 100**(DIMS - 1)
+# N = 30**(DIMS - 1)
+# N = 52**(DIMS - 1)
+# N = 80**(DIMS - 1)
+N = 100**(DIMS - 1)
 PROJECTOR_DISTANCE = -4
 PROJECTOR_DISTANCE = -1e3 * LAMBDA
 
 
 # @jit(nopython=True)
-def compute_N_sqrt():
-    return N if DIMS <= 2 else int(N ** (1 / (DIMS - 1)))
+def compute_N_sqrt(n=None):
+    if n is None:
+        n = N
+    return n if DIMS <= 2 else int(n ** (1 / (DIMS - 1)))
 
 
-def sample_grid(N, width=1, z_offset=0, random=0, center=1):
-    # spatial locations of sample points
-    N_sqrt = compute_N_sqrt()
+def halton_grid(N):
+    N_sqrt = compute_N_sqrt(N)
+    w = halton.halton_sequence(0, N - 1, DIMS - 1) * (N_sqrt - 1)
+    return np.stack(((*w,) + (np.zeros(N),)), axis=1)
 
-    if random == 'orthogonal':
+
+def object_grid(N):
+    # amplitude, phase
+    return np.zeros(shape=(N, 2))
+
+
+def sample_grid(N, width=1, z_offset=0, random=None, center=1, dims=None, rotate_axis=None, distribution=None):
+    # spatial & temporal positions
+    if dims is None:
+        global DIMS
+        dims = DIMS
+
+    if N <= 3:
+        w = np.zeros((N, DIMS))
+        if N == 2:
+            w[0, 0] = width / 2
+            w[1, 0] = -width / 2
+        if N == 3:
+            w[1, 0] = width / 2
+            w[2, 0] = -width / 2
+        return w
+
+    if random:
+        # bw compatibility
+        distribution = random
+
+    # spatial locations of sample points, distributed over a plane (parallel to z by default)
+    N_sqrt = compute_N_sqrt(N)
+    if isinstance(distribution, np.ndarray):
+        N = distribution.shape[0]
+        N_sqrt = compute_N_sqrt(N)
+        w = distribution.copy()
+    elif distribution == 'orthogonal':
         random = 0
         rows, cols = orthogonal(N)
         rows, cols = sample_dicretized(rows, cols)
-        w = np.stack([rows * N_sqrt, cols * N_sqrt, np.zeros(N)],
-                     axis=1)
+        rows *= (N_sqrt - 1)
+        cols *= (N_sqrt - 1)
+        w = np.stack([rows, cols, np.zeros(N)], axis=1)
+        return w
+
+    elif distribution == 'halton':
+        w = halton_grid(N)
+
     else:
-
-        # w = np.stack(np.unravel_index(np.arange(N), (N_sqrt,) * (DIMS - 1)) +
-        #              (np.zeros(N),), axis=1)
-        # i.e. w = (range(N), range(N), (0,..)).reshape(N,3)
-
-        # alt
-        # x = np.linspace(-width / 2, width / 2, N_sqrt)
-        # xx, yy = np.meshgrid(x,x)
-        # w = np.stack([xx, yy, np.zeros(xx.shape)], axis=1)
-        # np.stack((w, np.zeros(N)), axis=1)
-
-        w = np.array((*np.ndindex((N_sqrt,) * (DIMS - 1)),))
-        if DIMS == 2:
+        w = np.array((*np.ndindex((N_sqrt,) * (dims - 1)),))
+        if dims == 2:
             w = np.stack((w[:, 0], np.zeros(N)), axis=1)
-        elif DIMS == 3:
+        elif dims == 3:
             w = np.stack((w[:, 0], w[:, 1], np.zeros(N)), axis=1)
 
-    for i_dim in range(DIMS - 1):
+    for i_dim in range(dims - 1):
         if center:
             # scale & center, then offset first dims
             # note that the N-th index points to the cell in the outer-most corner, at (N_sqrt-1, N_sqrt-1)
             w[:, i_dim] = (w[:, i_dim] / (N_sqrt - 1) - 0.5) * width
         else:
             w[:, i_dim] *= width / (N_sqrt - 1)
-    # if DIMS >= 2:
-    #     # scale & center, then offset first dims
-    #     # note that the N-th index points to the cell in the outer-most corner, at (N_sqrt-1, N_sqrt-1)
-    #     w[:, 0] = (w[:, 0] / (N_sqrt - 1) - 0.5) * width
-    #
-    # if DIMS >= 3:
-    #     # scale & center, then offset first dims
-    #     # note that the N-th index points to the cell in the outer-most corner, at (N_sqrt-1, N_sqrt-1)
-    #     w[:, 1] = (w[:, 1] / (N_sqrt - 1) - 0.5) * width
 
-    if random:
+    if random or distribution == 'uniform':
+        # TODO if distribution == 'uniform'
         inter_width = width / (N_sqrt - 1)
-        w[:, :-1] += np.random.uniform(-0.5, 0.5, (N, DIMS - 1)) * inter_width
+        w[:, :-1] += np.random.uniform(-0.5, 0.5, (N, dims - 1)) * inter_width
 
     w[:, -1] = z_offset
+    if rotate_axis:
+        # rotate every sample vector point w.r.t. axis
+        return np.matmul(rotate_axis, w)
     return w
 
 
@@ -102,7 +130,23 @@ def norm(X):
 
 
 @jit(nopython=True)
-def f(amplitude, phase, w, v, direction=1):
+def idx_(n: int, *indices):
+    # index flattened nd-matrix using original indices
+    # square matrix of n x n (x n)
+    # \hat i = i + j * n + k * n
+    idx = 0
+    for k, v in enumerate(indices):
+        idx += v * n ** k
+    return idx
+
+
+@jit(nopython=True)
+def idx(x: np.ndarray, n: int, *indices):
+    return x[idx_(n, *indices)]
+
+
+# @jit(nopython=True)
+def f(amplitude, phase, w, v, direction=1,  weighted=0):
     """
     amplitude = origin amplitude
     phase = origin phase
@@ -114,28 +158,87 @@ def f(amplitude, phase, w, v, direction=1):
     # single wave superposition component
     delta = norm(w - v)
     # assert np.all(delta > 0)
-
     # \hat phi = A exp(\i(omega t - xt + phi))
     next_phase = phase - direction * 2 * np.pi * delta / LAMBDA
     next_amplitude = amplitude / delta
+    if weighted:
+        assert DIMS == 3
+        weights = np.empty(delta.shape)
+        n = int(np.sqrt(w.shape[0]))
+        # for i, j in np.ndindex((n, n)):
+        for i in range(n):
+            for j in range(n):
+                # indices of nearest neighbours for each w
+                points = lattice_nn(w, n, i, j)
+                a = points[0]
+                b = points[1]
+                c = points[2]
+                d = points[3]
+                area = quadrilateral_area(a, b, c, d)
+                # area = quadrilateral_area(*lattice_nn(w, n, i, j))
+                weights[idx_(n, i, j)] = area * 0.5
+                # TODO return area
+
+        return to_polar(next_amplitude, next_phase) * weights
+
     return to_polar(next_amplitude, next_phase)
 
 
-@jit(nopython=True)
-def sum_kernel(x, w, v, direction=1):
-    return np.sum(f(x[:, 0], x[:, 1], w, v, direction=direction))
+# @jit(nopython=True)
+def sum_kernel(x, w, v, direction=1, weighted=0):
+    return np.sum(f(x[:, 0], x[:, 1], w, v, direction=direction, weighted=weighted))
 
 
-@jit(nopython=True)
-def map_sum_kernel(x, y, w, v, direction=1, distance=1):
+# @jit(nopython=True)
+def map_sum_kernel(x, y, w, v, direction=1, distance=1, weighted=0):
     for m in range(y.shape[0]):
         # y[m, :] = from_polar(
         #     np.sum(f(x[:, 0], x[:, 1], w, v[m], direction=direction)),
         #     distance=distance)
         y[m, :] = from_polar(
-            sum_kernel(x, w, v[m], direction=direction),
+            sum_kernel(x, w, v[m], direction=direction, weighted=weighted),
             # np.sum(f(x[:, 0], x[:, 1], w, v[m], direction=direction)),
             distance=distance)
+
+
+# @jit(nopython=True)
+# def acc_kernel(x, w, v, direction=1, distance=1, weighted=0):
+#     y = np.empty(v.shape[0])
+#     # for-loop to prevent ambiguity in shape
+#     return f(x[:, 0], x[:, 1], w, v[m], direction=direction, weighted=weighted)
+#     return y
+
+
+@jit(nopython=True)
+def triangle_area(a: np.ndarray, b: np.ndarray, c: np.ndarray):
+    # print('tri', a.shape, b.shape, c.shape)
+    ab = a - b
+    ac = a - c
+    # return 0.5 * np.sqrt(np.dot(a, a) * np.dot(c, c) - np.dot(b, c) ** 2)
+    return 0.5 * np.sqrt(np.dot(ab, ab) * np.dot(ac, ac) - np.dot(ab, ac) ** 2)
+
+
+@jit(nopython=True)
+def quadrilateral_area(a, b, c, d):
+    # assume convex area
+    return triangle_area(a, b, c) + triangle_area(a, c, d)
+
+
+@jit(nopython=True)
+def lattice_nn(w, n, i, j):
+    # 4 nearest points
+    # TODO allow for 8 nearest points for better acc. Note, area may not be convex
+    points = np.empty((4,) + w[0].shape)
+    # add virtual points in case of boundaries
+    i1 = i + 1 if i < n - 1 else i - 1
+    j1 = j + 1 if j < n - 1 else j - 1
+    i2 = i - 1 if i > 0 else i + 1
+    j2 = j - 1 if j > 0 else j + 1
+    points[0] = idx(w, n, i1, j)
+    points[1] = idx(w, n, i, j1)
+    points[2] = idx(w, n, i2, j)
+    points[3] = idx(w, n, i, j2)
+    return points
 
 
 def vec_to_im(x):

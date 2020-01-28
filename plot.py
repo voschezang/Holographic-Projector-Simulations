@@ -7,6 +7,7 @@ cmap = 'rainbow'
 
 
 def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
+    # X : list(np.ndarray)
     data = ['a', r'$\phi$', 'I']
     n_subplots = X[0].shape[1] + 1
     fig = plt.figure(figsize=(n_subplots * 5, 4))
@@ -15,7 +16,11 @@ def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
         ax = plt.subplot(1, n_subplots, i + 1)
         plt.title(data[i])
         for j, x in enumerate(X):
-            marker = ['-.', ':', '--'][j % 3]
+            if len(X) == 1:
+                marker = '-'
+            else:
+                marker = ['-.', ':', '--'][j % 3]
+
             if i < n_subplots - 1:
                 plt.plot(X[j][:, i], marker, label=labels[j], **kwargs)
             else:
@@ -101,11 +106,14 @@ def slice(y, v=None):
 def scatter(x, w, title='', color_func=lambda a, phi: a, s=10, alpha=0.9,
             fig=None, **kwargs):
     # x : shape (N,)
-    global cmap
+    if 'cmap' not in kwargs:
+        global cmap
+        kwargs['cmap'] = cmap
+
     if fig is None:
         fig = plt.figure()
     plt.scatter(w[:, 1], w[:, 0], c=x, s=s,
-                alpha=alpha, cmap=cmap, **kwargs)
+                alpha=alpha,  **kwargs)
     plt.xlim(w[:, 1].min(), w[:, 1].max())
     plt.ylim(w[:, 0].min(), w[:, 0].max())
     plt.colorbar(fraction=0.052, pad=0.05)
@@ -115,17 +123,17 @@ def scatter(x, w, title='', color_func=lambda a, phi: a, s=10, alpha=0.9,
     return fig
 
 
-def scatter_multiple(y, v=None, title='', prefix=''):
+def scatter_multiple(y, v=None, title='', prefix='', **kwargs):
     n_subplots = 3
     fig = plt.figure(figsize=(n_subplots * 4, 3))
     plt.suptitle(title, y=1.02)
     plt.subplot(1, n_subplots, 1)
-    scatter(y[:, 0], v, '%s a' % prefix, fig=fig)
+    scatter(y[:, 0], v, '%s a' % prefix, fig=fig, **kwargs)
     plt.subplot(1, n_subplots, 2)
-    scatter(y[:, 1], v, r'%s $\phi$' % prefix, fig=fig)
+    scatter(y[:, 1], v, r'%s $\phi$' % prefix, fig=fig, **kwargs)
     plt.subplot(1, n_subplots, 3)
     scatter(irradiance(to_polar(y[:, 0], y[:, 1])),
-            v, r'%s I' % prefix, fig=fig)
+            v, r'%s I' % prefix, fig=fig, **kwargs)
     # plt.subplot(1, n_subplots, 3)
     # scatter(irradiance(to_polar(y[:, 0], y[:, 1])),
     #         v, '%s I' % prefix, lambda a, phi: a * np.sin(phi), fig=fig)
