@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 
 from util import *  # N, N_sqrt
 
-cmap = 'rainbow'
+# cmap = 'rainbow'
+cmap = 'inferno'
 
 
 def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
@@ -35,14 +36,17 @@ def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
     return fig
 
 
-def matrix(x, title='', fig=None):
-    global cmap
+def matrix(x, title='', fig=None, **kwargs):
+    if 'cmap' not in kwargs:
+        global cmap
+        kwargs['cmap'] = cmap
+
     if fig is None:
         plt.figure()
     if len(x.shape) > 1:
-        plt.imshow(x, cmap=cmap, vmin=0, origin='lower')
+        plt.imshow(x, vmin=0, origin='lower', **kwargs)
     else:
-        plt.imshow(x.reshape(x.size, 1), cmap=cmap, vmin=0, origin='lower')
+        plt.imshow(x.reshape(x.size, 1), vmin=0, origin='lower', **kwargs)
     # plt.colorbar(fraction=0.046, pad=0.04)
     plt.colorbar(fraction=0.035, pad=0.04)
     plt.title(title)
@@ -50,17 +54,19 @@ def matrix(x, title='', fig=None):
         plt.tight_layout()
 
 
-def matrix_multiple(y, title='y', prefix='', m=2):
-    a, phi = split_wave_vector(y)
+def matrix_multiple(y, title='y', prefix='', m=2, HD=0):
+    a, phi = split_wave_vector(y, HD)
 
     # data = ['a', r'$\phi$', 'I']
     n_subplots = m * 3
     fig = plt.figure(figsize=(n_subplots // m * 4, m * 4))
-    plt.suptitle(title, y=1.02)
+    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
     plt.subplot(m, n_subplots // m, 1)
-    matrix(reshape(y[:, 0]), '%s a' % prefix, fig=fig)
+    matrix(reshape(y[:, 0], HD), '%s Amplitude' % prefix, fig=fig)
     plt.subplot(m, n_subplots // m, 2)
-    matrix(reshape(y[:, 1]) / np.pi / 2, r'%s $\phi$' % prefix, fig=fig)
+    # cyclic cmap: hsv, twilight
+    matrix(reshape(y[:, 1], HD) / np.pi, r'%s $\phi$' %
+           prefix, fig=fig, cmap='twilight')
     if m >= 2:
         plt.subplot(m, n_subplots // m, 4)
         matrix(irradiance(to_polar(a, phi)), '%s I (norm)' % prefix, fig=fig)
@@ -75,24 +81,25 @@ def matrix_multiple(y, title='y', prefix='', m=2):
     plt.tight_layout()
     if m >= 2:
         if DIMS > 2:
-            slice(y)
+            slice(y, HD=HD)
 
 
-def slice(y, v=None):
-    N_sqrt = compute_N_sqrt()
-    a, phi = split_wave_vector(y)
+def slice(y, v=None, HD=0):
+    a, phi = split_wave_vector(y, HD)
     plt.figure(figsize=(6, 3))
+
     plt.subplot(121)
-#     b = (a * np.sin(phi)).reshape((N_sqrt,N_sqrt))[N_sqrt//2]
-#     b = np.mean((a * np.sin(phi)).reshape((N_sqrt,N_sqrt)), axis=0)
-    b = np.mean(irradiance(to_polar(a, phi)).reshape((N_sqrt, N_sqrt)), axis=1)
+    b = np.mean(irradiance(to_polar(a, phi)), axis=1)
     plt.plot(b)
     plt.title('slice 1')
+
     plt.subplot(122)
-    b = np.mean((a * np.sin(phi)).reshape((N_sqrt, N_sqrt)), axis=0)
+    b = np.mean(irradiance(to_polar(a, phi)), axis=0)
     plt.plot(b)
-    plt.title('slice2')
+    plt.title('slice 2')
+
     plt.tight_layout()
+
     if v is not None:
         plt.figure(figsize=(6, 3))
         plt.subplot(121)
@@ -126,14 +133,16 @@ def scatter(x, w, title='', color_func=lambda a, phi: a, s=10, alpha=0.9,
 def scatter_multiple(y, v=None, title='', prefix='', **kwargs):
     n_subplots = 3
     fig = plt.figure(figsize=(n_subplots * 4, 3))
-    plt.suptitle(title, y=1.02)
+    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
     plt.subplot(1, n_subplots, 1)
-    scatter(y[:, 0], v, '%s a' % prefix, fig=fig, **kwargs)
+    scatter(y[:, 0], v, '%s Amplitude' % prefix, fig=fig, **kwargs)
     plt.subplot(1, n_subplots, 2)
-    scatter(y[:, 1], v, r'%s $\phi$' % prefix, fig=fig, **kwargs)
-    plt.subplot(1, n_subplots, 3)
     scatter(irradiance(to_polar(y[:, 0], y[:, 1])),
             v, r'%s I' % prefix, fig=fig, **kwargs)
+    plt.subplot(1, n_subplots, 3)
+    # cyclic cmap: hsv, twilight
+    kwargs['cmap'] = 'twilight'
+    scatter(y[:, 1] / np.pi, v, r'%s $\phi$' % prefix, fig=fig, **kwargs)
     # plt.subplot(1, n_subplots, 3)
     # scatter(irradiance(to_polar(y[:, 0], y[:, 1])),
     #         v, '%s I' % prefix, lambda a, phi: a * np.sin(phi), fig=fig)
@@ -141,3 +150,14 @@ def scatter_multiple(y, v=None, title='', prefix='', **kwargs):
     # # scatter(y, v, '%s (a*)' % prefix, lambda a, phi: a * np.sin(phi))
     # # scatter(y, v, r'%s ($\phi$)' % prefix)
     # slice(y, v)
+
+
+def entropy(H, w, title='H',  **kwargs):
+    # TODO for entropy: cmap gnuplot
+    n_subplots = 2
+    fig = plt.figure(figsize=(n_subplots * 5, 4))
+    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
+    ax = plt.subplot(1, n_subplots,  1)
+    scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
+    ax = plt.subplot(1, n_subplots,  2)
+    scatter(H[:, 1], w, title=r'$\phi$', fig=fig, **kwargs)

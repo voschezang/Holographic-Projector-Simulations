@@ -10,9 +10,9 @@ import halton
 from numba import jit
 from typing import Tuple, Union
 
-
 LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
-LAMBDA = 1
+# LAMBDA = 1
+SCALE = LAMBDA / 0.6328e-6
 DIMS = 3
 # N = 30**(DIMS - 1)
 # N = 52**(DIMS - 1)
@@ -40,13 +40,17 @@ def object_grid(N):
     return np.zeros(shape=(N, 2))
 
 
-def sample_grid(N, width=1, z_offset=0, random=None, center=1, dims=None, rotate_axis=None, distribution=None):
+def sample_grid(N, width=1, z_offset=0, random=None, center=1, dims=None,
+                rotate_axis=None, distribution=None, HD=False):
     # spatial & temporal positions
+    if HD:
+        return HD_sample_grid()
+
     if dims is None:
         global DIMS
         dims = DIMS
 
-    if N <= 3:
+    if N <= 5:
         w = np.zeros((N, DIMS))
         if N == 2:
             w[0, 0] = width / 2
@@ -54,6 +58,11 @@ def sample_grid(N, width=1, z_offset=0, random=None, center=1, dims=None, rotate
         if N == 3:
             w[1, 0] = width / 2
             w[2, 0] = -width / 2
+        if N == 5:
+            w[1, 0] = width / 3
+            w[2, 0] = -width / 3
+            w[3, 0] = width / 6
+            w[4, 0] = -width / 6
         return w
 
     if random:
@@ -80,6 +89,7 @@ def sample_grid(N, width=1, z_offset=0, random=None, center=1, dims=None, rotate
 
     else:
         w = np.array((*np.ndindex((N_sqrt,) * (dims - 1)),))
+
         if dims == 2:
             w = np.stack((w[:, 0], np.zeros(N)), axis=1)
         elif dims == 3:
@@ -96,7 +106,29 @@ def sample_grid(N, width=1, z_offset=0, random=None, center=1, dims=None, rotate
     if random or distribution == 'uniform':
         # TODO if distribution == 'uniform'
         inter_width = width / (N_sqrt - 1)
-        w[:, :-1] += np.random.uniform(-0.5, 0.5, (N, dims - 1)) * inter_width
+        w[:, :-1] += np.random.uniform(-0.5,
+                                       0.5, (N, dims - 1)) * inter_width
+
+    w[:, -1] = z_offset
+    if rotate_axis:
+        # rotate every sample vector point w.r.t. axis
+        return np.matmul(rotate_axis, w)
+    return w
+
+
+def HD_sample_grid(width=1, z_offset=0, scale=0.1, center=1, rotate_axis=None, distribution=None):
+    N_ = round(1080 * scale)
+    M_ = round(1920 * scale)
+    dx = 7 * 1e-6 * width * SCALE
+    # N = N_ x M_
+    w = np.array((*np.ndindex((N_, M_)),))
+    w = np.stack((w[:, 0], w[:, 1], np.zeros(N_ * M_)), axis=1)
+    w[:, :] *= dx
+    if center:
+        w[:, 0] -= (N_ - 1) * dx / 2
+        w[:, 1] -= (M_ - 1) * dx / 2
+    if distribution:
+        w[:, :-1] += np.random.uniform(-dx / 2, dx / 2, (N_ * M_, 2))
 
     w[:, -1] = z_offset
     if rotate_axis:
@@ -145,7 +177,7 @@ def idx(x: np.ndarray, n: int, *indices):
     return x[idx_(n, *indices)]
 
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def f(amplitude, phase, w, v, direction=1,  weighted=0):
     """
     amplitude = origin amplitude
@@ -161,35 +193,35 @@ def f(amplitude, phase, w, v, direction=1,  weighted=0):
     # \hat phi = A exp(\i(omega t - xt + phi))
     next_phase = phase - direction * 2 * np.pi * delta / LAMBDA
     next_amplitude = amplitude / delta
-    if weighted:
-        assert DIMS == 3
-        weights = np.empty(delta.shape)
-        n = int(np.sqrt(w.shape[0]))
-        # for i, j in np.ndindex((n, n)):
-        for i in range(n):
-            for j in range(n):
-                # indices of nearest neighbours for each w
-                points = lattice_nn(w, n, i, j)
-                a = points[0]
-                b = points[1]
-                c = points[2]
-                d = points[3]
-                area = quadrilateral_area(a, b, c, d)
-                # area = quadrilateral_area(*lattice_nn(w, n, i, j))
-                weights[idx_(n, i, j)] = area * 0.5
-                # TODO return area
-
-        return to_polar(next_amplitude, next_phase) * weights
+    # if weighted:
+    #     assert DIMS == 3
+    #     weights = np.empty(delta.shape)
+    #     n = int(np.sqrt(w.shape[0]))
+    #     # for i, j in np.ndindex((n, n)):
+    #     for i in range(n):
+    #         for j in range(n):
+    #             # indices of nearest neighbours for each w
+    #             points = lattice_nn(w, n, i, j)
+    #             a = points[0]
+    #             b = points[1]
+    #             c = points[2]
+    #             d = points[3]
+    #             area = quadrilateral_area(a, b, c, d)
+    #             # area = quadrilateral_area(*lattice_nn(w, n, i, j))
+    #             weights[idx_(n, i, j)] = area * 0.5
+    #             # TODO return area
+    #
+    #     return to_polar(next_amplitude, next_phase) * weights
 
     return to_polar(next_amplitude, next_phase)
 
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def sum_kernel(x, w, v, direction=1, weighted=0):
     return np.sum(f(x[:, 0], x[:, 1], w, v, direction=direction, weighted=weighted))
 
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def map_sum_kernel(x, y, w, v, direction=1, distance=1, weighted=0):
     for m in range(y.shape[0]):
         # y[m, :] = from_polar(
@@ -207,6 +239,38 @@ def map_sum_kernel(x, y, w, v, direction=1, distance=1, weighted=0):
 #     # for-loop to prevent ambiguity in shape
 #     return f(x[:, 0], x[:, 1], w, v[m], direction=direction, weighted=weighted)
 #     return y
+
+def entropy(y, v, w):
+    stats = [np.abs, np.angle]
+    H = np.empty((w.shape[0], len(stats)))
+    for i in range(H.shape[0]):
+        a = f(y[:, 0], y[:, 1], v, w[i])
+        for j, func in enumerate(stats):
+            hist, bin_edges = np.histogram(func(a), density=True)
+            pdf = hist * (bin_edges[1:] - bin_edges[:-1])
+            H[i, j] = scipy.stats.entropy(pdf)
+
+        # hist, bin_edges = np.histogram(np.angle(a), density=True)
+        # pdf = hist * (bin_edges[1:] - bin_edges[:-1])
+        # H[i, 1] = scipy.stats.entropy(pdf)
+    return H
+
+
+def projector_setup(x, y, z, w, v, u, plane_wave_intensity=1):
+    # projector
+    assert y.shape[0] == v.shape[0]
+    for m in range(v.shape[0]):
+        # source object
+        c = sum_kernel(x, w, v[m], direction=-1)
+        # plane wave
+        c += f(plane_wave_intensity, 0, 0, np.ones(3).reshape(1, -1))
+        y[m, :] = from_polar(c, distance=1)
+
+    normalize_amplitude(y)
+
+    # projection
+    map_sum_kernel(y, z, v, u)
+    normalize_amplitude(z)
 
 
 @jit(nopython=True)
@@ -245,16 +309,23 @@ def vec_to_im(x):
     return reshape(x)
 
 
-def reshape(x):
-    N = np.shape(x)[0]
+def reshape(x, HD=0):
+    if HD:
+        for scale in [0.001, 0.01, 0.02, 0.04, 0.05, 0.1, 0.2, 0.5, 1]:
+            shape = round(1080 * scale), round(1920 * scale)
+            if np.prod(x.shape) == np.prod(shape):
+                return x.reshape(shape)
+        raise NotImplementedError
+
+    N = x.shape[0]
     d = np.sqrt(N).astype(int)
     return x.reshape((d, d))
 
 
-def split_wave_vector(x):
+def split_wave_vector(x, HD=0):
     if DIMS == 2:
         return x[:, 0], x[:, 1]
-    return reshape(x[:, 0]), reshape(x[:, 1])
+    return reshape(x[:, 0], HD), reshape(x[:, 1], HD)
 
 
 @jit
