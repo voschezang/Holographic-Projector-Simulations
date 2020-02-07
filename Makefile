@@ -18,3 +18,15 @@ deps:
 
 vm-update:
 	scp -r {Makefile,util.py,plot.py,halton.py} $(ADDRESS):$(DIR)
+
+add-to-path:
+	echo 'export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}'
+
+build:
+	nvcc -o main main.cu
+
+build-run:
+	make build && make run
+
+run:
+	./main
