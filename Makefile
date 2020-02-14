@@ -14,7 +14,7 @@ init-path:
 
 deps:
 	# make sure python, python-pip are installed
-	pip --user install virtualenv
+	pip --user install -r requirements.txt
 
 vm-update:
 	scp -r {Makefile,util.py,plot.py,halton.py} $(ADDRESS):$(DIR)
@@ -23,6 +23,7 @@ add-to-path:
 	echo 'export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}'
 
 build:
+	# make add-to-path
 	nvcc -o main main.cu
 
 build-run:
