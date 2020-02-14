@@ -36,7 +36,7 @@ def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
     return fig
 
 
-def matrix(x, title='', fig=None, **kwargs):
+def matrix(x, title='', cb=True, fig=None, **kwargs):
     if 'cmap' not in kwargs:
         global cmap
         kwargs['cmap'] = cmap
@@ -48,13 +48,16 @@ def matrix(x, title='', fig=None, **kwargs):
     else:
         plt.imshow(x.reshape(x.size, 1), vmin=0, origin='lower', **kwargs)
     # plt.colorbar(fraction=0.046, pad=0.04)
-    plt.colorbar(fraction=0.035, pad=0.04)
+    if cb:
+        plt.colorbar(fraction=0.035, pad=0.04)
     plt.title(title)
     if fig is None:
         plt.tight_layout()
 
+    return fig
 
-def matrix_multiple(y, title='y', prefix='', m=2, HD=0):
+
+def matrix_multiple(y, title='y', prefix='', m=2, HD=0, **kwargs):
     a, phi = split_wave_vector(y, HD)
 
     # data = ['a', r'$\phi$', 'I']
@@ -62,20 +65,22 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0):
     fig = plt.figure(figsize=(n_subplots // m * 4, m * 4))
     plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
     plt.subplot(m, n_subplots // m, 1)
-    matrix(reshape(y[:, 0], HD), '%s Amplitude' % prefix, fig=fig)
+    matrix(reshape(y[:, 0], HD), '%s Amplitude' % prefix, fig=fig, **kwargs)
     plt.subplot(m, n_subplots // m, 2)
     # cyclic cmap: hsv, twilight
     matrix(reshape(y[:, 1], HD) / np.pi, r'%s $\phi$' %
            prefix, fig=fig, cmap='twilight')
     if m >= 2:
         plt.subplot(m, n_subplots // m, 4)
-        matrix(irradiance(to_polar(a, phi)), '%s I (norm)' % prefix, fig=fig)
+        matrix(irradiance(to_polar(a, phi)), '%s I (norm)' %
+               prefix, fig=fig, **kwargs)
         plt.subplot(m, n_subplots // m, 5)
         # matrix(a * np.cos(phi), '%s (a*)' % prefix)
         matrix(irradiance(to_polar(a, phi), normalize=0), '%s I' %
-               prefix, fig=fig)
+               prefix, fig=fig, **kwargs)
         plt.subplot(m, n_subplots // m, 6)
-        matrix(a * np.cos(phi * 2 * np.pi), '%s A cos phi' % prefix, fig=fig)
+        matrix(a * np.cos(phi * 2 * np.pi), '%s A cos phi' %
+               prefix, fig=fig, **kwargs)
         # matrix(a, '%s A cos phi' % prefix, fig=fig)
         # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig)
     plt.tight_layout()
@@ -161,3 +166,15 @@ def entropy(H, w, title='H',  **kwargs):
     scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
     ax = plt.subplot(1, n_subplots,  2)
     scatter(H[:, 1], w, title=r'$\phi$', fig=fig, **kwargs)
+
+
+def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
+    # invert to have 1 display as white pixels
+    x = 1 - standardize_amplitude(x[:, 0].copy())
+    if pow:
+        x = x ** pow
+    matrix(reshape(x, True), cmap='binary', cb=False)
+    if filename is not None:
+        plt.axis('off')
+        plt.savefig(prefix + filename, dpi='figure',
+                    transparent=True, bbox_inches='tight')

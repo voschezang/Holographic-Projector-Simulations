@@ -9,6 +9,8 @@ from scipy.spatial.transform import Rotation as R
 import halton
 from numba import jit
 from typing import Tuple, Union
+from multiprocessing import Pool
+from itertools import repeat
 
 LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
 # LAMBDA = 1
@@ -117,6 +119,11 @@ def sample_grid(N, width=1, z_offset=0, random=None, center=1, dims=None,
 
 
 def HD_sample_grid(width=1, z_offset=0, scale=0.1, center=1, rotate_axis=None, distribution=None):
+    """ Returns a vector with sample coordinates of a virtual plane in 3d space.
+    width = scaling w.r.t. projector
+    z_offset = distance from origin in third (z) dim
+    scale = scale of projector/display resolution. Strongly affects runtime
+    """
     N_ = round(1080 * scale)
     M_ = round(1920 * scale)
     dx = 7 * 1e-6 * width * SCALE
@@ -142,7 +149,6 @@ def to_polar(a: np.ndarray, phi: np.ndarray):
     return a * np.exp(phi * 1j)
 
 
-# @jit()
 @jit(nopython=True)
 def from_polar(c: np.ndarray, distance: int = 1):
     # polar \in C \to (amplitude, phase)
@@ -177,7 +183,7 @@ def idx(x: np.ndarray, n: int, *indices):
     return x[idx_(n, *indices)]
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def f(amplitude, phase, w, v, direction=1,  weighted=0):
     """
     amplitude = origin amplitude
@@ -216,22 +222,40 @@ def f(amplitude, phase, w, v, direction=1,  weighted=0):
     return to_polar(next_amplitude, next_phase)
 
 
-@jit(nopython=True)
-def sum_kernel(x, w, v, direction=1, weighted=0):
-    return np.sum(f(x[:, 0], x[:, 1], w, v, direction=direction, weighted=weighted))
+# @jit(nopython=True)
+def sum_kernel(x, w, v, direction=1, weighted=0, plane_wave_intensity=0):
+
+    c = np.sum(f(x[:, 0], x[:, 1], w, v,
+                 direction=direction, weighted=weighted))
+    if c > 0:
+        c += f(plane_wave_intensity, 0, 0, np.ones(3).reshape(1, -1))
+    return c
 
 
-@jit(nopython=True)
-def map_sum_kernel(x, y, w, v, direction=1, distance=1, weighted=0):
+def sum_kernel_wrapper(v, args):
+    x, y, w,  direction, distance, weighted, plane_wave_intensity = args
+    return from_polar(
+        sum_kernel(x, w, v, direction=direction, weighted=weighted,
+                   plane_wave_intensity=plane_wave_intensity),
+        distance=distance)
+
+
+# @jit(nopython=True)
+def map_sum_kernel(x, y, w, v, direction=1, distance=1, weighted=0, plane_wave_intensity=0, parallel=0):
+    if parallel:
+        parallel = 4 if parallel in [True, 1] else parallel
+        args = repeat((x, y, w, direction, distance,
+                       weighted, plane_wave_intensity))
+        with Pool(parallel) as p:
+            results = p.starmap(sum_kernel_wrapper, zip(v, args))
+        y[:] = np.array(results)
+        return
+
     for m in range(y.shape[0]):
-        # y[m, :] = from_polar(
-        #     np.sum(f(x[:, 0], x[:, 1], w, v[m], direction=direction)),
-        #     distance=distance)
         y[m, :] = from_polar(
-            sum_kernel(x, w, v[m], direction=direction, weighted=weighted),
-            # np.sum(f(x[:, 0], x[:, 1], w, v[m], direction=direction)),
+            sum_kernel(x, w, v[m], direction=direction, weighted=weighted,
+                       plane_wave_intensity=plane_wave_intensity),
             distance=distance)
-
 
 # @jit(nopython=True)
 # def acc_kernel(x, w, v, direction=1, distance=1, weighted=0):
@@ -239,6 +263,7 @@ def map_sum_kernel(x, y, w, v, direction=1, distance=1, weighted=0):
 #     # for-loop to prevent ambiguity in shape
 #     return f(x[:, 0], x[:, 1], w, v[m], direction=direction, weighted=weighted)
 #     return y
+
 
 def entropy(y, v, w):
     stats = [np.abs, np.angle]
@@ -256,21 +281,38 @@ def entropy(y, v, w):
     return H
 
 
-def projector_setup(x, y, z, w, v, u, plane_wave_intensity=1):
+def projector_setup(x, y, z, w, v, u, plane_wave_intensity=1, parallel=0):
     # projector
     assert y.shape[0] == v.shape[0]
-    for m in range(v.shape[0]):
-        # source object
-        c = sum_kernel(x, w, v[m], direction=-1)
-        # plane wave
-        c += f(plane_wave_intensity, 0, 0, np.ones(3).reshape(1, -1))
-        y[m, :] = from_polar(c, distance=1)
+    map_sum_kernel(x, y, w, v, direction=-1,
+                   plane_wave_intensity=plane_wave_intensity, parallel=parallel)
+    # for m in range(v.shape[0]):
+    #     # source object
+    #     c = sum_kernel(x, w, v[m], direction=-1)
+    #     # plane wave
+    #     c += f(plane_wave_intensity, 0, 0, np.ones(3).reshape(1, -1))
+    #     y[m, :] = from_polar(c, distance=1)
 
     normalize_amplitude(y)
 
     # projection
     map_sum_kernel(y, z, v, u)
     normalize_amplitude(z)
+
+
+def projector_setup2(x, w, y, v, z=None, u=None, plane_wave_intensity=0.1, parallel=0):
+    # projector
+    assert y.shape[0] == v.shape[0]
+    for m in range(v.shape[0]):
+        # source object
+        y[m, :] = sum_kernel(x, w, v[m], direction=-1,
+                             plane_wave_intensity=plane_wave_intensity, parallel=parallel)
+
+    normalize_amplitude(y)
+    # projection
+    if z is not None:
+        map_sum_kernel(y, z, v, u, parallel=parallel)
+        normalize_amplitude(z)
 
 
 @jit(nopython=True)
@@ -371,7 +413,14 @@ def PSD(E):
 
 @jit()
 def normalize_amplitude(x):
-    x[:, 0] *= 1 / np.max(x[:, 0])
+    x[:, 0] /= np.max(x[:, 0])
+
+
+def standardize_amplitude(x):
+    # rescale (in place) to range [0,1]
+    width = x[:, 0].max() - x[:, 0].min()
+    x[:, 0] = (x[:, 0] - x[:, 0].min()) / width
+    return x
 
 
 def energy_dist(a, r, xi_0, xi_r, phi_0, phi_r, theta_0, theta_r):
