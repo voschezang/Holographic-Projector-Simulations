@@ -54,7 +54,7 @@ def matrix(x, title='', fig=None, **kwargs):
         plt.tight_layout()
 
 
-def matrix_multiple(y, title='y', prefix='', m=2, HD=0):
+def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None):
     a, phi = split_wave_vector(y, HD)
 
     # data = ['a', r'$\phi$', 'I']
@@ -78,10 +78,16 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0):
         matrix(a * np.cos(phi * 2 * np.pi), '%s A cos phi' % prefix, fig=fig)
         # matrix(a, '%s A cos phi' % prefix, fig=fig)
         # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig)
+
     plt.tight_layout()
+    if filename is not None:
+        plt.savefig(filename + '.pdf', transparent=True)
     if m >= 2:
         if DIMS > 2:
             slice(y, HD=HD)
+
+    if filename is not None:
+        plt.savefig(filename + '-slice.pdf', transparent=True)
 
 
 def slice(y, v=None, HD=0):
@@ -161,3 +167,10 @@ def entropy(H, w, title='H',  **kwargs):
     scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
     ax = plt.subplot(1, n_subplots,  2)
     scatter(H[:, 1], w, title=r'$\phi$', fig=fig, **kwargs)
+
+
+if __name__ == '__main__':
+    n = 100
+    x = np.linspace(0,5*np.pi, n)
+    plt.plot(x, np.sin(x))
+    plt.savefig('img/tst.pdf', transparent=True)
