@@ -47,7 +47,7 @@ void summarize(char name, WTYPE *x, size_t n) {
   printf("%c)  max amp: %0.6f, max phase: %0.3f\n", name, max_amp, max_phase);
 }
 
-void normalize_amp(WTYPE *x, size_t n) {
+void normalize_amp(WTYPE *x, size_t n, char log_normalize) {
   double max_amp = 0;
   for (size_t i = 0; i < n; ++i)
     max_amp = fmax(max_amp, cabs(x[i]));
@@ -59,10 +59,10 @@ void normalize_amp(WTYPE *x, size_t n) {
     for (size_t i = 0; i < n; ++i)
       x[i] /= max_amp;
 
-  // for (size_t i = 0; i < n; ++i)
-  //   if (cabs(x[i]) > 0)
-  //     x[i] = -clog(x[i]);
-    // assert(cabs(x[i]) > 0);
+  if (log_normalize)
+    for (size_t i = 0; i < n; ++i)
+      if (cabs(x[i]) > 0)
+        x[i] = -clog(x[i]);
 }
 
 void summarize_double(char name, double *x, size_t n) {
@@ -106,6 +106,7 @@ double norm3(double *u, double *v, size_t n, size_t m) {
 int main() {
   printf("Init\n");
   printf("N: %i^2 = %i, \t THREADS_PER_BLOCK: %i, \t BLOCKDIM: %i, \n", N_sqrt, N, THREADS_PER_BLOCK, BLOCKDIM );
+  printf("E[cores] = %0.3fk\n", BLOCKDIM * THREADS_PER_BLOCK * 1e-3);
   printf("N/thread: %i\n", N_PER_THREAD );
   printf("Memory lb: %0.2f MB\n", memory_in_MB());
   // printf(": %0.2f MB/s\n", 2 * memory_in_MB() / dt);
@@ -132,8 +133,6 @@ int main() {
 
   STYPE *u = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
   STYPE *v = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
-  // STYPE *u[DIMS  * N * sizeof(STYPE)]
-  // STYPE *v[DIMS  * N * sizeof(STYPE)]
 
   // device
 	WTYPE_cuda *d_x, *d_y, *d_y_block;
@@ -191,10 +190,10 @@ int main() {
 	cudaMemcpy( d_v, v, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
 
   // for each batch
-  printf("N_BATCHES: %i\n", N_BATCHES);
   for (size_t i_batch = 0; i_batch < N_BATCHES; ++i_batch) {
-    if (i_batch % 1000 == 0)
-      printf("batch %0.3f/%0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
+    if (i_batch % (int) (N_BATCHES * 0.1) == 0)
+      printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
+
     cu( cudaMemcpy( d_y_block, y_block, BLOCKDIM * b_size, cudaMemcpyHostToDevice ) );
     // alt, dynamic: k<<<N,M,batch_size>>>
     kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>( d_x, d_u, d_y_block, d_v, i_batch, 1 );
@@ -202,11 +201,6 @@ int main() {
     // reduce<<< , >>>( );
     // or use thrust::reduce<>()
     cu( cudaMemcpy( y_block, d_y_block, BLOCKDIM * b_size, cudaMemcpyDeviceToHost ) );
-    // printf("\n");
-    // if (cabs(y_block[0]) > 0) printf("|y_0| = %0.4f > 0\n", y_block[0]);
-    // if (carg(y_block[0]) > 0) printf("<y_0> = %0.4f > 0\n", y_block[0]);
-
-    // printf("\ny_i \\in (%i, %i)\n", i_batch * BATCH_SIZE, i_batch * BATCH_SIZE + BATCH_SIZE);
     // for each block, add block results to global y
     // n,m = counter, not an index
     for (size_t n = 0; n < BLOCKDIM; ++n) {
@@ -214,10 +208,6 @@ int main() {
         // use full y-array in agg
         size_t i = m + i_batch * BATCH_SIZE;
         size_t i_block = m + n * BATCH_SIZE;
-        // size_t i_block = n + m * BLOCKDIM;
-        // printf("i: %i, (n: %i, m: %i)\n", i, n,m);
-        // printf("i: %i\n", i);
-        // printf("i_block: %i\n", i_block);
         if (i >= N) assert(0); // TODO rm after testing
         if (i >= N) break;
         // set y to zero
@@ -231,8 +221,7 @@ int main() {
       }
     }
   }
-  normalize_amp(y, N);
-	// kernel1<<< m, THREADS_PER_BLOCK >>>( d_x,d_u, d_y,d_v );
+  normalize_amp(y, N, 0);
 	free(y_block);
 	cu( cudaFree( d_x ) );
 	cu( cudaFree( d_y_block ) );
@@ -254,27 +243,14 @@ int main() {
 
   summarize('x', x, N);
   summarize('y', y, N);
-  // double max_amp = 0, max_phase = 0;
-  // for (size_t i = 0; i < N; ++i) {
-  //     max_amp = fmax(max_amp, cabs(y[i]));
-  //     max_phase = fmax(max_phase , cabs(y[i]));
-  // }
-  // printf("max amp: %0.3f, max phase: %0.3f\n", max_amp, max_phase);
-	/* printf( "c[%d] = %d\n",N-1, c[N-1] ); */
-  // printf("__out_start__")
+
+  printf("Save results\n");
 
   FILE *out;
   out = fopen("tmp/out.txt", "w");
-  print_carray('x', x, N, out);
-  print_carray('y', y, N, out);
+  print_carray('x', x, N, out); free(x);
+  print_carray('y', y, N, out); free(y);
   fclose(out);
-  // fprintf(out, "\n{x:");
-  // for (int i = 0; i < N; ++i) {
-  //   fprintf(out, "%f+%fj", creal(x[i]), cimag(x[i]));
-  // }
-  // fprintf(out, "}\n");
 
-	free(x);
-	free(y);
 	return 0;
 }

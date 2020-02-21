@@ -37,8 +37,9 @@
 // TODO 1 thread per data element? or streaming? assume N >> total n threads
 
 // THREADS_PER_BLOCK, BLOCKIDM are independent of N, but max. for the GPU
-#define THREADS_PER_BLOCK 64
-#define BLOCKDIM 64
+#define THREADS_PER_BLOCK 256
+#define BLOCKDIM 512
+/* #define BLOCKDIM 128 */
 // #define BLOCKDIM (N + THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK
 
 #define N_PER_THREAD N / BLOCKDIM / THREADS_PER_BLOCK // for input (x), thus independent of batches
