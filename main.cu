@@ -82,9 +82,8 @@ void print_c(WTYPE x, FILE *out) {
     fprintf(out, "%f%fj", creal(x), cimag(x));
   }
 }
-void print_carray(char c, WTYPE *x, size_t len, FILE *out) {
+void write_carray(char c, WTYPE *x, size_t len, FILE *out) {
   unsigned int i = 0;
-  // out = fopen("tmp/out.txt", "w+");
   // key
   fprintf(out, "%c:", c);
   // first value
@@ -115,6 +114,7 @@ int main() {
     double m = n * sizeof(WTYPE_cuda) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
+  assert(N_PER_THREAD > 0);
   assert(N_PER_THREAD * THREADS_PER_BLOCK * BLOCKDIM == N);
   assert(sizeof(WTYPE) == sizeof(WTYPE_cuda));
 
@@ -151,12 +151,12 @@ int main() {
       for(int j = 0; j < N_sqrt; ++j) {
         size_t idx = i * N_sqrt + j;
         x[idx] = 0;
-        if (i == N_sqrt / 2 && j == N_sqrt / 2) {
-          x[idx] = 1;
-        }
-        if (j == N_sqrt / 2) {
-          // x[idx] = 1;
-        }
+        if (i == N_sqrt / 2 && j == N_sqrt / 2) x[idx] = 1;
+        if (i == N_sqrt / 3 && j == N_sqrt / 2) x[idx] = 1;
+        if (i == N_sqrt * 2/3 && j == N_sqrt / 2) x[idx] = 1;
+        if (i == N_sqrt / 4 && j == N_sqrt / 4) x[idx] = 1;
+        if (i == N_sqrt * 3/4 && j == N_sqrt * 3/4) x[idx] = 1;
+        if (i == N_sqrt / 5) x[idx] = 1;
 
         u[Ix(i,j,0)] = i * dS - offset;
         u[Ix(i,j,1)] = j * dS - offset;
@@ -246,10 +246,11 @@ int main() {
 
   printf("Save results\n");
 
+  // TODO use csv for i/o, read python generated x
   FILE *out;
-  out = fopen("tmp/out.txt", "w");
-  print_carray('x', x, N, out); free(x);
-  print_carray('y', y, N, out); free(y);
+  out = fopen("tmp/out.txt", "wb");
+  write_carray('x', x, N, out); free(x);
+  write_carray('y', y, N, out); free(y);
   fclose(out);
 
 	return 0;

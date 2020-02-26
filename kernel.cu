@@ -31,10 +31,12 @@ __device__ void cuCheck(cuDoubleComplex  z) {
   if (isinf(b)) printf("cu found inf I\n");
 }
 
+inline
 __device__ double angle(cuDoubleComplex  z) {
   return atan2(cuCreal(z), cuCimag(z));
 }
 
+inline
 __device__ cuDoubleComplex polar(double a, double phi) {
   // return the complex number a * exp(phi * imag)
   cuDoubleComplex res;
@@ -52,6 +54,7 @@ __global__ void kernel_zero(WTYPE_cuda *x, size_t n) {
 
 // TODO consider non-complex types (double real, double imag)
 // and check computational cost
+inline
 __device__ WTYPE_cuda K(size_t i, size_t j, WTYPE_cuda *x, STYPE *u, STYPE *v, const char inverse) {
   // TODO unpack input to u1,u2,3 v1,v2,v3?
   // TODO consider unguarded functions
