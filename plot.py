@@ -57,7 +57,7 @@ def matrix(x, title='', cb=True, fig=None, **kwargs):
     return fig
 
 
-def matrix_multiple(y, title='y', prefix='', m=2, HD=0, **kwargs):
+def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None, **kwargs):
     a, phi = split_wave_vector(y, HD)
 
     # data = ['a', r'$\phi$', 'I']
@@ -69,7 +69,7 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0, **kwargs):
     plt.subplot(m, n_subplots // m, 2)
     # cyclic cmap: hsv, twilight
     matrix(reshape(y[:, 1], HD) / np.pi, r'%s $\phi$' %
-           prefix, fig=fig, cmap='twilight')
+           prefix, fig=fig, cmap='twilight', **kwargs)
     if m >= 2:
         plt.subplot(m, n_subplots // m, 4)
         matrix(irradiance(to_polar(a, phi)), '%s I (norm)' %
@@ -81,12 +81,18 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0, **kwargs):
         plt.subplot(m, n_subplots // m, 6)
         matrix(a * np.cos(phi * 2 * np.pi), '%s A cos phi' %
                prefix, fig=fig, **kwargs)
-        # matrix(a, '%s A cos phi' % prefix, fig=fig)
-        # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig)
+        # matrix(a, '%s A cos phi' % prefix, fig=fig, **kwargs)
+        # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig, **kwargs)
+
     plt.tight_layout()
+    if filename is not None:
+        plt.savefig(filename + '.pdf', transparent=True)
+
     if m >= 2:
         if DIMS > 2:
             slice(y, HD=HD)
+            if filename is not None:
+                plt.savefig(filename + '-slice.pdf', transparent=True)
 
 
 def slice(y, v=None, HD=0):
@@ -184,4 +190,4 @@ if __name__ == '__main__':
     n = 100
     x = np.linspace(0, 5 * np.pi, n)
     plt.plot(x, np.sin(x))
-    plt.show()
+    plt.savefig('img/tst.pdf', transparent=True)

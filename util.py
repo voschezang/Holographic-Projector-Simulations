@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 import matplotlib.pyplot as plt
 import scipy.optimize
 import scipy.linalg
@@ -527,3 +528,26 @@ def stratified(n_samples: int, n_subspaces: int):
     # indices = np.random.choice(
     #     np.arange(n_subspaces), size=n_samples, p=subspace_sample_distribution)
     return indices, subspace_shape
+
+def get_flag(name: str):
+    return get_arg(name, False, True)
+
+def get_arg(name: str, default_value=None, flag=False, parse_func=int):
+    """ Parse command line args
+    """
+    try:
+        index = sys.argv.index(name)
+        value = sys.argv[index + 1]
+    except ValueError:
+        if default_value is None:
+            raise NameError("Unable to find argument: {}".format(name))
+        else:
+            value = default_value
+
+    except IndexError:
+        if flag:
+            value = True
+        else:
+            raise IndexError("No value found for argument: {}".format(name))
+
+    return parse_func(value)

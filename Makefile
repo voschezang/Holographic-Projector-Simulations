@@ -1,6 +1,6 @@
 ADDRESS := markv@stbc-g2.nikhef.nl
 PROJECT_DIR := /project/detrd/markv
-MNT_DIR := mnt
+MNT_DIR := tmp
 REMOTE_DIR := nikhef:/project/detrd/markv/Holographic-Projector/tmp
 
 jupyter:
@@ -16,7 +16,7 @@ init-path:
 
 deps:
 	# make sure python, python-pip are installed
-	pip --user install virtualenv
+	pip --user install -r requirements.txt
 
 vm-update:
 	scp -r {Makefile,util.py,plot.py,halton.py} $(ADDRESS):$(DIR)
@@ -44,3 +44,22 @@ info:
 	lscpu
 	lspci -vnn | grep VGA -A 12
 	lshw -numeric -C display
+
+add-to-path:
+	echo 'export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}'
+
+build:
+	# make add-to-path
+	nvcc -o main main.cu
+
+build-run:
+	make build && make run
+
+run:
+	./main
+
+py:
+	python3 main.py -r
+
+plot:
+	python3 main.py
