@@ -151,11 +151,11 @@ int main() {
       for(int j = 0; j < N_sqrt; ++j) {
         size_t idx = i * N_sqrt + j;
         x[idx] = 0;
-        if (i == N_sqrt / 2 && j == N_sqrt / 2) x[idx] = 1;
-        if (i == N_sqrt / 3 && j == N_sqrt / 2) x[idx] = 1;
+        // if (i == N_sqrt / 2 && j == N_sqrt / 2) x[idx] = 1;
+        if (i == N_sqrt * 1/3 && j == N_sqrt / 2) x[idx] = 1;
         if (i == N_sqrt * 2/3 && j == N_sqrt / 2) x[idx] = 1;
-        if (i == N_sqrt / 4 && j == N_sqrt / 4) x[idx] = 1;
-        if (i == N_sqrt * 3/4 && j == N_sqrt * 3/4) x[idx] = 1;
+        if (i == N_sqrt * 1/4 && j == N_sqrt / 4) x[idx] = 1;
+        if (i == N_sqrt * 3/4 && j == N_sqrt / 4) x[idx] = 1;
         if (i == N_sqrt / 5) x[idx] = 1;
 
         u[Ix(i,j,0)] = i * dS - offset;
