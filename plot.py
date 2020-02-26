@@ -178,3 +178,10 @@ def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
         plt.axis('off')
         plt.savefig(prefix + filename, dpi='figure',
                     transparent=True, bbox_inches='tight')
+
+
+if __name__ == '__main__':
+    n = 100
+    x = np.linspace(0, 5 * np.pi, n)
+    plt.plot(x, np.sin(x))
+    plt.show()
