@@ -54,7 +54,7 @@ def matrix(x, title='', fig=None, **kwargs):
         plt.tight_layout()
 
 
-def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None):
+def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None, **kwargs):
     a, phi = split_wave_vector(y, HD)
 
     # data = ['a', r'$\phi$', 'I']
@@ -62,32 +62,32 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None):
     fig = plt.figure(figsize=(n_subplots // m * 4, m * 4))
     plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
     plt.subplot(m, n_subplots // m, 1)
-    matrix(reshape(y[:, 0], HD), '%s Amplitude' % prefix, fig=fig)
+    matrix(reshape(y[:, 0], HD), '%s Amplitude' % prefix, fig=fig, **kwargs)
     plt.subplot(m, n_subplots // m, 2)
     # cyclic cmap: hsv, twilight
     matrix(reshape(y[:, 1], HD) / np.pi, r'%s $\phi$' %
-           prefix, fig=fig, cmap='twilight')
+           prefix, fig=fig, cmap='twilight', **kwargs)
     if m >= 2:
         plt.subplot(m, n_subplots // m, 4)
-        matrix(irradiance(to_polar(a, phi)), '%s I (norm)' % prefix, fig=fig)
+        matrix(irradiance(to_polar(a, phi)), '%s I (norm)' % prefix, fig=fig, **kwargs)
         plt.subplot(m, n_subplots // m, 5)
         # matrix(a * np.cos(phi), '%s (a*)' % prefix)
         matrix(irradiance(to_polar(a, phi), normalize=0), '%s I' %
-               prefix, fig=fig)
+               prefix, fig=fig, **kwargs)
         plt.subplot(m, n_subplots // m, 6)
-        matrix(a * np.cos(phi * 2 * np.pi), '%s A cos phi' % prefix, fig=fig)
-        # matrix(a, '%s A cos phi' % prefix, fig=fig)
-        # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig)
+        matrix(a * np.cos(phi * 2 * np.pi), '%s A cos phi' % prefix, fig=fig, **kwargs)
+        # matrix(a, '%s A cos phi' % prefix, fig=fig, **kwargs)
+        # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig, **kwargs)
 
     plt.tight_layout()
     if filename is not None:
         plt.savefig(filename + '.pdf', transparent=True)
+
     if m >= 2:
         if DIMS > 2:
             slice(y, HD=HD)
-
-    if filename is not None:
-        plt.savefig(filename + '-slice.pdf', transparent=True)
+            if filename is not None:
+                plt.savefig(filename + '-slice.pdf', transparent=True)
 
 
 def slice(y, v=None, HD=0):
