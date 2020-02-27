@@ -36,7 +36,7 @@ def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
     return fig
 
 
-def matrix(x, title='', cb=True, fig=None, **kwargs):
+def matrix(x, title='', cb=True, fig=None, log=False, **kwargs):
     if 'cmap' not in kwargs:
         global cmap
         kwargs['cmap'] = cmap
@@ -44,6 +44,8 @@ def matrix(x, title='', cb=True, fig=None, **kwargs):
     if fig is None:
         plt.figure()
     if len(x.shape) > 1:
+        if log:
+            x = -np.log(np.abs(x))
         plt.imshow(x, vmin=0, origin='lower', **kwargs)
     else:
         plt.imshow(x.reshape(x.size, 1), vmin=0, origin='lower', **kwargs)

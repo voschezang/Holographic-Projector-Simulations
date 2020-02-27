@@ -39,7 +39,6 @@ rsync:
 	# rsync -avP --numeric-ids --exclude='/dev' --exclude='/proc' --exclude='/sys' / root@xxx.xxx.xxx.xxx:/
 
 
-
 info:
 	lscpu
 	lspci -vnn | grep VGA -A 12
@@ -66,3 +65,9 @@ py:
 
 plot:
 	python3 main.py
+
+remote-run:
+	sh remote_run.sh
+
+remote-run-plot:
+	make remote-run plot

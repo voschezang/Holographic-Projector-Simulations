@@ -529,8 +529,10 @@ def stratified(n_samples: int, n_subspaces: int):
     #     np.arange(n_subspaces), size=n_samples, p=subspace_sample_distribution)
     return indices, subspace_shape
 
+
 def get_flag(name: str):
     return get_arg(name, False, True)
+
 
 def get_arg(name: str, default_value=None, flag=False, parse_func=int):
     """ Parse command line args
