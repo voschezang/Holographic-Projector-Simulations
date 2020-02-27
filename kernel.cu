@@ -57,20 +57,25 @@ __global__ void kernel_zero(WTYPE_cuda *x, size_t n) {
 inline
 __device__ WTYPE_cuda K(size_t i, size_t j, WTYPE_cuda *x, STYPE *u, STYPE *v, const char inverse) {
   // TODO unpack input to u1,u2,3 v1,v2,v3?
-  // TODO consider unguarded functions
+  // TODO consider unguarded functions, intrinsic functions
 #ifdef DEBUG
   assert(inverse == -1 || inverse == 1);
 #endif
-  size_t n = i * DIMS; // TODO use struct?
-  size_t m = j * DIMS;
-  double amp, phase, distance;
+
+  size_t n = i * DIMS,
+         m = j * DIMS; // TODO use struct?
+  // TODO use softeningSquared?
+  double
+    distance = norm3d(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
+    amp = cuCabs(x[i]),
+    phase = angle(x[i]);
+
+#ifdef DEBUG
+  // printf("amp %0.4f, %f\n", amp, softeningSquared);
+  // amp += softeningSquared;
   // char direction = 1; // must be -1 or +1
   // DIMS == 3
   if (j > 0) assert(m > 0);
-  distance = norm3d(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]);
-  amp = cuCabs(x[i]);
-  phase = angle(x[i]);
-  // assert(v[2] > 0);
   if (distance == 0) { printf("ERROR: distance must be nonzero"); asm("trap;"); }
   // if (amp > 0) printf(">0 \ti: %i, abs: %0.4f, dis: %0.3f\n", i, amp, distance);
   // // TODO check overflows
@@ -78,13 +83,14 @@ __device__ WTYPE_cuda K(size_t i, size_t j, WTYPE_cuda *x, STYPE *u, STYPE *v, c
   if (isinf(amp)) printf("found inf\n");
   if (isnan(distance)) printf("found nan\n");
   if (isinf(distance)) printf("found inf\n");
-  amp /= distance;
   // if (amp > 0) printf("amp = %0.5f > 0\n", amp);
   // if (distance > 0) printf("dis: %0.4f\n\n", distance);
-  phase -= inverse * distance * TWO_PI_OVER_LAMBDA;
   cuDoubleComplex res = polar(amp, phase);
   if (amp > 0) assert(cuCabs(res) > 0);
-  return polar(amp, phase);
+#endif
+
+  // TODO __ddiv_rd, __dmul_ru
+  return polar(amp / distance, phase - distance * inverse * TWO_PI_OVER_LAMBDA);
 }
 
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
@@ -97,7 +103,7 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *out, STYPE *v, cons
    */
   //
   __shared__ WTYPE_cuda tmp[THREADS_PER_BLOCK * BATCH_SIZE];
-  // TODO use cuda.y-stride?
+  // TODO use cuda.y-stride? - note the double for loop - how much memory fits in an SM?
   // TODO switch y-loop and x-loop and let sum : [BATCH_SIZE]? assuming y-batch is in local memory
   // printf("idx %i -", threadIdx.x);
   {
@@ -120,7 +126,7 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *out, STYPE *v, cons
         // printf("i: %i, j: %j, x: %f \n", i,j,x[i]);
 
 #ifdef DEBUG
-        assert(cuCabs(K(i, j, x, u, v, inverse)) > 0);
+        // assert(cuCabs(K(i, j, x, u, v, inverse)) > 0);
 #endif
         // printf("idx %i -", threadIdx.x);
         // sum = make_cuDoubleComplex(2,2);
@@ -135,9 +141,9 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *out, STYPE *v, cons
       // assert(m * THREADS_PER_BLOCK + threadIdx.x < THREADS_PER_BLOCK * BATCH_SIZE);
       tmp[m + threadIdx.x * BATCH_SIZE] = sum;
       // tmp[m * THREADS_PER_BLOCK + threadIdx.x] = sum;
-      cuCheck(sum);
 #ifdef DEBUG
-      assert(cuCabs(sum) > 0);
+      cuCheck(sum);
+      // assert(cuCabs(sum) > 0);
 #endif
     }
     // printf("thr \n");
@@ -162,16 +168,18 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *out, STYPE *v, cons
       // for (unsigned int k = 0; k < THREADS_PER_BLOCK; ++k)
       //   sum = cuCadd(sum, tmp[k + m * THREADS_PER_BLOCK]);
 
+#ifdef DEBUG
       cuCheck(sum);
+      // assert(cuCabs(sum) > 0);
+#endif
+
       // TODO foreach batch element
-      // sum = make_cuDoubleComplex(2,2);
+      // sum = make_cuDoubleComplex(2,0);
       // printf(" sum: %f - ", cuCabs(sum));
       // if (cuCabs(sum) > 0) printf("la");
-      out[m + blockIdx.x * BATCH_SIZE] = sum;
       // out[blockIdx.x + m * BLOCKDIM] = sum;
-#ifdef DEBUG
-      assert(cuCabs(sum) > 0);
-#endif
+
+      out[m + blockIdx.x * BATCH_SIZE] = sum;
     }
   }
 

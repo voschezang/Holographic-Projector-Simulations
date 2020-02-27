@@ -1,12 +1,3 @@
-/**
- * Naming convention
- * i,j,k = indices in flattened arrays
- * n,m = counters
- * N,M = sizes
- *
- * e.g. n = [0,..,N-1]
- */
-
 #ifndef MACROS
 #define MACROS
 #endif
@@ -21,12 +12,19 @@
 /* #define N_sqrt 128 */
 #define N_sqrt 256
 /* #define N_sqrt 512 */
+/* #define N_sqrt 1024 */
 /* #define N_sqrt 8 */
 #define N (N_sqrt * N_sqrt)
 #define N2 N
+/* #define BATCH_SIZE (N / 65536 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
+/* #define BATCH_SIZE (N / 32768 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
+/* #define BATCH_SIZE (N / 8192) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 #define BATCH_SIZE 8 // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead
 // TODO compute optimal batch size as function of N
 #define N_BATCHES (N + BATCH_SIZE - 1) / BATCH_SIZE
+
+/* #define Y_BATCH_SIZE */
+/* #define M_BATCH_SIZE */
 
 // N^2 computations
 // 1) N^2 cores
@@ -38,10 +36,10 @@
 // TODO 1 thread per data element? or streaming? assume N >> total n threads
 
 // THREADS_PER_BLOCK, BLOCKIDM are independent of N, but max. for the GPU
-#define THREADS_PER_BLOCK 64
-#define BLOCKDIM (2 * THREADS_PER_BLOCK)
+#define THREADS_PER_BLOCK 128
 /* #define THREADS_PER_BLOCK 256 */
-/* #define BLOCKDIM 512 */
+/* #define BLOCKDIM 256 */
+#define BLOCKDIM (2 * THREADS_PER_BLOCK)
 // #define BLOCKDIM (N + THREADS_PER_BLOCK-1) / THREADS_PER_BLOCK
 
 #define N_PER_THREAD N / BLOCKDIM / THREADS_PER_BLOCK // for input (x), thus independent of batches
@@ -75,6 +73,7 @@
 
 
 // TODO check # operations for abs/angle etc
+// see https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
 #define WEIGHT_DIV 4
 #define W 8
 #define FLOPS_PER_POINT (                           \

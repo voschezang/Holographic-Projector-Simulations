@@ -12,11 +12,29 @@
 #include "macros.h"
 #include "kernel.cu"
 
+/**
+ * Input x,w is splitted over GPU cores/threads
+ * Output y,v is streamed (send in batches)
+ *
+ * It is assumed that x,y,v,w all fit in GPU memory, but not necessarily in cache
+ *
+ *
+ * Naming convention
+ * i,j,k = indices in flattened arrays
+ * n,m = counters
+ * N,M = sizes
+ *
+ * e.g. n = [0,..,N-1]
+ */
+
+
+
 double flops(double t) {
   // Tera or Giga FLOP/s
   // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache
   // Quadro GV100: peak 7.4 TFLOPS, bandwidth 870 GB/s
   //  cores: 5120, tensor cores 640, memory: 32 GB
+  // max size: 49 152
   // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOPS_PER_POINT, t, N*N * 1e-9);
   return 1e-12 * N * N * (double) FLOPS_PER_POINT / t;
 }
@@ -97,17 +115,19 @@ void write_carray(char c, WTYPE *x, size_t len, FILE *out) {
   fprintf(out, "\n");
 }
 
-double norm3(double *u, double *v, size_t n, size_t m) {
-  double x0 = v[m] - u[n], x1 = v[m+1] - u[n+1], x2 = v[m+2] - u[n+2];
-  return sqrt(x0*x0 + x1*x1 + x2*x2);
-}
-
 int main() {
-  printf("Init\n");
-  printf("N: %i^2 = %i, \t THREADS_PER_BLOCK: %i, \t BLOCKDIM: %i, \n", N_sqrt, N, THREADS_PER_BLOCK, BLOCKDIM );
-  printf("E[cores] = %0.3fk\n", BLOCKDIM * THREADS_PER_BLOCK * 1e-3);
-  printf("N/thread: %i\n", N_PER_THREAD );
-  printf("Memory lb: %0.2f MB\n", memory_in_MB());
+  printf("\nHyperparams:");
+  printf("\n"); printf(" N: %i^2 = %i", N_sqrt, N);
+  printf("\t"); printf("\tBATCH_SIZE: %i", BATCH_SIZE);
+
+  printf("\n"); printf(" BLOCKDIM: %i\t\t", BLOCKDIM);
+  printf("\t"); printf("THREADS_PER_BLOCK: %i", THREADS_PER_BLOCK);
+  printf("\t"); printf("E[cores] = %0.3fk", BLOCKDIM * THREADS_PER_BLOCK * 1e-3);
+  printf("\t"); printf("\tN/thread: %i", N_PER_THREAD);
+
+  printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
+
+  // printf("N: %i^2 = %i, \t THREADS_PER_BLOCK: %i, \t BLOCKDIM: %i, \n", N_sqrt, N, THREADS_PER_BLOCK, BLOCKDIM );
   // printf(": %0.2f MB/s\n", 2 * memory_in_MB() / dt);
   {
     double n = THREADS_PER_BLOCK * BATCH_SIZE;
@@ -147,21 +167,20 @@ int main() {
     const double dS = width * SCALE / N_sqrt; // actually dS^1/DIMS
     const double offset = 0.5 * N_sqrt * dS;
     // size_t sum = 0;
-    for(int i = 0; i < N_sqrt; ++i) {
-      for(int j = 0; j < N_sqrt; ++j) {
+    // TODO use #pragma unroll?
+    for(unsigned int i = 0; i < N_sqrt; ++i) {
+      for(unsigned int j = 0; j < N_sqrt; ++j) {
         size_t idx = i * N_sqrt + j;
         x[idx] = 0;
-        if (i == N_sqrt / 2 && j == N_sqrt / 2) x[idx] = 1;
-        if (i == N_sqrt / 3 && j == N_sqrt / 2) x[idx] = 1;
+        y[idx] = 0;
+        if (i == N_sqrt * 1/2 && j == N_sqrt / 2) x[idx] = 1;
+        if (i == N_sqrt * 1/3 && j == N_sqrt / 2) x[idx] = 1;
         if (i == N_sqrt * 2/3 && j == N_sqrt / 2) x[idx] = 1;
-        if (i == N_sqrt / 4 && j == N_sqrt / 4) x[idx] = 1;
-        if (i == N_sqrt * 3/4 && j == N_sqrt * 3/4) x[idx] = 1;
-        if (i == N_sqrt / 5) x[idx] = 1;
+        if (i == N_sqrt * 1/4 && j == N_sqrt / 4) x[idx] = 1;
+        if (i == N_sqrt * 3/4 && j == N_sqrt / 4) x[idx] = 1;
 
         u[Ix(i,j,0)] = i * dS - offset;
         u[Ix(i,j,1)] = j * dS - offset;
-        u[Ix(i,j,2)] = 0;
-        u[Ix(i,j,1)] = 0;
         u[Ix(i,j,0)] = 0;
 
         v[Ix(i,j,0)] = i * dS - offset;
@@ -176,6 +195,12 @@ int main() {
   int k = N / 2 + N_sqrt / 2;
 	printf( "|x_i| = %0.2f, |y_i| = %0.2f \ti=%i\n", cabs(x[k]), cabs(y[k]), k);
 
+  // TODO use M_BATCH_SIZE to async stream data
+	cudaMemcpy( d_x, x, size, cudaMemcpyHostToDevice );
+	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
+  // TODO cp only batch part: d_v_block
+	cudaMemcpy( d_v, v, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
+
   clock_gettime(CLOCK_MONOTONIC, &t1);
   {
     double dt = (double) (t1.tv_sec - t0.tv_sec) + ((double) (t1.tv_nsec - t0.tv_nsec)) * 1e-9;
@@ -184,22 +209,20 @@ int main() {
   printf("loop\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
 
-	cudaMemcpy( d_x, x, size, cudaMemcpyHostToDevice );
-	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
-  // TODO cp only batch part: d_v_block
-	cudaMemcpy( d_v, v, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
-
   // for each batch
   for (size_t i_batch = 0; i_batch < N_BATCHES; ++i_batch) {
     if (i_batch % (int) (N_BATCHES * 0.1) == 0)
       printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
 
     cu( cudaMemcpy( d_y_block, y_block, BLOCKDIM * b_size, cudaMemcpyHostToDevice ) );
+    cudaDeviceSynchronize();
     // alt, dynamic: k<<<N,M,batch_size>>>
     kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>( d_x, d_u, d_y_block, d_v, i_batch, 1 );
     // TODO recursive reduce (e.g. for each 64 elements): use kernels for global sync
     // reduce<<< , >>>( );
     // or use thrust::reduce<>()
+    cudaDeviceSynchronize();
+    // TODO use maxBlocks, maxSize
     cu( cudaMemcpy( y_block, d_y_block, BLOCKDIM * b_size, cudaMemcpyDeviceToHost ) );
     // for each block, add block results to global y
     // n,m = counter, not an index
@@ -210,23 +233,35 @@ int main() {
         size_t i_block = m + n * BATCH_SIZE;
         if (i >= N) assert(0); // TODO rm after testing
         if (i >= N) break;
-        // set y to zero
-        if (n == 0 && m == 0) y[i] = 0;
+        // TODO this should happen batch_size times!!!
+        // if (n == 0 && m == 0) y[i] = 0;
         // add block results
         y[i] += y_block[i_block];
-        // printf("ybl: %f\n", cabs(y_block[i_block]));
-#ifdef DEBUG
-        assert(cabs(y_block[i_block]) > 0);
-#endif
+        // y[i] = 0;
+        // y[i] = i % 1;
+        // printf("y_%i: %f\n", i, cabs(y[i]));
+        // if (cabs(y[i]) > 1) y[i] = 0.5;
       }
     }
+#ifdef DEBUG
+    for (size_t m = 0; m < BATCH_SIZE; ++m) {
+      // use full y-array in agg
+      size_t i = m + i_batch * BATCH_SIZE;
+      assert(cabs(y[i]) > 0);
+    }
+#endif
   }
-  normalize_amp(y, N, 0);
-	free(y_block);
+#ifdef DEBUG
+  for(size_t i = 0; i < N; ++i) assert(cabs(y[i]) > 0);
+#endif
+
 	cu( cudaFree( d_x ) );
 	cu( cudaFree( d_y_block ) );
 	cu( cudaFree( d_u ) );
 	cu( cudaFree( d_v ) );
+	free(y_block);
+
+  normalize_amp(y, N, 0);
 
   // end loop
   clock_gettime(CLOCK_MONOTONIC, &t2);
