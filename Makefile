@@ -39,7 +39,6 @@ rsync:
 	# rsync -avP --numeric-ids --exclude='/dev' --exclude='/proc' --exclude='/sys' / root@xxx.xxx.xxx.xxx:/
 
 
-
 info:
 	lscpu
 	lspci -vnn | grep VGA -A 12
@@ -50,7 +49,7 @@ add-to-path:
 
 build:
 	# make add-to-path
-	nvcc -o main main.cu
+	/usr/local/cuda-10.1/bin/nvcc -o main main.cu
 
 build-run:
 	make build && make run
@@ -63,3 +62,9 @@ py:
 
 plot:
 	python3 main.py
+
+remote-run:
+	sh remote_run.sh
+
+remote-run-plot:
+	make remote-run plot

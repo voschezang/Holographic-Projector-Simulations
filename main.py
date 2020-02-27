@@ -25,7 +25,7 @@ y:2,3,3,4
     size = os.path.getsize(fn)
     print(f'Input file size: {size * 1e-3:0.5f} kB')
     if size > 1e6:
-        print(f'WARNING, file too large: {size*1e-6} MB')
+        print(f'WARNING, file too large: {size*1e-6:0.4f} MB')
 
     with open(fn, 'rb') as f:
         for line in f:
@@ -44,7 +44,10 @@ y:2,3,3,4
 
     print(data['x'].shape)
 
+    log = util.get_flag("-log")
+    if log:
+        print('log abs y')
     plot.matrix_multiple(
-        data['x'], 'x', filename='img/x', interpolation='none')
+        data['x'], 'x', filename='img/x', interpolation='none', log=0)
     plot.matrix_multiple(
-        data['y'], 'y', filename='img/y', interpolation='nearest')
+        data['y'], 'y', filename='img/y', interpolation='nearest', log=log)
