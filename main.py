@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 # local
 import plot
 import util
+from util import DIMS
 
 
 def run():
@@ -30,24 +31,36 @@ y:2,3,3,4
     with open(fn, 'rb') as f:
         for line in f:
             k, content = line.decode().split(':')
-            try:
-                data[k] = np.array([complex(x) for x in content.split(',')])
-            except ValueError as e:
-                print('! Exception trig\n ->', e)
-                for x in content.split(','):
-                    print(x)
-                    # this should crash eventually
-                    print(complex(x))
+            if k in 'uvw':
+                data[k] = np.array(
+                    [float(x) for x in content.split(',')]).reshape(-1, DIMS)
 
-            # reshape to (N, 2)
-            data[k] = np.array(util.from_polar(data[k])).T.reshape((-1, 2))
+            elif k in 'xyz':
+                try:
+                    data[k] = np.array(
+                        [complex(x) for x in content.split(',')])
+                    # reshape to (N, 2)
+                    xx = np.array(util.from_polar(data[k]))
+                    data[k] = np.array(util.from_polar(
+                        data[k])).T.reshape((-1, 2))
 
-    print(data['x'].shape)
+                except ValueError as e:
+                    print('! Exception trig\n ->', e)
+                    for x in content.split(','):
+                        print(x)
+                        # this should crash eventually
+                        print(complex(x))
 
     log = util.get_flag("-log")
     if log:
         print('log abs y')
-    plot.matrix_multiple(
-        data['x'], 'x', filename='img/x', interpolation='none', log=0)
-    plot.matrix_multiple(
-        data['y'], 'y', filename='img/y', interpolation='nearest', log=log)
+
+    if util.get_flag("-scatter"):
+        plot.scatter_multiple(data['x'], data['u'], 'x', filename='x', log=log)
+        plot.scatter_multiple(data['y'], data['u'], 'y', filename='y', log=log,
+                              s=1)
+    else:
+        plot.matrix_multiple(data['x'], 'x', filename='x',
+                             interpolation='none', log=0)
+        plot.matrix_multiple(data['y'], 'y', filename='y',
+                             interpolation='nearest', log=log)

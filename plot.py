@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import matplotlib.pyplot as plt
 
 from util import *  # N, N_sqrt
@@ -43,9 +44,9 @@ def matrix(x, title='', cb=True, fig=None, log=False, **kwargs):
 
     if fig is None:
         plt.figure()
+    if log:
+        x = -semilog(x)
     if len(x.shape) > 1:
-        if log:
-            x = -np.log(np.abs(x))
         plt.imshow(x, vmin=0, origin='lower', **kwargs)
     else:
         plt.imshow(x.reshape(x.size, 1), vmin=0, origin='lower', **kwargs)
@@ -87,14 +88,18 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None, **kwargs)
         # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig, **kwargs)
 
     plt.tight_layout()
+    # if filename is not None:
+    #     plt.savefig(filename + '.pdf', transparent=True)
     if filename is not None:
-        plt.savefig(filename + '.pdf', transparent=True)
+        save_fig(filename, ext='pdf')
 
     if m >= 2:
         if DIMS > 2:
             slice(y, HD=HD)
+            # if filename is not None:
+            #     plt.savefig(filename + '-slice.pdf', transparent=True)
             if filename is not None:
-                plt.savefig(filename + '-slice.pdf', transparent=True)
+                save_fig(f'{filename}-slice', ext='pdf')
 
 
 def slice(y, v=None, HD=0):
@@ -123,8 +128,8 @@ def slice(y, v=None, HD=0):
         plt.tight_layout()
 
 
-def scatter(x, w, title='', color_func=lambda a, phi: a, s=10, alpha=0.9,
-            fig=None, **kwargs):
+def scatter(x, w, title='', color_func=lambda a, phi: a, log=False, s=10,
+            alpha=0.9, fig=None, **kwargs):
     # x : shape (N,)
     if 'cmap' not in kwargs:
         global cmap
@@ -132,8 +137,9 @@ def scatter(x, w, title='', color_func=lambda a, phi: a, s=10, alpha=0.9,
 
     if fig is None:
         fig = plt.figure()
-    plt.scatter(w[:, 1], w[:, 0], c=x, s=s,
-                alpha=alpha,  **kwargs)
+    if log:
+        x = -semilog(x)
+    plt.scatter(w[:, 1], w[:, 0], c=x, s=s, alpha=alpha,  **kwargs)
     plt.xlim(w[:, 1].min(), w[:, 1].max())
     plt.ylim(w[:, 0].min(), w[:, 0].max())
     plt.colorbar(fraction=0.052, pad=0.05)
@@ -143,7 +149,7 @@ def scatter(x, w, title='', color_func=lambda a, phi: a, s=10, alpha=0.9,
     return fig
 
 
-def scatter_multiple(y, v=None, title='', prefix='', **kwargs):
+def scatter_multiple(y, v=None, title='', prefix='', filename=None, **kwargs):
     n_subplots = 3
     fig = plt.figure(figsize=(n_subplots * 4, 3))
     plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
@@ -156,6 +162,9 @@ def scatter_multiple(y, v=None, title='', prefix='', **kwargs):
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = 'twilight'
     scatter(y[:, 1] / np.pi, v, r'%s $\phi$' % prefix, fig=fig, **kwargs)
+    if filename is not None:
+        # pdf is slow for large scatterplots
+        save_fig(filename, ext='png')
     # plt.subplot(1, n_subplots, 3)
     # scatter(irradiance(to_polar(y[:, 0], y[:, 1])),
     #         v, '%s I' % prefix, lambda a, phi: a * np.sin(phi), fig=fig)
@@ -186,6 +195,14 @@ def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
         plt.axis('off')
         plt.savefig(prefix + filename, dpi='figure',
                     transparent=True, bbox_inches='tight')
+
+
+def save_fig(filename, dir='img', ext='pdf', dpi='figure',
+             transparent=True, bbox_inches='tight', interpolation='nearest'):
+    assert(os.path.isdir(dir))
+    plt.axis('off')
+    plt.savefig(f'{dir}/{filename}.{ext}', dpi=dpi, transparent=True,
+                interpolation=interpolation, bbox_inches=bbox_inches)
 
 
 if __name__ == '__main__':

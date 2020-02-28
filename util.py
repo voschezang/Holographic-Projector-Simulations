@@ -147,11 +147,13 @@ def HD_sample_grid(width=1, z_offset=0, scale=0.1, center=1, rotate_axis=None, d
 
 @jit(nopython=True)
 def to_polar(a: np.ndarray, phi: np.ndarray):
+    # Convert polar coordinates (a,phi) to complex number
     return a * np.exp(phi * 1j)
 
 
 @jit(nopython=True)
 def from_polar(c: np.ndarray, distance: int = 1):
+    # Extract polar coordinates from complex number c
     # polar \in C \to (amplitude, phase)
     # sum wave superposition components
     amplitude = np.abs(c)
@@ -528,6 +530,13 @@ def stratified(n_samples: int, n_subspaces: int):
     # indices = np.random.choice(
     #     np.arange(n_subspaces), size=n_samples, p=subspace_sample_distribution)
     return indices, subspace_shape
+
+
+def semilog(x):
+    """ Save log: np.ndarray
+    x : float or np.array of floats
+    """
+    return np.log(np.clip(np.abs(x), 1e-12, None))
 
 
 def get_flag(name: str):
