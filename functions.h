@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "macros.h"
+#include "kernel.cu"
 
 
 double flops(double t) {
@@ -110,4 +111,90 @@ void write_carray(char c, WTYPE *x, size_t len, FILE *out) {
   }
   // newline / return
   fprintf(out, "\n");
+}
+
+inline void transform_batch(size_t i_batch, WTYPE *x, WTYPE *y, WTYPE *y_block,
+                            WTYPE_cuda *d_x, WTYPE_cuda *d_y_block,
+                            STYPE *u, STYPE *v, STYPE *d_u, STYPE *d_v_block,
+                            const char inverse)
+{
+  if (i_batch % (int) (N_BATCHES * 0.1) == 0)
+    printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
+
+  cudaMemcpy( d_v_block, &v[DIMS * BATCH_SIZE * i_batch],
+              DIMS * BATCH_SIZE * sizeof(STYPE),
+              cudaMemcpyHostToDevice );
+  cudaDeviceSynchronize();
+  // alt, dynamic: k<<<N,M,batch_size>>>
+  kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>( d_x, d_u, d_y_block, d_v_block,
+                                              i_batch, inverse );
+  // TODO recursive reduce (e.g. for each 64 elements): use kernels for global sync
+  // reduce<<< , >>>( ); // or use thrust::reduce<>()
+
+  cudaDeviceSynchronize();
+  // TODO use maxBlocks, maxSize
+  cu( cudaMemcpy( y_block, d_y_block,
+                  BLOCKDIM * BATCH_SIZE * sizeof( WTYPE ),
+                  cudaMemcpyDeviceToHost ) );
+  cudaDeviceSynchronize();
+  // for each block, add block results to global y
+  for (size_t n = 0; n < BLOCKDIM; ++n) {
+    for (size_t m = 0; m < BATCH_SIZE; ++m) {
+      // use full y-array in agg
+      size_t i = m + i_batch * BATCH_SIZE;
+      size_t i_block = m + n * BATCH_SIZE;
+      // add block results
+      y[i] += y_block[i_block];
+
+#ifdef DEBUG
+      if (i >= N) assert(0); // TODO rm after testing
+      if (i >= N) break;
+#endif
+    }
+  }
+}
+
+inline void transform(WTYPE *x, WTYPE *y, STYPE *u, STYPE *v, const char inverse)
+{
+  // TODO use M_BATCH_SIZE to async stream data
+
+
+  WTYPE *y_block = (WTYPE *) malloc(BLOCKDIM * BATCH_SIZE * sizeof(WTYPE));
+	WTYPE_cuda *d_x, *d_y_block;
+	STYPE *d_u, *d_v_block;
+	const size_t size = N * sizeof( WTYPE );
+	cudaMalloc( (void **) &d_x, N * sizeof(WTYPE_cuda) );
+	cu( cudaMalloc( (void **) &d_y_block,
+                  BLOCKDIM * BATCH_SIZE * sizeof( WTYPE ) ) );
+  cu( cudaMalloc( (void **) &d_u, DIMS * N * sizeof(STYPE) ) );
+  cu( cudaMalloc( (void **) &d_v_block, DIMS * BLOCKDIM * BATCH_SIZE * sizeof(STYPE) ) );
+
+  // Init memory
+	cudaMemcpy( d_x, x, size, cudaMemcpyHostToDevice );
+	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
+  // TODO cp only batch part: d_v_block
+  cudaDeviceSynchronize();
+
+  // Loop
+  for (size_t i_batch = 0; i_batch < N_BATCHES; ++i_batch) {
+    transform_batch(i_batch,
+                    x, y, y_block, d_x, d_y_block,
+                    u, v, d_u, d_v_block, 1);
+#ifdef DEBUG
+    for (size_t m = 0; m < BATCH_SIZE; ++m) {
+      // use full y-array in agg
+      size_t i = m + i_batch * BATCH_SIZE;
+      assert(cabs(y[i]) > 0);
+    }
+#endif
+  }
+#ifdef DEBUG
+  for(size_t i = 0; i < N; ++i) assert(cabs(y[i]) > 0);
+#endif
+
+	cu( cudaFree( d_x ) );
+	cu( cudaFree( d_u ) );
+	cu( cudaFree( d_y_block ) );
+	free(y_block);
+  normalize_amp(y, N, 0);
 }

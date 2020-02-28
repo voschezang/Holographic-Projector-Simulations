@@ -6,6 +6,7 @@
 /* #include <thrust/complex.h> */
 
 #define DEBUG
+#define Z // compute z transform
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 128 */
