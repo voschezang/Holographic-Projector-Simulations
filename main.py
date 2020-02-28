@@ -59,8 +59,12 @@ y:2,3,3,4
         plot.scatter_multiple(data['x'], data['u'], 'x', filename='x', log=log)
         plot.scatter_multiple(data['y'], data['u'], 'y', filename='y', log=log,
                               s=1)
+        k = 'z'
+        if k in data.keys():
+            plot.scatter_multiple(data[k], data['u'], k, filename=k, log=log)
     else:
-        plot.matrix_multiple(data['x'], 'x', filename='x',
-                             interpolation='none', log=0)
-        plot.matrix_multiple(data['y'], 'y', filename='y',
-                             interpolation='nearest', log=log)
+        plot.matrix_multiple(data['x'], 'x', filename='x', log=0)
+        plot.matrix_multiple(data['y'], 'y', filename='y', log=log)
+        k = 'z'
+        if k in data.keys():
+            plot.matrix_multiple(data[k], k, filename=k, log=log)
