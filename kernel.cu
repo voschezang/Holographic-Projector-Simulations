@@ -1,3 +1,6 @@
+#ifndef KERNEL
+#define KERNEL
+
 #include "macros.h"
 
 #ifdef DEBUG
@@ -38,10 +41,11 @@ __device__ double angle(cuDoubleComplex  z) {
 
 inline
 __device__ cuDoubleComplex polar(double a, double phi) {
-  // return the complex number a * exp(phi * imag)
+  // Convert polar coordinates (a,phi) to complex number a * e^(phi I)
   cuDoubleComplex res;
   sincos(phi, &res.x, &res.y);
-  return cuCmul(make_cuDoubleComplex(a, 0), res);
+  // return cuCmul(make_cuDoubleComplex(a, 0), res);
+  return make_cuDoubleComplex(a * res.x, a * res.y);
 }
 
 
@@ -123,6 +127,10 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *out, STYPE *v, cons
       for (size_t i = idx; i < N; i += stride) {
         // printf("i: %i", i);
         sum = cuCadd(K(i, j, x, u, v, inverse), sum);
+        if (i_batch == 0) {
+          // add single far away light source, with constant phase
+          sum = cuCadd(polar(1, 0.4912), sum);
+        }
         // printf("i: %i, j: %j, x: %f \n", i,j,x[i]);
 
 #ifdef DEBUG
@@ -204,3 +212,5 @@ __global__ void kernel1(WTYPE_cuda *x, STYPE *u, WTYPE_cuda  *y, STYPE *v)
 
   y[i] = sum;
 }
+
+#endif
