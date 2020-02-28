@@ -14,10 +14,12 @@
 #include "kernel.cu"
 
 /**
- * Input x,w is splitted over GPU cores/threads
- * Output y,v is streamed (send in batches)
+ * Input x,u is splitted over GPU cores/threads
+ * Output y,v is streamed (send in batches).
+ * The arrays y,v live on CPU, the batches d_y, d_v live on GPU.
  *
- * It is assumed that x,y,v,w all fit in GPU memory, but not necessarily in cache
+ * It is assumed that x,y,u,v all fit in GPU memory, but not necessarily in cache
+ * It is assumed that z,w does not necessarily fit in GPU memory.
  *
  *
  * Naming convention
@@ -61,6 +63,7 @@ int main() {
   // TODO align?
   // problem with cudaMallocManaged: cuda complex dtypes differ from normal
   // cudaError_t cudaMallocManaged(void** ptr, size_t size);
+  // TODO init d_w
   WTYPE *x = (WTYPE *) malloc(size);
   WTYPE *y_block = (WTYPE *) malloc(BLOCKDIM * BATCH_SIZE * sizeof(WTYPE));
   WTYPE *y = (WTYPE *) malloc(size);
@@ -73,11 +76,11 @@ int main() {
 
   // device
 	WTYPE_cuda *d_x, *d_y, *d_y_block;
-	STYPE *d_u, *d_v;
+	STYPE *d_u, *d_v_block;
 	cudaMalloc( (void **) &d_x, N * sizeof(WTYPE_cuda) );
 	cu( cudaMalloc( (void **) &d_y_block, BLOCKDIM * b_size ) );
   cu( cudaMalloc( (void **) &d_u, DIMS * N * sizeof(STYPE) ) );
-  cu( cudaMalloc( (void **) &d_v, DIMS * N * sizeof(STYPE) ) );
+  cu( cudaMalloc( (void **) &d_v_block, DIMS * BLOCKDIM * BATCH_SIZE * sizeof(STYPE) ) );
   {
     const double width = 0.0005; // m
     // const double dS = SCALE * 7 * 1e-6; // actually dS^1/DIMS
@@ -116,7 +119,7 @@ int main() {
 	cudaMemcpy( d_x, x, size, cudaMemcpyHostToDevice );
 	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
   // TODO cp only batch part: d_v_block
-	cudaMemcpy( d_v, v, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
+	// cudaMemcpy( d_v, v, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
   cudaDeviceSynchronize();
 
   clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -132,10 +135,12 @@ int main() {
     if (i_batch % (int) (N_BATCHES * 0.1) == 0)
       printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
 
-    cu( cudaMemcpy( d_y_block, y_block, BLOCKDIM * b_size, cudaMemcpyHostToDevice ) );
+    cudaMemcpy( d_v_block, &v[DIMS * BATCH_SIZE * i_batch],
+                DIMS * BATCH_SIZE * sizeof(STYPE),
+                cudaMemcpyHostToDevice );
     cudaDeviceSynchronize();
     // alt, dynamic: k<<<N,M,batch_size>>>
-    kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>( d_x, d_u, d_y_block, d_v, i_batch, 1 );
+    kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>( d_x, d_u, d_y_block, d_v_block, i_batch, 1 );
     // TODO recursive reduce (e.g. for each 64 elements): use kernels for global sync
     // reduce<<< , >>>( ); // or use thrust::reduce<>()
 
@@ -171,12 +176,20 @@ int main() {
 #endif
 
 	cu( cudaFree( d_x ) );
-	cu( cudaFree( d_y_block ) );
 	cu( cudaFree( d_u ) );
-	cu( cudaFree( d_v ) );
+	cu( cudaFree( d_y_block ) );
 	free(y_block);
-
   normalize_amp(y, N, 0);
+
+#ifdef Z
+  // TODO init d_w_block, d_z_block
+  cu( cudaMalloc( (void **) &d_v, DIMS * N * sizeof(STYPE) ) );
+  // TODO z loop
+  cudaFree(d_v);
+#endif
+
+	cu( cudaFree( d_v ) );
+
 
   // end loop
   clock_gettime(CLOCK_MONOTONIC, &t2);
