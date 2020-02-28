@@ -49,6 +49,9 @@ add-to-path:
 
 build:
 	# make add-to-path
+	# nvcc -o main main.cu
+	# -ftz=true // flush dernormal to zero
+	#  -ftz=true -prec-div=false -prec-sqrt=false
 	/usr/local/cuda-10.1/bin/nvcc -o main main.cu
 
 build-run:

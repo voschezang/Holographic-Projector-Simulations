@@ -10,6 +10,7 @@
 #include <time.h>
 
 #include "macros.h"
+#include "functions.h"
 #include "kernel.cu"
 
 /**
@@ -27,93 +28,6 @@
  * e.g. n = [0,..,N-1]
  */
 
-
-
-double flops(double t) {
-  // Tera or Giga FLOP/s
-  // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache
-  // Quadro GV100: peak 7.4 TFLOPS, bandwidth 870 GB/s
-  //  cores: 5120, tensor cores 640, memory: 32 GB
-  // max size: 49 152
-  // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOPS_PER_POINT, t, N*N * 1e-9);
-  return 1e-12 * N * N * (double) FLOPS_PER_POINT / t;
-}
-
-void check(double complex  z) {
-  double a = creal(z), b = cimag(z);
-  if (isnan(a)) printf("found nan re\n");
-  if (isinf(a)) printf("found inf re\n");
-  if (isnan(b)) printf("found nan I\n");
-  if (isinf(b)) printf("found inf I\n");
-  if (isinf(a)) exit(1);
-}
-
-double memory_in_MB() {
-  // Return lower-bound of memory use
-  // complex arrays x,y \in C^N
-  // real (double precision) arrays u,v \in C^(DIMS * N)
-  unsigned int bytes = 2 * N * sizeof(WTYPE) + 2 * DIMS * N * sizeof(STYPE);
-  return bytes * 1e-6;
-}
-
-void summarize(char name, WTYPE *x, size_t n) {
-  double max_amp = 0, max_phase = 0;
-  for (size_t i = 0; i < n; ++i) {
-    max_amp = fmax(max_amp, cabs(x[i]));
-    max_phase = fmax(max_phase , carg(x[i]));
-  }
-  printf("%c)  max amp: %0.6f, max phase: %0.3f\n", name, max_amp, max_phase);
-}
-
-void normalize_amp(WTYPE *x, size_t n, char log_normalize) {
-  double max_amp = 0;
-  for (size_t i = 0; i < n; ++i)
-    max_amp = fmax(max_amp, cabs(x[i]));
-
-  if (max_amp < 1e-6)
-    printf("WARNING, max_amp << 1\n");
-
-  if (max_amp > 1e-6)
-    for (size_t i = 0; i < n; ++i)
-      x[i] /= max_amp;
-
-  if (log_normalize)
-    for (size_t i = 0; i < n; ++i)
-      if (cabs(x[i]) > 0)
-        x[i] = -clog(x[i]);
-}
-
-void summarize_double(char name, double *x, size_t n) {
-  double max = DBL_MIN, min = DBL_MAX;
-  for (size_t i = 0; i < n; ++i) {
-    max = fmax(max, x[i]);
-    min = fmin(min , x[i]);
-  }
-  printf("%c)  range: [%0.3f , %0.3f]\n", name, min, max);
-}
-
-void print_c(WTYPE x, FILE *out) {
-  check(x);
-  if (cimag(x) >= 0) {
-    fprintf(out, "%f+%fj", creal(x), cimag(x));
-  } else {
-    fprintf(out, "%f%fj", creal(x), cimag(x));
-  }
-}
-void write_carray(char c, WTYPE *x, size_t len, FILE *out) {
-  unsigned int i = 0;
-  // key
-  fprintf(out, "%c:", c);
-  // first value
-  print_c(x[0], out);
-  // other values, prefixed by ','
-  for (i = 1; i < N; ++i) {
-    fprintf(out, ",");
-    print_c(x[i], out);
-  }
-  // newline / return
-  fprintf(out, "\n");
-}
 
 int main() {
   printf("\nHyperparams:");
@@ -139,9 +53,9 @@ int main() {
   assert(sizeof(WTYPE) == sizeof(WTYPE_cuda));
 
   struct timespec t0, t1, t2;
-  clock_gettime(CLOCK_MONOTONIC, &t0);
 	const size_t size = N * sizeof( WTYPE );
 	const size_t b_size = BATCH_SIZE * sizeof( WTYPE );
+  clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // host
   // TODO align?
@@ -150,9 +64,12 @@ int main() {
   WTYPE *x = (WTYPE *) malloc(size);
   WTYPE *y_block = (WTYPE *) malloc(BLOCKDIM * BATCH_SIZE * sizeof(WTYPE));
   WTYPE *y = (WTYPE *) malloc(size);
+  // WTYPE *y_batch = (WTYPE *) malloc(G_BATCH_SIZE * sizeof( WTYPE ));
 
   STYPE *u = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
   STYPE *v = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
+  // STYPE *v_block = (STYPE *) malloc(DIMS * BLOCKDIM * Y_BATCH_SIZE * sizeof(STYPE));
+  // STYPE *v_batch = (STYPE *) malloc(DIMS * BLOCKDIM * G_BATCH_SIZE * sizeof(STYPE));
 
   // device
 	WTYPE_cuda *d_x, *d_y, *d_y_block;
@@ -162,7 +79,7 @@ int main() {
   cu( cudaMalloc( (void **) &d_u, DIMS * N * sizeof(STYPE) ) );
   cu( cudaMalloc( (void **) &d_v, DIMS * N * sizeof(STYPE) ) );
   {
-    const double width = 0.005;
+    const double width = 0.0005; // m
     // const double dS = SCALE * 7 * 1e-6; // actually dS^1/DIMS
     const double dS = width * SCALE / N_sqrt; // actually dS^1/DIMS
     const double offset = 0.5 * N_sqrt * dS;
@@ -174,14 +91,14 @@ int main() {
         x[idx] = 0;
         y[idx] = 0;
         if (i == N_sqrt * 1/2 && j == N_sqrt / 2) x[idx] = 1;
-        if (i == N_sqrt * 1/3 && j == N_sqrt / 2) x[idx] = 1;
-        if (i == N_sqrt * 2/3 && j == N_sqrt / 2) x[idx] = 1;
-        if (i == N_sqrt * 1/4 && j == N_sqrt / 4) x[idx] = 1;
-        if (i == N_sqrt * 3/4 && j == N_sqrt / 4) x[idx] = 1;
+        // if (i == N_sqrt * 1/3 && j == N_sqrt / 2) x[idx] = 1;
+        // if (i == N_sqrt * 2/3 && j == N_sqrt / 2) x[idx] = 1;
+        // if (i == N_sqrt * 1/4 && j == N_sqrt / 4) x[idx] = 1;
+        // if (i == N_sqrt * 3/4 && j == N_sqrt / 4) x[idx] = 1;
 
         u[Ix(i,j,0)] = i * dS - offset;
         u[Ix(i,j,1)] = j * dS - offset;
-        u[Ix(i,j,0)] = 0;
+        u[Ix(i,j,2)] = 0;
 
         v[Ix(i,j,0)] = i * dS - offset;
         v[Ix(i,j,1)] = j * dS - offset;
@@ -200,6 +117,7 @@ int main() {
 	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
   // TODO cp only batch part: d_v_block
 	cudaMemcpy( d_v, v, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
+  cudaDeviceSynchronize();
 
   clock_gettime(CLOCK_MONOTONIC, &t1);
   {
@@ -219,8 +137,8 @@ int main() {
     // alt, dynamic: k<<<N,M,batch_size>>>
     kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>( d_x, d_u, d_y_block, d_v, i_batch, 1 );
     // TODO recursive reduce (e.g. for each 64 elements): use kernels for global sync
-    // reduce<<< , >>>( );
-    // or use thrust::reduce<>()
+    // reduce<<< , >>>( ); // or use thrust::reduce<>()
+
     cudaDeviceSynchronize();
     // TODO use maxBlocks, maxSize
     cu( cudaMemcpy( y_block, d_y_block, BLOCKDIM * b_size, cudaMemcpyDeviceToHost ) );
@@ -231,16 +149,13 @@ int main() {
         // use full y-array in agg
         size_t i = m + i_batch * BATCH_SIZE;
         size_t i_block = m + n * BATCH_SIZE;
-        if (i >= N) assert(0); // TODO rm after testing
-        if (i >= N) break;
-        // TODO this should happen batch_size times!!!
-        // if (n == 0 && m == 0) y[i] = 0;
         // add block results
         y[i] += y_block[i_block];
-        // y[i] = 0;
-        // y[i] = i % 1;
-        // printf("y_%i: %f\n", i, cabs(y[i]));
-        // if (cabs(y[i]) > 1) y[i] = 0.5;
+
+#ifdef DEBUG
+        if (i >= N) assert(0); // TODO rm after testing
+        if (i >= N) break;
+#endif
       }
     }
 #ifdef DEBUG
@@ -276,8 +191,8 @@ int main() {
   k = 3;
 	printf( "|x_i| = %0.2f, |y_i| = %0.2f \ti=%i\n", cabs(x[k]), cabs(y[k]),k );
 
-  summarize('x', x, N);
-  summarize('y', y, N);
+  // summarize_c('x', x, N);
+  summarize_c('y', y, N);
 
   printf("Save results\n");
 
@@ -286,6 +201,8 @@ int main() {
   out = fopen("tmp/out.txt", "wb");
   write_carray('x', x, N, out); free(x);
   write_carray('y', y, N, out); free(y);
+  write_array('u', u, N*DIMS, out); free(u);
+  free(v);
   fclose(out);
 
 	return 0;

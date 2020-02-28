@@ -1,12 +1,11 @@
 #ifndef MACROS
 #define MACROS
-#endif
 
 /* #include <thrust/device_vector.h> */
 /* #include <thrust/reduce.h> */
 /* #include <thrust/complex.h> */
 
-/* #define DEBUG */
+#define DEBUG
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 128 */
@@ -15,7 +14,7 @@
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 8 */
 #define N (N_sqrt * N_sqrt)
-#define N2 N
+#define N2 (N_sqrt * N_sqrt)
 /* #define BATCH_SIZE (N / 65536 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 /* #define BATCH_SIZE (N / 32768 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 /* #define BATCH_SIZE (N / 8192) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
@@ -24,7 +23,7 @@
 #define N_BATCHES (N + BATCH_SIZE - 1) / BATCH_SIZE
 
 /* #define Y_BATCH_SIZE */
-/* #define M_BATCH_SIZE */
+/* #define G_BATCH_SIZE */
 
 // N^2 computations
 // 1) N^2 cores
@@ -48,7 +47,8 @@
 #define LAMBDA 0.6328e-6  // wavelength in vacuum: 632.8 nm (HeNe laser)
 #define TWO_PI (2 * M_PI)
 #define TWO_PI_OVER_LAMBDA TWO_PI / LAMBDA
-#define SCALE 1 / LAMBDA
+/* #define SCALE (1 / LAMBDA) */
+#define SCALE (LAMBDA / 0.6328e-6)
 #define PROJECTOR_DISTANCE
 
 #define DOUBLE_PRECISION 1
@@ -84,3 +84,5 @@
              3     /* phase - direction * distance * 2pi/lambda */ +  \
              1+W   /* a exp(b) */                                     \
              )
+
+#endif
