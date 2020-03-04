@@ -1,13 +1,15 @@
 //#define _POSIX_C_SOURCE 199309L
 
 #include <assert.h>
-#include <complex.h>
+#include <complex.h> // TODO use cpp cmath
 #include <cuComplex.h>
 #include <float.h>
 #include <limits.h>
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <cuda_profiler_api.h>
 
 #include "macros.h"
 #include "kernel.cu"
@@ -53,23 +55,29 @@ int main() {
 
   struct timespec t0, t1, t2;
 	const size_t size = N * sizeof( WTYPE );
-	const size_t b_size = BATCH_SIZE * sizeof( WTYPE );
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // host
   // problem with cudaMallocManaged: cuda complex dtypes differ from normal
-  WTYPE *x = (WTYPE *) malloc(size);
-  WTYPE *y = (WTYPE *) malloc(size);
-  WTYPE *z = (WTYPE *) malloc(size);
+  WTYPE
+    *x = (WTYPE *) malloc(size),
+    *y = (WTYPE *) malloc(size),
+    *z = (WTYPE *) malloc(size);
 
-  STYPE *u = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
-  STYPE *v = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
-  STYPE *w = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
+  STYPE
+    *u = (STYPE *) malloc(DIMS * N * sizeof(STYPE)),
+    *v = (STYPE *) malloc(DIMS * N * sizeof(STYPE)),
+    *w = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
 
   {
     const double width = 0.0005; // m
-    const double dS = width * SCALE / N_sqrt; // actually dS^1/DIMS
+    const double dS = width * SCALE / N_sqrt; // actually dS^(1/DIMS)
     const double offset = 0.5 * N_sqrt * dS;
+#if defined(RANDOM_X_SPACE) || defined(RANDOM_Y_SPACE) || defined(RANDOM_Z_SPACE)
+    const double margin = 0.;
+    const double random_range = dS - 0.5 * margin;
+#endif
+    printf("Domain: X : %f x %f, dS: %f\n", width, width, dS);
     for(unsigned int i = 0; i < N_sqrt; ++i) {
       for(unsigned int j = 0; j < N_sqrt; ++j) {
         size_t idx = i * N_sqrt + j;
@@ -89,10 +97,30 @@ int main() {
         v[Ix(i,j,0)] = i * dS - offset;
         v[Ix(i,j,1)] = j * dS - offset;
         v[Ix(i,j,2)] = -0.02;
+        // if (i == 1 && j == 1) {
+        if (i == 2 && j == 2) {
+          // printf("random: %f\n", rand() / (double) RAND_MAX - 0.5);
+          // printf("random: %f\n", rand() / (double) RAND_MAX - 0.5);
+          // printf("random: %f\n", rand() / (double) RAND_MAX - 0.5);
+          printf("i,j %i,%i\n", i,j);
+          // printf("rand: %f, %f\n", v[Ix(i,j,0)], v[Ix(i,j-1,0)]);
+          printf("rand: %f, %f; %f, %f\n", v[Ix(i,j,0)], v[Ix(i-1,j,0)], v[Ix(i,j-1,0)], v[Ix(i-1,j-1,0)]);
+        }
+#ifdef RANDOM_Y_SPACE
+        v[Ix(i,j,0)] += random_range * (rand() / (double) RAND_MAX - 0.5);
+        v[Ix(i,j,1)] += random_range * (rand() / (double) RAND_MAX - 0.5);
+        if (i == 2 && j == 2) {
+          printf("rand: %f, %f; %f, %f\n", v[Ix(i,j,0)], v[Ix(i-1,j,0)], v[Ix(i,j-1,0)], v[Ix(i-1,j-1,0)]);
+        }
+#endif
 
         w[Ix(i,j,0)] = i * dS - offset;
         w[Ix(i,j,1)] = j * dS - offset;
         w[Ix(i,j,2)] = 0;
+#ifdef RANDOM_Z_SPACE
+        w[Ix(i,j,0)] += random_range * (rand() / (double) RAND_MAX - 0.5);
+        w[Ix(i,j,1)] += random_range * (rand() / (double) RAND_MAX - 0.5);
+#endif
       } }
   }
 
@@ -107,10 +135,10 @@ int main() {
   printf("loop\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
 
-  transform(x, y, u, v, 1);
+  transform(x, y, u, v, -1);
 #ifdef Z
   printf("\nSecond transform:\n");
-  transform(y, z, v, w, 0);
+  transform(y, z, v, w, 1);
 #endif
 
   // end loop
@@ -120,18 +148,20 @@ int main() {
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   printf("runtime loop: \t%0.3f\n", dt);
 #ifndef Z
-  printf("TFLOPS:   \t%0.5f \t (%i FLOPS_PER_POINT)\n", flops(dt), FLOPS_PER_POINT);
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n", flops(dt), FLOP_PER_POINT);
 #else
-  printf("TFLOPS:   \t%0.5f \t (%i FLOPS_PER_POINT)\n", flops(dt), 2*FLOPS_PER_POINT);
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n", 2*flops(dt), 2*FLOP_PER_POINT);
 #endif
-  // printf("FLOPS_PER_POINT: %i\n", FLOPS_PER_POINT);
+  // printf("FLOP_PER_POINT: %i\n", FLOP_PER_POINT);
 
   summarize_c('y', y, N);
 #ifdef Z
   summarize_c('z', z, N);
 #endif
 
+  cudaProfilerStop();
   printf("Save results\n");
+
 
   // TODO use csv for i/o, read python generated x
   FILE *out;
@@ -139,8 +169,9 @@ int main() {
   write_carray('x', x, N, out); free(x);
   write_carray('y', y, N, out); free(y);
   write_carray('z', z, N, out); free(z);
-  write_array('u', u, N*DIMS, out); free(u);
-  free(v);
+  free(u); // ignore u
+  write_array('v', v, N*DIMS, out); free(v);
+  write_array('w', w, N*DIMS, out); free(w);
   fclose(out);
 
 	return 0;

@@ -7,6 +7,8 @@
 
 #define DEBUG
 #define Z // compute z transform
+#define RANDOM_Y_SPACE // TODO consider better, non-correlated RNG
+#define RANDOM_Z_SPACE
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 128 */
@@ -21,7 +23,7 @@
 /* #define BATCH_SIZE (N / 8192) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 #define BATCH_SIZE 8 // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead
 // TODO compute optimal batch size as function of N
-#define N_BATCHES (N + BATCH_SIZE - 1) / BATCH_SIZE
+#define N_BATCHES ((N + BATCH_SIZE - 1) / BATCH_SIZE)
 
 /* #define Y_BATCH_SIZE */
 /* #define G_BATCH_SIZE */
@@ -70,16 +72,16 @@
 // #define Ix(i,j) i + j * N_sqrt
 // #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * N_sqrt
 /* #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * DIMS */
-#define Ix(i,j,k) k + j * DIMS + i * DIMS * N_sqrt
+#define Ix(i,j,k) (k + (j) * DIMS + (i) * DIMS * N_sqrt)
 
 
 // TODO check # operations for abs/angle etc
 // see https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
 #define WEIGHT_DIV 4
 #define W 8
-#define FLOPS_PER_POINT (                           \
+#define FLOP_PER_POINT (                            \
              3     /* (u - v) with u,v \in R^3 */ + \
-             3+(3+1)*WEIGHT_DIV /* |u| power, sum, power */ +       \
+             3+(3+1)*WEIGHT_DIV /* |u| power, sum, power */ +         \
              2*W   /* abs(x_i), angle(x_i) */ +                       \
              1     /* amp/distance */ +                               \
              3     /* phase - direction * distance * 2pi/lambda */ +  \

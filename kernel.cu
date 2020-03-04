@@ -3,9 +3,7 @@
 
 #include "macros.h"
 
-#ifdef DEBUG
 #include <assert.h>
-#endif
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
@@ -17,7 +15,7 @@ inline
 cudaError_t cu(cudaError_t result)
 {
   // check for cuda errors
-#if defined(DEBUG)
+#ifdef DEBUG
   if (result != cudaSuccess) {
     fprintf(stderr, "CUDA Runtime Error: %sn", cudaGetErrorString(result));
     assert(result == cudaSuccess);
@@ -59,15 +57,18 @@ __global__ void kernel_zero(WTYPE_cuda *x, size_t n) {
 // TODO consider non-complex types (double real, double imag)
 // and check computational cost
 inline
-__device__ WTYPE_cuda K(size_t i, size_t j, WTYPE_cuda *x, STYPE *u, STYPE *v, const char inverse) {
+__device__ WTYPE_cuda K(size_t i, size_t j,
+                        WTYPE_cuda *x, STYPE *u, STYPE *v,
+                        const char direction) {
   // TODO unpack input to u1,u2,3 v1,v2,v3?
   // TODO consider unguarded functions, intrinsic functions
 #ifdef DEBUG
-  assert(inverse == -1 || inverse == 1);
+  assert(direction == -1 || direction == 1);
 #endif
 
-  size_t n = i * DIMS,
-         m = j * DIMS; // TODO use struct?
+  size_t
+    n = i * DIMS,
+    m = j * DIMS; // TODO use struct?
   // TODO use softeningSquared?
   double
     distance = norm3d(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
@@ -89,11 +90,11 @@ __device__ WTYPE_cuda K(size_t i, size_t j, WTYPE_cuda *x, STYPE *u, STYPE *v, c
 #endif
 
   // TODO __ddiv_rd, __dmul_ru
-  return polar(amp / distance, phase - distance * inverse * TWO_PI_OVER_LAMBDA);
+  return polar(amp / distance, phase - distance * direction * TWO_PI_OVER_LAMBDA);
 }
 
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
-__global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y, STYPE *v, const size_t i_batch, const char inverse)
+__global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y, STYPE *v, const size_t i_batch, const char direction)
 {
   /** First compute local sum, then do nested aggregation
    *
@@ -117,10 +118,12 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y, STYPE *v, const 
       // j = m + i_batch * BATCH_SIZE;
       // Usage of stride allows <<<1,1>>> kernel invocation
       for (size_t i = idx; i < N; i += stride) {
-        // printf("i: %i", i);
-        sum = cuCadd(K(i, m, x, u, v, inverse), sum);
-        if (i_batch == 0) {
+        sum = cuCadd(K(i, m, x, u, v, direction), sum);
+        // TODO do this in separate func
+        //TODO err: i_batch does not depend on x
+        if (i == 0 && direction == -1) {
           // add single far away light source, with constant phase
+          // TODO this causes a strange offset in z
           sum = cuCadd(polar(1, 0.4912), sum);
         }
       }

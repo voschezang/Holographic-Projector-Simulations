@@ -11,14 +11,16 @@
 #include "kernel.cu"
 
 
-double flops(double t) {
+double flops(double runtime) {
   // Tera or Giga FLOP/s
   // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache
-  // Quadro GV100: peak 7.4 TFLOPS, bandwidth 870 GB/s
+  // Quadro GV100: peak 7.4 TFLOPS (dp), 14.8 (sp), 59.3 (int)
+  // bandwidth 870 GB/s
   //  cores: 5120, tensor cores 640, memory: 32 GB
+  // generation Volta, compute capability 7.0
   // max size: 49 152
   // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOPS_PER_POINT, t, N*N * 1e-9);
-  return 1e-12 * N * N * (double) FLOPS_PER_POINT / t;
+  return 1e-12 * N * N * (double) FLOP_PER_POINT / runtime;
 }
 
 void check(double complex  z) {
@@ -39,13 +41,15 @@ double memory_in_MB() {
 }
 
 void summarize_c(char name, WTYPE *x, size_t len) {
-  double max_amp = 0, min_amp = DBL_MAX, max_phase = 0;
+  double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
   for (size_t i = 0; i < len; ++i) {
     max_amp = fmax(max_amp, cabs(x[i]));
     min_amp = fmin(min_amp, cabs(x[i]));
     max_phase = fmax(max_phase , carg(x[i]));
+    sum += cabs(x[i]);
   }
-  printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f\n", name, min_amp, max_amp, max_phase);
+  double mean = sum / (double) N;
+  printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f, mean: %f\n", name, min_amp, max_amp, max_phase, mean);
 }
 
 void normalize_amp(WTYPE *x, size_t len, char log_normalize) {
@@ -113,10 +117,12 @@ void write_carray(char c, WTYPE *x, size_t len, FILE *out) {
   fprintf(out, "\n");
 }
 
-inline void transform_batch(size_t i_batch, WTYPE *x, WTYPE *y, WTYPE *y_block,
+inline void transform_batch(const size_t i_batch,
+                            const WTYPE *x, WTYPE *y, WTYPE *y_block,
                             WTYPE_cuda *d_x, WTYPE_cuda *d_y_block,
-                            STYPE *u, STYPE *v, STYPE *d_u, STYPE *d_v_block,
-                            const char inverse)
+                            const STYPE *u, const STYPE *v,
+                            STYPE *d_u, STYPE *d_v_block,
+                            const char direction)
 {
   if (i_batch % (int) (N_BATCHES * 0.1) == 0)
     printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
@@ -124,19 +130,16 @@ inline void transform_batch(size_t i_batch, WTYPE *x, WTYPE *y, WTYPE *y_block,
   cudaMemcpy( d_v_block, &v[DIMS * BATCH_SIZE * i_batch],
               DIMS * BATCH_SIZE * sizeof(STYPE),
               cudaMemcpyHostToDevice );
-  cudaDeviceSynchronize();
   // alt, dynamic: k<<<N,M,batch_size>>>
   kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>( d_x, d_u, d_y_block, d_v_block,
-                                              i_batch, inverse );
+                                              i_batch, direction );
   // TODO recursive reduce (e.g. for each 64 elements): use kernels for global sync
   // reduce<<< , >>>( ); // or use thrust::reduce<>()
 
-  cudaDeviceSynchronize();
   // TODO use maxBlocks, maxSize
   cu( cudaMemcpy( y_block, d_y_block,
                   BLOCKDIM * BATCH_SIZE * sizeof( WTYPE ),
                   cudaMemcpyDeviceToHost ) );
-  cudaDeviceSynchronize();
   // for each block, add block results to global y
   for (size_t n = 0; n < BLOCKDIM; ++n) {
     for (size_t m = 0; m < BATCH_SIZE; ++m) {
@@ -154,10 +157,10 @@ inline void transform_batch(size_t i_batch, WTYPE *x, WTYPE *y, WTYPE *y_block,
   }
 }
 
-inline void transform(WTYPE *x, WTYPE *y, STYPE *u, STYPE *v, const char inverse)
-{
+inline void transform(const WTYPE *x, WTYPE *y,
+                      const STYPE *u, const STYPE *v,
+                      const char direction) {
   // TODO use M_BATCH_SIZE to async stream data
-
 
   WTYPE *y_block = (WTYPE *) malloc(BLOCKDIM * BATCH_SIZE * sizeof(WTYPE));
 	WTYPE_cuda *d_x, *d_y_block;
@@ -167,19 +170,25 @@ inline void transform(WTYPE *x, WTYPE *y, STYPE *u, STYPE *v, const char inverse
 	cu( cudaMalloc( (void **) &d_y_block,
                   BLOCKDIM * BATCH_SIZE * sizeof( WTYPE ) ) );
   cu( cudaMalloc( (void **) &d_u, DIMS * N * sizeof(STYPE) ) );
-  cu( cudaMalloc( (void **) &d_v_block, DIMS * BLOCKDIM * BATCH_SIZE * sizeof(STYPE) ) );
+  cu( cudaMalloc( (void **) &d_v_block, DIMS * BATCH_SIZE * sizeof(STYPE) ) );
 
   // Init memory
 	cudaMemcpy( d_x, x, size, cudaMemcpyHostToDevice );
 	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
   // TODO cp only batch part: d_v_block
-  cudaDeviceSynchronize();
+
+
+  /* STYPE *d_v; */
+  /* cu( cudaMalloc( (void **) &d_v, DIMS * N * sizeof(STYPE) ) ); */
+	/* cudaMemcpy( d_v, v, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice ); */
 
   // Loop
+  // TODO init first batch
   for (size_t i_batch = 0; i_batch < N_BATCHES; ++i_batch) {
+    // TODO copy next batch, async. use absolute indices
     transform_batch(i_batch,
                     x, y, y_block, d_x, d_y_block,
-                    u, v, d_u, d_v_block, 1);
+                    u, v, d_u, d_v_block, direction);
 #ifdef DEBUG
     for (size_t m = 0; m < BATCH_SIZE; ++m) {
       // use full y-array in agg
