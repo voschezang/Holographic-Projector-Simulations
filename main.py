@@ -1,5 +1,6 @@
 import numpy as np
 import subprocess
+import zipfile
 import os
 import matplotlib.pyplot as plt
 # local
@@ -12,6 +13,28 @@ def run():
     return subprocess.check_output(['make', 'build-run'])
 
 
+def parse_line(k: str, content: str):
+    if k in 'uvw':
+        data[k] = np.array(
+            [float(x) for x in content.split(',')]).reshape(-1, DIMS)
+
+    elif k in 'xyz':
+        try:
+            data[k] = np.array(
+                [complex(x) for x in content.split(',')])
+            # reshape to (N, 2)
+            # x = np.array(util.from_polar(data[k]))
+            data[k] = np.array(util.from_polar(
+                data[k])).T.reshape((-1, 2))
+
+        except ValueError as e:
+            print('! Exception trig\n ->', e)
+            for x in content.split(','):
+                print(x)
+                # this should crash eventually
+                print(complex(x))
+
+
 if __name__ == '__main__':
     data = {}
     if util.get_flag("-r") or util.get_flag("--rerun"):
@@ -22,49 +45,44 @@ if __name__ == '__main__':
 x:0,2,3,3
 y:2,3,3,4
     """
-    fn = 'tmp/out.txt'
+    fn = 'tmp/out.zip'
     size = os.path.getsize(fn)
     print(f'Input file size: {size * 1e-3:0.5f} kB')
     if size > 1e6:
         print(f'WARNING, file too large: {size*1e-6:0.4f} MB')
 
-    with open(fn, 'rb') as f:
-        for line in f:
-            k, content = line.decode().split(':')
-            if k in 'uvw':
-                data[k] = np.array(
-                    [float(x) for x in content.split(',')]).reshape(-1, DIMS)
-
-            elif k in 'xyz':
-                try:
-                    data[k] = np.array(
-                        [complex(x) for x in content.split(',')])
-                    # reshape to (N, 2)
-                    xx = np.array(util.from_polar(data[k]))
-                    data[k] = np.array(util.from_polar(
-                        data[k])).T.reshape((-1, 2))
-
-                except ValueError as e:
-                    print('! Exception trig\n ->', e)
-                    for x in content.split(','):
-                        print(x)
-                        # this should crash eventually
-                        print(complex(x))
+    with zipfile.ZipFile(fn) as z:
+        # with open(fn, 'rb') as f:
+        with z.open('tmp/out.txt', 'r') as f:
+            for line in f:
+                k, content = line.decode().split(':')
+                parse_line(k, content)
 
     log = util.get_flag("-log")
     if log:
         print('log abs y')
 
     if util.get_flag("-scatter"):
-        plot.scatter_multiple(data['x'], data['u'], 'x', filename='x', log=log)
-        plot.scatter_multiple(data['y'], data['u'], 'y', filename='y', log=log,
-                              s=1)
+        plot.matrix_multiple(data['x'], 'x', filename='x')
+        # plot.scatter_multiple(data['x'], data['u'], 'x', filename='x')
+        plot.scatter_multiple(data['y'], data['v'], 'y', filename='y', s=1)
         k = 'z'
         if k in data.keys():
-            plot.scatter_multiple(data[k], data['u'], k, filename=k, log=log)
+            plot.scatter_multiple(data['z'], data['w'], k, filename=k)
     else:
-        plot.matrix_multiple(data['x'], 'x', filename='x', log=0)
-        plot.matrix_multiple(data['y'], 'y', filename='y', log=log)
+        plot.matrix_multiple(data['x'], 'x', filename='x')
+        plot.matrix_multiple(data['y'], 'y', filename='y')
+
         k = 'z'
         if k in data.keys():
-            plot.matrix_multiple(data[k], k, filename=k, log=log)
+            plot.matrix_multiple(data[k], k, filename=k)
+
+    #  plot subset
+    N = data['y'].shape[0]
+    N_sqrt = np.sqrt(N).astype(int)
+    n = 75
+    indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
+    plot.scatter_multiple(data['y'][indices], data['v'][indices],
+                          'y', filename='y-scatter-sub', s=1)
+    plot.scatter_multiple(data['z'][indices], data['w'][indices],
+                          'z', filename='z-scatter-sub', s=1)
