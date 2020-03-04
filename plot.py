@@ -1,11 +1,17 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from matplotlib.ticker import EngFormatter
 
 from util import *  # N, N_sqrt
 
 # cmap = 'rainbow'
 cmap = 'inferno'
+
+
+def sci_labels(ax):
+    formatter = EngFormatter(places=1, sep=u"\N{THIN SPACE}")
+    ax.xaxis.set_major_formatter(formatter)
 
 
 def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
@@ -44,12 +50,16 @@ def matrix(x, title='', cb=True, fig=None, log=False, **kwargs):
 
     if fig is None:
         plt.figure()
+
+    vmin = 0
     if log:
-        x = -semilog(x)
+        x = semilog(x)
+        vmin = None
+
     if len(x.shape) > 1:
-        plt.imshow(x, vmin=0, origin='lower', **kwargs)
+        plt.imshow(x, vmin=vmin, origin='lower', **kwargs)
     else:
-        plt.imshow(x.reshape(x.size, 1), vmin=0, origin='lower', **kwargs)
+        plt.imshow(x.reshape(x.size, 1), vmin=vmin, origin='lower', **kwargs)
     # plt.colorbar(fraction=0.046, pad=0.04)
     if cb:
         plt.colorbar(fraction=0.035, pad=0.04)
@@ -69,9 +79,14 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None, **kwargs)
     plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
     plt.subplot(m, n_subplots // m, 1)
     matrix(reshape(y[:, 0], HD), '%s Amplitude' % prefix, fig=fig, **kwargs)
+    plt.xlabel("Space dim1 (m)")
+    plt.ylabel("Space dim2 (m)")
     plt.subplot(m, n_subplots // m, 2)
+    matrix(reshape(y[:, 0], HD), '%s Log Amplitude' %
+           prefix, fig=fig, log=True, **kwargs)
+    plt.subplot(m, n_subplots // m, 3)
     # cyclic cmap: hsv, twilight
-    matrix(reshape(y[:, 1], HD) / np.pi, r'%s $\phi$' %
+    matrix(reshape(y[:, 1], HD) / np.pi, '%s Phase' %
            prefix, fig=fig, cmap='twilight', **kwargs)
     if m >= 2:
         plt.subplot(m, n_subplots // m, 4)
@@ -82,7 +97,7 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None, **kwargs)
         matrix(irradiance(to_polar(a, phi), normalize=0), '%s I' %
                prefix, fig=fig, **kwargs)
         plt.subplot(m, n_subplots // m, 6)
-        matrix(a * np.cos(phi * 2 * np.pi), '%s A cos phi' %
+        matrix(a * np.cos(phi * 2 * np.pi), r'%s A cos $\phi$' %
                prefix, fig=fig, **kwargs)
         # matrix(a, '%s A cos phi' % prefix, fig=fig, **kwargs)
         # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig, **kwargs)
@@ -138,7 +153,7 @@ def scatter(x, w, title='', color_func=lambda a, phi: a, log=False, s=10,
     if fig is None:
         fig = plt.figure()
     if log:
-        x = -semilog(x)
+        x = semilog(x)
     plt.scatter(w[:, 1], w[:, 0], c=x, s=s, alpha=alpha,  **kwargs)
     plt.xlim(w[:, 1].min(), w[:, 1].max())
     plt.ylim(w[:, 0].min(), w[:, 0].max())
@@ -153,15 +168,23 @@ def scatter_multiple(y, v=None, title='', prefix='', filename=None, **kwargs):
     n_subplots = 3
     fig = plt.figure(figsize=(n_subplots * 4, 3))
     plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
-    plt.subplot(1, n_subplots, 1)
+    ax = plt.subplot(1, n_subplots, 1)
     scatter(y[:, 0], v, '%s Amplitude' % prefix, fig=fig, **kwargs)
-    plt.subplot(1, n_subplots, 2)
+    sci_labels(ax)
+    plt.xlabel("Space dim1 (m)")
+    plt.ylabel("Space dim2 (m)")
+    ax = plt.subplot(1, n_subplots, 2)
     scatter(irradiance(to_polar(y[:, 0], y[:, 1])),
             v, r'%s I' % prefix, fig=fig, **kwargs)
-    plt.subplot(1, n_subplots, 3)
+    sci_labels(ax)
+    plt.xlabel("Space dim1 (m)")
+    plt.ylabel("Space dim2 (m)")
+    ax = plt.subplot(1, n_subplots, 3)
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = 'twilight'
     scatter(y[:, 1] / np.pi, v, r'%s $\phi$' % prefix, fig=fig, **kwargs)
+    plt.xlabel("Space dim1 (m)")
+    plt.ylabel("Space dim2 (m)")
     if filename is not None:
         # pdf is slow for large scatterplots
         save_fig(filename, ext='png')
@@ -182,7 +205,7 @@ def entropy(H, w, title='H',  **kwargs):
     ax = plt.subplot(1, n_subplots,  1)
     scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
     ax = plt.subplot(1, n_subplots,  2)
-    scatter(H[:, 1], w, title=r'$\phi$', fig=fig, **kwargs)
+    scatter(H[:, 1], w, title='Phase', fig=fig, **kwargs)
 
 
 def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
@@ -198,7 +221,7 @@ def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
 
 
 def save_fig(filename, dir='img', ext='pdf', dpi='figure',
-             transparent=True, bbox_inches='tight', interpolation='nearest'):
+             transparent=True, bbox_inches='tight', interpolation='none'):
     assert(os.path.isdir(dir))
     plt.axis('off')
     plt.savefig(f'{dir}/{filename}.{ext}', dpi=dpi, transparent=True,
