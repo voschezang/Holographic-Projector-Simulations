@@ -21,8 +21,6 @@
  * The arrays y,v live on CPU, the batches d_y, d_v live on GPU.
  *
  * It is assumed that x,y,u,v all fit in GPU memory, but not necessarily in cache
- * It is assumed that z,w does not necessarily fit in GPU memory.
- *
  *
  * Naming convention
  * i,j,k = indices in flattened arrays
@@ -36,12 +34,16 @@
 int main() {
   printf("\nHyperparams:");
   printf("\n"); printf(" N: %i^2 = %i", N_sqrt, N);
-  printf("\t"); printf("\tBATCH_SIZE: %i", BATCH_SIZE);
+  printf("\t"); printf("\tBATCH_SIZE: %8i", BATCH_SIZE);
 
-  printf("\n"); printf(" BLOCKDIM: %i\t\t", BLOCKDIM);
+  printf("\n"); printf(" BLOCKDIM: %i\t", BLOCKDIM);
   printf("\t"); printf("THREADS_PER_BLOCK: %i", THREADS_PER_BLOCK);
-  printf("\t"); printf("E[cores] = %0.3fk", BLOCKDIM * THREADS_PER_BLOCK * 1e-3);
+  printf("\t"); printf("E[tasks] = %0.3fk", BLOCKDIM * THREADS_PER_BLOCK * 1e-3);
   printf("\t"); printf("\tN/thread: %i", N_PER_THREAD);
+  printf("\n"); printf(" N_STREAMS %i \tSTREAM SIZE: %i (x3)", N_STREAMS, STREAM_SIZE);
+  printf("\t"); printf("BATCHES_PER_STREAM (x BATCH_SIZE = N): %i (x %i = %i)\n", BATCHES_PER_STREAM, BATCH_SIZE, BATCHES_PER_STREAM * BATCH_SIZE);
+  // if (BATCHES_PER_STREAM < BATCH_SIZE)
+  //   printf("BATCHES_PER_STREAM (%i) < BATCH_SIZE (%i)\n", BATCHES_PER_STREAM, BATCH_SIZE);
 
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
   {
@@ -49,9 +51,10 @@ int main() {
     double m = n * sizeof(WTYPE_cuda) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
-  assert(N_PER_THREAD > 0);
-  assert(N_PER_THREAD * THREADS_PER_BLOCK * BLOCKDIM == N);
-  assert(sizeof(WTYPE) == sizeof(WTYPE_cuda));
+// #ifdef CACHE_BATCH
+//   assert(BATCH_SIZE < THREADS_PER_BLOCK);
+// #endif
+  check_params();
 
   struct timespec t0, t1, t2;
 	const size_t size = N * sizeof( WTYPE );
@@ -154,25 +157,30 @@ int main() {
 #endif
   // printf("FLOP_PER_POINT: %i\n", FLOP_PER_POINT);
 
+#ifdef DEBUG
+  for (size_t i = 0; i < N2; ++i) {
+    assert(cabs(y[i]) < DBL_MAX);
+    assert(cabs(z[i]) < DBL_MAX);
+  }
+#endif
+
   summarize_c('y', y, N);
 #ifdef Z
   summarize_c('z', z, N);
 #endif
 
   cudaProfilerStop();
-  printf("Save results\n");
 
-
-  // TODO use csv for i/o, read python generated x
-  FILE *out;
-  out = fopen("tmp/out.txt", "wb");
-  write_carray('x', x, N, out); free(x);
-  write_carray('y', y, N, out); free(y);
-  write_carray('z', z, N, out); free(z);
-  free(u); // ignore u
-  write_array('v', v, N*DIMS, out); free(v);
-  write_array('w', w, N*DIMS, out); free(w);
-  fclose(out);
+  write_arrays(x,y,z, u,v,w, N, TXT);
+  write_arrays(x,y,z, u,v,w, N, GRID);
+  // write_arrays(x,y,z, u,v,w, N, DAT);
+  // write_arrays(x,y,z, u,v,w, 100, DAT);
+  free(x);
+  free(y);
+  free(z);
+  free(u);
+  free(v);
+  free(w);
 
 	return 0;
 }

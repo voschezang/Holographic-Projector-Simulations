@@ -11,16 +11,19 @@
 #include <cuComplex.h>
 
 
+#define cu(result) { cudaCheck((result), __FILE__, __LINE__); }
+
 inline
-cudaError_t cu(cudaError_t result)
+cudaError_t cudaCheck(cudaError_t result, const char *file, int line)
 {
   // check for cuda errors
-#ifdef DEBUG
+// #ifdef DEBUG
   if (result != cudaSuccess) {
-    fprintf(stderr, "CUDA Runtime Error: %sn", cudaGetErrorString(result));
-    assert(result == cudaSuccess);
+    fprintf(stderr, "[%s:%d] CUDA Runtime Error: %s\n", file, line, cudaGetErrorString(result));
+    // assert(result == cudaSuccess);
+    exit(result);
   }
-#endif
+// #endif
   return result;
 }
 
@@ -37,8 +40,7 @@ __device__ double angle(cuDoubleComplex  z) {
   return atan2(cuCreal(z), cuCimag(z));
 }
 
-inline
-__device__ cuDoubleComplex polar(double a, double phi) {
+inline __device__ cuDoubleComplex polar(double a, double phi) {
   // Convert polar coordinates (a,phi) to complex number a * e^(phi I)
   cuDoubleComplex res;
   sincos(phi, &res.x, &res.y);
@@ -56,9 +58,8 @@ __global__ void kernel_zero(WTYPE_cuda *x, size_t n) {
 
 // TODO consider non-complex types (double real, double imag)
 // and check computational cost
-inline
-__device__ WTYPE_cuda K(size_t i, size_t j,
-                        WTYPE_cuda *x, STYPE *u, STYPE *v,
+inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j,
+                        const WTYPE_cuda *x, const STYPE *u, STYPE *v,
                         const char direction) {
   // TODO unpack input to u1,u2,3 v1,v2,v3?
   // TODO consider unguarded functions, intrinsic functions
@@ -70,6 +71,7 @@ __device__ WTYPE_cuda K(size_t i, size_t j,
     n = i * DIMS,
     m = j * DIMS; // TODO use struct?
   // TODO use softeningSquared?
+  // TODO check coalesing
   double
     distance = norm3d(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
     amp = cuCabs(x[i]),
@@ -102,7 +104,30 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y, STYPE *v, const 
    * v[BATCH_SIZE * DIM] = locations of y-datapoints
    */
   //
+  // TODO use shared mem for u-data
   __shared__ WTYPE_cuda tmp[THREADS_PER_BLOCK * BATCH_SIZE];
+#ifdef CACHE_BATCH
+  // cache v[batch] because it is read by every thread
+  // v_cached is constant and equal for each block
+  __shared__ STYPE v_cached[BATCH_SIZE * DIMS];
+  // use strides when THREADS_PER_BLOCK < BATCH_SIZE * DIMS
+  for (unsigned int i = threadIdx.x; i < BATCH_SIZE * DIMS; i+=THREADS_PER_BLOCK)
+    v_cached[i] = v[i + i_batch * BATCH_SIZE * DIMS];
+
+  __syncthreads();
+
+  // if (threadIdx.x == 0 && blockIdx.x == 0 && i_batch == 0) {
+  //   printf("\n v: \t\t");
+  //   for (unsigned int i = 0; i < 2 * DIMS; i+=1)
+  //     printf("%8f ", v[i]);
+
+  //   printf("\n v_cached: \t");
+  //   for (unsigned int i = 0; i < 2 * DIMS; i+=1)
+  //     printf("%8f ", v_cached[i]);
+
+  //   printf("\n");
+  // }
+#endif
   // TODO use cuda.y-stride? - note the double for loop - how much memory fits in an SM?
   // TODO switch y-loop and x-loop and let sum : [BATCH_SIZE]? assuming y-batch is in local memory
   // printf("idx %i -", threadIdx.x);
@@ -113,20 +138,31 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y, STYPE *v, const 
     WTYPE_cuda sum;
 
     // for each y-datapoint in current batch
+    // TODO test performance diff when switching inner/outer loop and with um cache
+    // TODO change cache size and find new optimal batch size w/ um cache
     for(unsigned int m = 0; m < BATCH_SIZE; ++m) {
+#ifndef CACHE_BATCH
+      const size_t j = m + i_batch * BATCH_SIZE;
+#endif
       sum = ZERO;
-      // j = m + i_batch * BATCH_SIZE;
       // Usage of stride allows <<<1,1>>> kernel invocation
       for (size_t i = idx; i < N; i += stride) {
-        sum = cuCadd(K(i, m, x, u, v, direction), sum);
+#ifdef CACHE_BATCH
+        // assert(v[(m + i_batch * BATCH_SIZE) * DIMS] == v_cached[m * DIMS]);
+        sum = cuCadd(superposition_single(i, m, x, u, v_cached, direction), sum);
+#else
+        sum = cuCadd(superposition_single(i, j, x, u, v, direction), sum);
+#endif
         // TODO do this in separate func
         //TODO err: i_batch does not depend on x
-        if (i == 0 && direction == -1) {
-          // add single far away light source, with constant phase
-          // TODO this causes a strange offset in z
-          sum = cuCadd(polar(1, 0.4912), sum);
-        }
       }
+      // assume threadIdx.x is a runtime constant
+      if (direction == -1 && threadIdx.x == 0 && idx == 0) {
+        // add single far away light source, with arbitrary (but constant) phase
+        // TODO this causes a strange offset in z
+        sum = cuCadd(polar(1, 0.4912), sum);
+      }
+      sum = cuCadd(polar(1, 1.94912), sum);
       tmp[m + threadIdx.x * BATCH_SIZE] = sum;
       // tmp[m * THREADS_PER_BLOCK + threadIdx.x] = sum;
 #ifdef DEBUG
@@ -164,12 +200,12 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y, STYPE *v, const 
 
 __global__ void kernel1(WTYPE_cuda *x, STYPE *u, WTYPE_cuda  *y, STYPE *v)
 {
-  // Single kernel, used in y_i = \sum_j K(y_i,x_j)
+  // Single kernel, used in y_i = \sum_j superposition_single(y_i,x_j)
 	size_t i = blockIdx.x * blockDim.x + threadIdx.x;
   WTYPE_cuda sum = ZERO;
 
   for(int n = 0; n < N; ++n)
-    sum = cuCadd(K(n, i, x, u, v, 1), sum);
+    sum = cuCadd(superposition_single(n, i, x, u, v, 1), sum);
 
   y[i] = sum;
 }
