@@ -1,15 +1,16 @@
 //#define _POSIX_C_SOURCE 199309L
 
 #include <assert.h>
-#include <complex.h> // TODO use cpp cmath
+// #include <complex.h> // TODO use cpp cmath
 #include <cuComplex.h>
 #include <float.h>
 #include <limits.h>
-#include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 #include <cuda_profiler_api.h>
+
+#include <thrust/host_vector.h> // unused in this file but causes error if omitted
 
 #include "macros.h"
 #include "kernel.cu"
@@ -33,15 +34,16 @@
 
 int main() {
   printf("\nHyperparams:");
-  printf("\n"); printf(" N: %i^2 = %i", N_sqrt, N);
-  printf("\t"); printf("\tBATCH_SIZE: %8i", BATCH_SIZE);
+  printf("\n"); printf(" N: %4i^2 =%6i", N_sqrt, N);
+  printf("\t"); printf("BATCH_SIZE:\t%8i", BATCH_SIZE);
+  printf("\t"); printf("N_BATCHES: %8i", N_BATCHES);
 
-  printf("\n"); printf(" BLOCKDIM: %i\t", BLOCKDIM);
-  printf("\t"); printf("THREADS_PER_BLOCK: %i", THREADS_PER_BLOCK);
+  printf("\n"); printf(" BLOCKDIM: %8i", BLOCKDIM);
+  printf("\t"); printf("THREADS_PER_BLOCK: %8i", THREADS_PER_BLOCK);
   printf("\t"); printf("E[tasks] = %0.3fk", BLOCKDIM * THREADS_PER_BLOCK * 1e-3);
   printf("\t"); printf("\tN/thread: %i", N_PER_THREAD);
-  printf("\n"); printf(" N_STREAMS %i \tSTREAM SIZE: %i (x3)", N_STREAMS, STREAM_SIZE);
-  printf("\t"); printf("BATCHES_PER_STREAM (x BATCH_SIZE = N): %i (x %i = %i)\n", BATCHES_PER_STREAM, BATCH_SIZE, BATCHES_PER_STREAM * BATCH_SIZE);
+  printf("\n"); printf(" N_STREAMS %3i \t\tSTREAM SIZE: %i (x3)", N_STREAMS, STREAM_SIZE);
+  printf("\t"); printf("\tBATCHES_PER_STREAM (x BATCH_SIZE = N): %i (x %i = %i)\n", BATCHES_PER_STREAM, BATCH_SIZE, BATCHES_PER_STREAM * BATCH_SIZE);
   // if (BATCHES_PER_STREAM < BATCH_SIZE)
   //   printf("BATCHES_PER_STREAM (%i) < BATCH_SIZE (%i)\n", BATCHES_PER_STREAM, BATCH_SIZE);
 
@@ -84,10 +86,9 @@ int main() {
     for(unsigned int i = 0; i < N_sqrt; ++i) {
       for(unsigned int j = 0; j < N_sqrt; ++j) {
         size_t idx = i * N_sqrt + j;
-        x[idx] = 0;
-        y[idx] = 0;
-        z[idx] = 0;
-        if (i == N_sqrt * 1/2 && j == N_sqrt / 2) x[idx] = 1;
+        x[idx].x = 0;
+        x[idx].y = 0;
+        if (i == N_sqrt * 1/2 && j == N_sqrt / 2) x[idx].x = 1;
         // if (i == N_sqrt * 1/3 && j == N_sqrt / 2) x[idx] = 1;
         // if (i == N_sqrt * 2/3 && j == N_sqrt / 2) x[idx] = 1;
         // if (i == N_sqrt * 1/4 && j == N_sqrt / 4) x[idx] = 1;
@@ -159,8 +160,8 @@ int main() {
 
 #ifdef DEBUG
   for (size_t i = 0; i < N2; ++i) {
-    assert(cabs(y[i]) < DBL_MAX);
-    assert(cabs(z[i]) < DBL_MAX);
+    assert(ABS(y[i]) < DBL_MAX);
+    assert(ABS(z[i]) < DBL_MAX);
   }
 #endif
 

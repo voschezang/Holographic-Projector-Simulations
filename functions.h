@@ -1,11 +1,15 @@
 #include <assert.h>
-#include <complex.h>
-#include <cuComplex.h>
-#include <float.h>
-#include <limits.h>
-#include <math.h>
+/* #include <complex.h> */
+/* #include <cuComplex.h> */
+/* #include <float.h> */
+/* #include <limits.h> */
+/* #include <math.h> */
 #include <stdio.h>
 #include <time.h>
+
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <thrust/reduce.h>
 
 #include "macros.h"
 #include "kernel.cu"
@@ -24,13 +28,13 @@ double flops(double runtime) {
   return 1e-12 * N * N * (double) FLOP_PER_POINT / runtime;
 }
 
-void check(double complex  z) {
-  double a = creal(z), b = cimag(z);
-  if (isnan(a)) printf("found nan re\n");
-  if (isinf(a)) printf("found inf re\n");
-  if (isnan(b)) printf("found nan I\n");
-  if (isinf(b)) printf("found inf I\n");
-  if (isinf(a)) exit(1);
+void check(WTYPE  z) {
+  /* double a = creal(z), b = cimag(z); */
+  if (isnan(z.x)) printf("found nan re\n");
+  if (isinf(z.x)) printf("found inf re\n");
+  if (isnan(z.y)) printf("found nan I\n");
+  if (isinf(z.y)) printf("found inf I\n");
+  if (isinf(z.x)) exit(1);
 }
 
 void check_params() {
@@ -59,10 +63,10 @@ double memory_in_MB() {
 void summarize_c(char name, WTYPE *x, size_t len) {
   double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
   for (size_t i = 0; i < len; ++i) {
-    max_amp = fmax(max_amp, cabs(x[i]));
-    min_amp = fmin(min_amp, cabs(x[i]));
-    max_phase = fmax(max_phase , carg(x[i]));
-    sum += cabs(x[i]);
+    max_amp = fmax(max_amp, ABS(x[i]));
+    min_amp = fmin(min_amp, ABS(x[i]));
+    max_phase = fmax(max_phase , angle(x[i]));
+    sum += ABS(x[i]);
   }
   double mean = sum / (double) N;
   printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f, mean: %f\n", name, min_amp, max_amp, max_phase, mean);
@@ -71,19 +75,22 @@ void summarize_c(char name, WTYPE *x, size_t len) {
 void normalize_amp(WTYPE *x, size_t len, char log_normalize) {
   double max_amp = 0;
   for (size_t i = 0; i < len; ++i)
-    max_amp = fmax(max_amp, cabs(x[i]));
+    max_amp = fmax(max_amp, ABS(x[i]));
 
   if (max_amp < 1e-6)
     printf("WARNING, max_amp << 1\n");
 
   if (max_amp > 1e-6)
-    for (size_t i = 0; i < len; ++i)
-      x[i] /= max_amp;
+    for (size_t i = 0; i < len; ++i) {
+      x[i].x /= max_amp;
+      x[i].y /= max_amp;
+    }
 
   if (log_normalize)
-    for (size_t i = 0; i < len; ++i)
-      if (cabs(x[i]) > 0)
-        x[i] = -clog(x[i]);
+    for (size_t i = 0; i < len; ++i) {
+      if (x[i].x > 0) x[i].x = -log(x[i].x);
+      if (x[i].y > 0) x[i].y = -log(x[i].y);
+    }
 }
 
 void summarize_double(char name, double *x, size_t n) {
@@ -97,10 +104,10 @@ void summarize_double(char name, double *x, size_t n) {
 
 void print_c(WTYPE x, FILE *out) {
   check(x);
-  if (cimag(x) >= 0) {
-    fprintf(out, "%f+%fj", creal(x), cimag(x));
+  if (x.y >= 0) {
+    fprintf(out, "%f+%fj", x.x, x.y);
   } else {
-    fprintf(out, "%f%fj", creal(x), cimag(x));
+    fprintf(out, "%f%fj", x.x, x.y);
   }
 }
 
@@ -141,7 +148,7 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
   fprintf(out, "#dim 1 - dim 2 - dim 3 - Amplitude - Phase\n");
   for (size_t i = 0; i < len; ++i) {
     size_t j = i * DIMS;
-    fprintf(out, "%f %f %f %f %f\n", u[j], u[j+1], u[j+2], cabs(x[i]), carg(x[i]));
+    fprintf(out, "%f %f %f %f %f\n", u[j], u[j+1], u[j+2], ABS(x[i]), angle(x[i]));
   }
   fclose(out);
 }
@@ -184,9 +191,9 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z, STYPE *u, STYPE *v, STYPE *w, si
         /* assert(img[I_(i,j)] == 12); */
         /* img[I_(i,j)] = 31.0; */
         /* printf("i: %i, j: %i, img[%4i]: %f\n", i,j, I_(i,j), img[I_(i,j)]); */
-        img[I_(i,j)] = cabs(y[I_(i,j)]);// + cabs(y[I_(i+1,j)]); // + y[I_(i-1,j)] + y[I_(i,j+1)] + y[I_(i,j-1)];
+        img[I_(i,j)] = ABS(y[I_(i,j)]);// + ABS(y[I_(i+1,j)]); // + y[I_(i-1,j)] + y[I_(i,j+1)] + y[I_(i,j-1)];
 #ifdef DEBUG
-        assert(cabs(y[I_(i,j)]) < DBL_MAX);
+        assert(ABS(y[I_(i,j)]) < DBL_MAX);
 #endif
         /* img[i][j] *= 1./5.; */
         /* printf("i: %i, j: %i, img[%4i]: %f\n", i,j, I_(i,j), img[I_(i,j)]); */
@@ -209,7 +216,11 @@ inline void transform_batch(const size_t i_batch, const WTYPE *x, WTYPE *y,
                             const STYPE *u, const STYPE *v,
                             STYPE *d_u, STYPE *d_v,
                             const char direction, cudaStream_t stream,
-                            WTYPE *y_block, WTYPE_cuda *d_y_block)
+                            WTYPE_cuda *d_y_stream,
+                            /* WTYPE *y_block, */
+                            /* WTYPE_cuda */
+                            thrust::device_vector<double> d_y_batch,
+                            double *d_y_block)
 {
   // TODO most data transfer is actually (BLOCKDIM * STREAM_SIZE),
   // thus, aggregate on gpu
@@ -231,36 +242,29 @@ inline void transform_batch(const size_t i_batch, const WTYPE *x, WTYPE *y,
   // TODO use maxBlocks, maxSize
   // TODO use cudaMemcpyAsync? otherwise this is a barrier
   printf("batch %3i memcpy \n", i_batch);
-#ifdef MEMCPY_ASYNC
-  assert(0);
-  // copy data before end of stream
-  cu( cudaMemcpyAsync( y_block, d_y_block,
-                       BLOCKDIM * BATCH_SIZE * sizeof( WTYPE ),
-                       cudaMemcpyDeviceToHost, stream ) );
-#else
-  cu( cudaMemcpy( y_block, d_y_block,
-                  BLOCKDIM * BATCH_SIZE * sizeof( WTYPE ),
-                  cudaMemcpyDeviceToHost ) );
-#endif
-  // for each block, add block results to global y
-  for (size_t n = 0; n < BLOCKDIM; ++n) {
-    for (size_t m = 0; m < BATCH_SIZE; ++m) {
-      // use full y-array in agg
-      const size_t i = m + i_batch * BATCH_SIZE;
-      const size_t i_block = m + n * BATCH_SIZE;
-      // add block results
-      y[i] += y_block[i_block];
 
-#ifdef DEBUG
-      /* assert(y[i] != 10); */
-      assert(cabs(y_block[i_block]) > 0);
-      assert(cabs(y[i]) > 0);
-      if (i >= N) assert(0); // TODO rm after testing
-      if (i >= N) break;
-#endif
-    }
+  /* thrust::device_vector<double> d_y_batch(BATCH_SIZE * 2); */
+  for (unsigned int m = 0; m < BATCH_SIZE; ++m) {
+
+    /* double *d_y_block; */
+    /* cu( cudaMalloc( (void **) &d_y_block, BLOCKDIM * BATCH_SIZE * sizeof(double) ) ); */
+
+    // assume two independent reductions are faster or equal to a large reduction
+    thrust::device_ptr<double> ptr(d_y_block + m * BLOCKDIM);
+    d_y_batch[m] = thrust::reduce(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>());
+    ptr += BLOCKDIM * BATCH_SIZE;
+    d_y_batch[m + BATCH_SIZE] = thrust::reduce(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>());
   }
-  for(size_t i = i_batch*BATCH_SIZE; i < (i_batch+1)*BATCH_SIZE; ++i) assert(y[i] != 10);
+
+  // TODO do cpu aggregation in a separate loop?, make thrust calls async
+
+  const size_t i = i_batch * BATCH_SIZE;
+  // TODO d_y_batch.begin()?
+  // TODO cast outside this function
+  double *a = thrust::raw_pointer_cast(d_y_batch.data());
+  zip_arrays<<< 1,1 >>>(a, &a[BATCH_SIZE], BATCH_SIZE, d_y_stream);
+  // TODO if async..
+	cu( cudaMemcpy(&y[i], d_y_stream, BATCH_SIZE * sizeof(WTYPE_cuda), cudaMemcpyDeviceToHost ) );
 
   printf("batch %3i done \n", i_batch);
 }
@@ -268,6 +272,11 @@ inline void transform_batch(const size_t i_batch, const WTYPE *x, WTYPE *y,
 inline void transform(const WTYPE *x, WTYPE *y,
                       const STYPE *u, const STYPE *v,
                       const char direction) {
+
+  // d_y_stream = reserved memory consisting of batch for each stream
+  // d_y_batch = batch results, using doubles because thrust doesn't support cuComplexDouble
+  // d_y_block = block results (because blocks cannot sync), agg by thrust
+
   // TODO use M_BATCH_SIZE to async stream data
 	WTYPE_cuda *d_x;
 	STYPE *d_u, *d_v;
@@ -295,19 +304,44 @@ inline void transform(const WTYPE *x, WTYPE *y,
   // Loop
   printf("streams pre\n");
   cudaStream_t streams[N_STREAMS];
-  WTYPE *y_block[N_STREAMS];
-  WTYPE_cuda *d_y_block[N_STREAMS];
+  WTYPE_cuda *d_y_stream[N_STREAMS];
+  double *d_y_block[N_STREAMS]; // array of pointers to y_block per batch per stream
+  thrust::device_vector<double> d_y_batch[N_STREAMS];
+  /* WTYPE *y_block[N_STREAMS]; */
+  /* void *y_batch[N_STREAMS];; // batch results per stream */
+  /* WTYPE_cuda *d_y_batch[N_STREAMS];; // batch results per stream */
+
+
   // malloc data for all batches before starting streams
+
+  // TODO why not a single array for d_y_batch, d_y_block?
+  // TODO only if forcing affinity in malloc to be spreaded?
+  //   or it this done auto through the order of malloc calls?
+  // TODO ask roel?
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
     /* for (unsigned int i_batch = 0; i_batch < N_BATCHES; ++i_batch) { */
-    y_block[i_stream] = (WTYPE *) malloc(BLOCKDIM * BATCH_SIZE * sizeof(WTYPE));
+    /* y_block[i_stream] = (WTYPE *) malloc(BLOCKDIM * BATCH_SIZE * sizeof(WTYPE)); */
     // d_y_block is used to aggregate the current batch results
+    /* y_block[i_stream] =  thrust::host_vector<double>(); */
+
 #ifdef MEMCPY_ASYNC
-    cu( cudaMallocHost( (void **) &d_y_block[i_stream],
-                        BLOCKDIM * STREAM_SIZE * sizeof( WTYPE ) ) );
+    assert(0);
+    /* cu( cudaMallocHost( (void **) &d_y_block[i_stream], */
+    /*                     BLOCKDIM * STREAM_SIZE * sizeof(WTYPE) ) ); */
 #else
-    cu( cudaMalloc( (void **) &d_y_block[0],
-                    BLOCKDIM * BATCH_SIZE * sizeof( WTYPE ) ) );
+    // TODO mallocHost for async
+    /* cu( cudaMalloc( (void **) &d_y_batch[0], */
+    /*                 BATCH_SIZE * sizeof(WTYPE_cuda) ) ); */
+
+    /* thrust::host_vector<double>   y_batch(BATCH_SIZE * 2), */
+
+    cu( cudaMalloc( (void **) &d_y_stream[i_stream],
+                    BATCH_SIZE * sizeof(WTYPE_cuda) ) );
+    d_y_batch[i_stream] = thrust::device_vector<double>(BATCH_SIZE * 2);
+    cu( cudaMalloc( (void **) &d_y_block[i_stream],
+                    BATCH_SIZE * BLOCKDIM * 2 * sizeof(double) ) );
+
+
 #endif
   }
 
@@ -337,21 +371,25 @@ inline void transform(const WTYPE *x, WTYPE *y,
   /*   printf("stream %i for batches\n", i_stream); */
   /*   for (size_t i_batch = i_stream; */
   /*        i_batch < i_stream + BATCHES_PER_STREAM; ++i_batch) { */
-      if (N_BATCHES > 10 && i_batch % (int) (N_BATCHES * 0.1) == 0)
+      if (N_BATCHES > 10 && i_batch % (int) (N_BATCHES / 10) == 0)
         printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
 
       transform_batch(i_batch,
                       x, y, d_x,
                       u, v, d_u, d_v,
                       direction, streams[i_stream],
-                      y_block[i_stream], d_y_block[i_stream]);
+                      /* y_block[i_stream], */
+                      d_y_stream[i_stream * BATCH_SIZE],
+                      d_y_batch[i_stream],
+                      d_y_block[i_stream]
+                      );
       printf("done\n");
 #ifdef DEBUG
       cudaDeviceSynchronize();
       for (size_t m = 0; m < BATCH_SIZE; ++m) {
         // use full y-array in agg
         size_t i = m + i_batch * BATCH_SIZE;
-        assert(cabs(y[i]) > 0);
+        assert(ABS(y[i]) > 0);
       }
 #endif
       i_batch += 1;
@@ -369,16 +407,16 @@ inline void transform(const WTYPE *x, WTYPE *y,
   /* for (size_t i_batch = 0; i_batch < N_BATCHES; i_batch+=1) { */
   for (size_t i_batch = 0; i_batch < 2; i_batch+=1) {
     /* assert(y[i_batch] != 10); */
-    printf("y[%i]: \n", i_batch * BATCH_SIZE);
+    /* printf("y[%i]: \n", i_batch * BATCH_SIZE); */
     /* assert(y[i_batch * BATCH_SIZE] != 10); */
-    assert(cabs(y[i_batch * BATCH_SIZE]) > 0);
+    assert(ABS(y[i_batch * BATCH_SIZE]) > 0);
   }
 
   for (size_t i_batch = 0; i_batch < N_BATCHES; i_batch+=1)
       for (unsigned int i = 0; i < BATCH_SIZE; ++i)
-        assert(cabs(y[i + i_batch * BATCH_SIZE]) > 0);
+        assert(ABS(y[i + i_batch * BATCH_SIZE]) > 0);
 
-  for(size_t i = 0; i < N; ++i) assert(cabs(y[i]) > 0);
+  for(size_t i = 0; i < N; ++i) assert(ABS(y[i]) > 0);
 #endif
 
   // implicit sync

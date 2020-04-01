@@ -1,15 +1,14 @@
 #ifndef KERNEL
 #define KERNEL
 
-#include "macros.h"
-
 #include <assert.h>
-#include <math.h>
+// #include <math.h>
 #include <stdio.h>
 #include <time.h>
-#include <complex.h>
+// #include <complex.h>
 #include <cuComplex.h>
 
+#include "macros.h"
 
 #define cu(result) { cudaCheck((result), __FILE__, __LINE__); }
 
@@ -36,7 +35,7 @@ __device__ void cuCheck(cuDoubleComplex  z) {
 }
 
 inline
-__device__ double angle(cuDoubleComplex  z) {
+__host__ __device__ double angle(cuDoubleComplex  z) {
   return atan2(cuCreal(z), cuCimag(z));
 }
 
@@ -96,7 +95,7 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
 }
 
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
-__global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y, STYPE *v, const size_t i_batch, const char direction)
+__global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v, const size_t i_batch, const char direction)
 {
   /** First compute local sum, then do nested aggregation
    *
@@ -191,12 +190,26 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y, STYPE *v, const 
 
       // TODO foreach batch element
       // y[blockIdx.x + m * BLOCKDIM] = sum;
-      y[m + blockIdx.x * BATCH_SIZE] = sum;
+      const unsigned int i = blockIdx.x + m * BLOCKDIM;
+      y[i] = sum.x;
+      y[i + BLOCKDIM * BATCH_SIZE] = sum.y;
+      // y[m + blockIdx.x * BATCH_SIZE] = sum;
     }
   }
 
   // do not sync blocks, exit kernel and agg block results locally or in diff kernel
 }
+
+
+__global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_t len, WTYPE_cuda *out) {
+  // convert two arrays into array of tuples (i.e. complex numbers)
+  const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  const size_t stride = blockDim.x * gridDim.x;
+  for (size_t i = idx; i < len; i+=stride) {
+    out[i] = make_cuDoubleComplex(a[i], b[i]);
+  }
+}
+
 
 __global__ void kernel1(WTYPE_cuda *x, STYPE *u, WTYPE_cuda  *y, STYPE *v)
 {
