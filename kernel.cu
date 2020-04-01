@@ -77,7 +77,7 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
     phase = angle(x[i]);
 
 #ifdef DEBUG
-  if (distance == 0) { printf("ERROR: distance must be nonzero"); asm("trap;"); }
+  if (distance == 0) { printf("ERROR: distance must be nonzero\n"); asm("trap;"); }
   // if (amp > 0) printf(">0 \ti: %i, abs: %0.4f, dis: %0.3f\n", i, amp, distance);
   // // TODO check overflows
   if (isnan(amp)) printf("found nan\n");
@@ -170,6 +170,7 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v, const size
     }
   }
 
+  // TODO do smarter agg
   // sync all (incl non-aggregating cores)
   __syncthreads();
 

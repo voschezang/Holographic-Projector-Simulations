@@ -11,7 +11,6 @@
 #define RANDOM_Z_SPACE
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (THREADS_PER_BLOCK must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 /* #define PINNED_MEM // use cudaMallocHost over cudaMalloc // disable if in case of host memory issues // TODO speedup > 1 in absense of kernal invocation and otherwise < 1 */
-/* #define MEMCPY_ASYNC */
 
 #define DIMS 3
 // TODO use N,M
@@ -45,11 +44,11 @@
 #endif
 
 /* // MEMCPY_ASYNC requires pinnen memory */
-#ifdef MEMCPY_ASYNC
-#ifndef PINNED_MEM
-#define PINNED_MEM
-#endif
-#endif
+/* #ifdef MEMCPY_ASYNC */
+/* #ifndef PINNED_MEM */
+/* #define PINNED_MEM */
+/* #endif */
+/* #endif */
 
 // N^2 computations
 // 1) N^2 cores
