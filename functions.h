@@ -316,7 +316,6 @@ inline void transform(const WTYPE *x, WTYPE *y,
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
     d_y_batch[i_stream] = thrust::device_vector<double>(BATCH_SIZE * 2);
 #ifdef MEMCPY_ASYNC
-    assert(0);
     cu( cudaMallocHost( (void **) &d_y_stream[i_stream],
                     BATCH_SIZE * sizeof(WTYPE_cuda) ) );
     cu( cudaMallocHost( (void **) &d_y_block[i_stream],
@@ -334,9 +333,11 @@ inline void transform(const WTYPE *x, WTYPE *y,
 	cudaMemcpy( d_x, x, N * sizeof(WTYPE), cudaMemcpyHostToDevice );
 	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
 #ifdef MEMCPY_ASYNC
+  // TODO 
+	cudaMemcpy( d_v, v, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
   // note that N_BATCHES != number of streams
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
-    size_t i = i_stream * STREAM_SIZE * DIMS;
+    /* const size_t i = i_stream * STREAM_SIZE * DIMS; */
     printf("stream %i create \n", i_stream);
     cudaStreamCreate(&streams[i_stream]);
     printf("stream %i cpy init \n", i_stream);
@@ -371,6 +372,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
                       );
 #ifdef DEBUG
       cudaDeviceSynchronize();
+      /* printf("test > 0 ..\n"); */
       for (size_t m = 0; m < BATCH_SIZE; ++m) {
         // use full y-array in agg
         size_t i = m + i_batch * BATCH_SIZE;
@@ -383,8 +385,9 @@ inline void transform(const WTYPE *x, WTYPE *y,
   }
 
 #ifdef MEMCPY_ASYNC
+  printf("destroy streams\n");
   cudaDeviceSynchronize();
-  for (size_t i = 0; i < N_BATCHES; ++i)
+  for (unsigned int i = 0; i < N_STREAMS; ++i)
     cudaStreamDestroy(streams[i]);
 #endif
 
@@ -408,11 +411,15 @@ inline void transform(const WTYPE *x, WTYPE *y,
 
 	cu( cudaFree( d_x ) );
 	cu( cudaFree( d_u ) );
-	cu( cudaFree( d_v ) );
-  for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
-    cu( cudaFree(d_y_stream[i_stream] ) );
-    /* cu( cudaFree(d_y_batch[i_stream] ) ); */
-    cu( cudaFree(d_y_block[i_stream] ) );
+	cu( cudaFree( d_v ) ); // TODO free host for d_v_batch
+  for (unsigned int i = 0; i < N_STREAMS; ++i) {
+#ifdef MEMCPY_ASYNC
+    cu( cudaFreeHost( d_y_stream[i] ) );
+    cu( cudaFreeHost( d_y_block[i] ) );
+#else
+    cu( cudaFree( d_y_stream[i] ) );
+    cu( cudaFree( d_y_block[i] ) );
+#endif
   }
   /* cudaDeviceReset(); // TODO check if used correctly */
   normalize_amp(y, N, 0);

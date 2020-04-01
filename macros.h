@@ -6,7 +6,7 @@
 /* #include <thrust/complex.h> */
 
 #define DEBUG
-/* #define Z // compute z transform */
+#define Z // compute z transform
 #define RANDOM_Y_SPACE // TODO consider better, non-correlated RNG
 #define RANDOM_Z_SPACE
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (THREADS_PER_BLOCK must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
@@ -27,7 +27,7 @@
 #define BATCH_SIZE 8 // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead
 // TODO compute optimal batch size as function of N
 
-#define N_STREAMS 1
+#define N_STREAMS 2
 #define STREAM_SIZE (N / N_STREAMS)
 /* #define N_BATCHES ((N + BATCH_SIZE - 1) / BATCH_SIZE) */
 #define BATCHES_PER_STREAM ((STREAM_SIZE + BATCH_SIZE - 1) / BATCH_SIZE)
