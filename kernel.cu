@@ -96,7 +96,8 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
 
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
 // TODO use __restrict__, const
-__global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v, const size_t i_batch, const char direction)
+__global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
+                        const char direction)
 {
   /** First compute local sum, then do nested aggregation
    *
@@ -141,18 +142,18 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v, const size
     // TODO test performance diff when switching inner/outer loop and with um cache
     // TODO change cache size and find new optimal batch size w/ um cache
     for(unsigned int m = 0; m < BATCH_SIZE; ++m) {
-#ifndef CACHE_BATCH
-      const size_t j = m + i_batch * BATCH_SIZE;
-#endif
+// #ifndef CACHE_BATCH
+//       const size_t j = m + i_batch * BATCH_SIZE;
+// #endif
       sum = ZERO;
       // Usage of stride allows <<<1,1>>> kernel invocation
       for (size_t i = idx; i < N; i += stride) {
-#ifdef CACHE_BATCH
+// #ifdef CACHE_BATCH
         // assert(v[(m + i_batch * BATCH_SIZE) * DIMS] == v_cached[m * DIMS]);
         sum = cuCadd(superposition_single(i, m, x, u, v_cached, direction), sum);
-#else
-        sum = cuCadd(superposition_single(i, j, x, u, v, direction), sum);
-#endif
+// #else
+//         sum = cuCadd(superposition_single(i, j, x, u, v, direction), sum);
+// #endif
         // TODO do this in separate func
         //TODO err: i_batch does not depend on x
       }

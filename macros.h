@@ -18,7 +18,6 @@
 /* #define N_sqrt 256 */
 /* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
-/* #define N_sqrt 8 */
 #define N (N_sqrt * N_sqrt)
 #define N2 (N_sqrt * N_sqrt)
 /* #define BATCH_SIZE (N / 65536 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
@@ -27,7 +26,7 @@
 #define BATCH_SIZE 8 // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead
 // TODO compute optimal batch size as function of N
 
-#define N_STREAMS 2
+#define N_STREAMS 4
 #define STREAM_SIZE (N / N_STREAMS)
 /* #define N_BATCHES ((N + BATCH_SIZE - 1) / BATCH_SIZE) */
 #define BATCHES_PER_STREAM ((STREAM_SIZE + BATCH_SIZE - 1) / BATCH_SIZE)
