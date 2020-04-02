@@ -95,6 +95,7 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
 }
 
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
+// TODO use __restrict__, const
 __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v, const size_t i_batch, const char direction)
 {
   /** First compute local sum, then do nested aggregation
@@ -111,7 +112,7 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v, const size
   __shared__ STYPE v_cached[BATCH_SIZE * DIMS];
   // use strides when THREADS_PER_BLOCK < BATCH_SIZE * DIMS
   for (unsigned int i = threadIdx.x; i < BATCH_SIZE * DIMS; i+=THREADS_PER_BLOCK)
-    v_cached[i] = v[i + i_batch * BATCH_SIZE * DIMS];
+    v_cached[i] = v[i];
 
   __syncthreads();
 
@@ -161,7 +162,7 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v, const size
         // TODO this causes a strange offset in z
         sum = cuCadd(polar(1, 0.4912), sum);
       }
-      sum = cuCadd(polar(1, 1.94912), sum);
+      sum = cuCadd(polar(1, 1.94912), sum); // TODO rm
       tmp[m + threadIdx.x * BATCH_SIZE] = sum;
       // tmp[m * THREADS_PER_BLOCK + threadIdx.x] = sum;
 #ifdef DEBUG
@@ -209,6 +210,13 @@ __global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_
   for (size_t i = idx; i < len; i+=stride) {
     out[i] = make_cuDoubleComplex(a[i], b[i]);
   }
+}
+
+template<typename Iterator, typename T, typename BinaryOperation, typename Pointer>
+__global__ void reduce_kernel(Iterator first, Iterator last, T init, BinaryOperation binary_op, Pointer result)
+{
+  // from https://github.com/thrust/thrust/blob/master/examples/cuda/async_reduce.cu
+  *result = thrust::reduce(thrust::cuda::par, first, last, init, binary_op);
 }
 
 

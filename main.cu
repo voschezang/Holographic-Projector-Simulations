@@ -1,4 +1,4 @@
-//#define _POSIX_C_SOURCE 199309L
+// #define _POSIX_C_SOURCE 199309L
 
 #include <assert.h>
 // #include <complex.h> // TODO use cpp cmath
@@ -173,7 +173,7 @@ int main() {
   cudaProfilerStop();
 
   write_arrays(x,y,z, u,v,w, N, TXT);
-  write_arrays(x,y,z, u,v,w, N, GRID);
+  // write_arrays(x,y,z, u,v,w, N, GRID);
   // write_arrays(x,y,z, u,v,w, N, DAT);
   // write_arrays(x,y,z, u,v,w, 100, DAT);
   free(x);
