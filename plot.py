@@ -3,7 +3,9 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib.ticker import EngFormatter
 
+from _img_dir import IMG_DIR
 from util import *  # N, N_sqrt
+plt.rcParams['font.family'] = 'serif'
 
 # cmap = 'rainbow'
 cmap = 'inferno'
@@ -75,8 +77,8 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None, **kwargs)
 
     # data = ['a', r'$\phi$', 'I']
     n_subplots = m * 3
-    fig = plt.figure(figsize=(n_subplots // m * 4, m * 4))
-    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
+    fig = plt.figure(figsize=(n_subplots // m * 5, m * 5))
+    plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
     plt.subplot(m, n_subplots // m, 1)
     matrix(reshape(y[:, 0], HD), '%s Amplitude' % prefix, fig=fig, **kwargs)
     plt.xlabel("Space dim1 (m)")
@@ -166,25 +168,30 @@ def scatter(x, w, title='', color_func=lambda a, phi: a, log=False, s=10,
 
 def scatter_multiple(y, v=None, title='', prefix='', filename=None, **kwargs):
     n_subplots = 3
-    fig = plt.figure(figsize=(n_subplots * 4, 3))
-    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
+    fig = plt.figure(figsize=(n_subplots * 5, 4))
+    plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
     ax = plt.subplot(1, n_subplots, 1)
-    scatter(y[:, 0], v, '%s Amplitude' % prefix, fig=fig, **kwargs)
+    scatter(y[:, 0], v, 'Amplitude', fig=fig, **kwargs)
     sci_labels(ax)
     plt.xlabel("Space dim1 (m)")
     plt.ylabel("Space dim2 (m)")
+
     ax = plt.subplot(1, n_subplots, 2)
-    scatter(irradiance(to_polar(y[:, 0], y[:, 1])),
-            v, r'%s I' % prefix, fig=fig, **kwargs)
+    scatter(irradiance(to_polar(y[:, 0], y[:, 1])), v, 'Irradiance', fig=fig,
+            **kwargs)
     sci_labels(ax)
     plt.xlabel("Space dim1 (m)")
     plt.ylabel("Space dim2 (m)")
-    ax = plt.subplot(1, n_subplots, 3)
+
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = 'twilight'
-    scatter(y[:, 1] / np.pi, v, r'%s $\phi$' % prefix, fig=fig, **kwargs)
+    ax = plt.subplot(1, n_subplots, 3)
+    scatter(y[:, 1] / np.pi, v, 'Phase', fig=fig, **kwargs)
+    sci_labels(ax)
     plt.xlabel("Space dim1 (m)")
     plt.ylabel("Space dim2 (m)")
+
+    # TODO tight layout?
     if filename is not None:
         # pdf is slow for large scatterplots
         save_fig(filename, ext='png')
@@ -223,7 +230,7 @@ def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
 def save_fig(filename, dir='img', ext='pdf', dpi='figure',
              transparent=True, bbox_inches='tight', interpolation='none'):
     assert(os.path.isdir(dir))
-    plt.axis('off')
+    # plt.axis('off') # this only affects the current subplot
     plt.savefig(f'{dir}/{filename}.{ext}', dpi=dpi, transparent=True,
                 interpolation=interpolation, bbox_inches=bbox_inches)
 
@@ -232,4 +239,4 @@ if __name__ == '__main__':
     n = 100
     x = np.linspace(0, 5 * np.pi, n)
     plt.plot(x, np.sin(x))
-    plt.savefig('img/tst.pdf', transparent=True)
+    plt.savefig('{IMG_DIR}/tst.pdf', transparent=True)

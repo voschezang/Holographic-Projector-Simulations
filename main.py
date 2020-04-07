@@ -15,8 +15,14 @@ def run():
 
 def parse_line(k: str, content: str):
     if k in 'uvw':
-        data[k] = np.array(
-            [float(x) for x in content.split(',')]).reshape(-1, DIMS)
+        try:
+            data[k] = np.array(
+                [float(x) for x in content.split(',')]).reshape(-1, DIMS)
+        except ValueError as e:
+            print('! Exception trig\n ->', e)
+            for v in content.split(','):
+                print(v)
+                print(float(v))
 
     elif k in 'xyz':
         try:
@@ -80,7 +86,7 @@ y:2,3,3,4
     #  plot subset
     N = data['y'].shape[0]
     N_sqrt = np.sqrt(N).astype(int)
-    n = 75
+    n = 50
     indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
     plot.scatter_multiple(data['y'][indices], data['v'][indices],
                           'y', filename='y-scatter-sub', s=1)
