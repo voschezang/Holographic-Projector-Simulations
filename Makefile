@@ -26,6 +26,12 @@ mount:
 	sshfs $(REMOTE_DIR)/ $(MNT_DIR)
 	# sshfs nikhef:/project/detrd/markv/Holographic-Projector/test/ $(MNT_DIR)
 
+	# in case of Input/Output error
+	# find pid
+	# -$ pgrep -lf sshfs
+	# -$ kill -9 myPid
+	# umount -f $(MNT_DIR)
+
 umount:
 	umount $(MNT_DIR)
 
@@ -65,6 +71,7 @@ py:
 
 plot:
 	python3 main.py -scatter
+	# gnuplot gnuplot.gnu
 
 remote-run:
 	sh remote_run.sh
