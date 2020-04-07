@@ -210,6 +210,11 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z, STYPE *u, STYPE *v, STYPE *w, si
   }
 }
 
+double dt(struct timespec t0, struct timespec t1) {
+  return (double) (t1.tv_sec - t0.tv_sec) + \
+    ((double) (t1.tv_nsec - t0.tv_nsec)) * 1e-9;
+}
+
 void init_random(curandGenerator_t *gen, unsigned int seed) {
   curandCreateGenerator(gen, CURAND_RNG_PSEUDO_XORWOW);
   curandCreateGenerator(gen ,CURAND_RNG_PSEUDO_MT19937);

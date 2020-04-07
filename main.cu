@@ -9,8 +9,6 @@
 #include <stdio.h>
 #include <time.h>
 #include <cuda_profiler_api.h>
-// #include <random>
-
 #include <thrust/host_vector.h> // unused in this file but causes error if omitted
 
 #include "macros.h"
@@ -20,9 +18,9 @@
 /**
  * Input x,u is splitted over GPU cores/threads
  * Output y,v is streamed (send in batches).
- * The arrays y,v live on CPU, the batches d_y, d_v live on GPU.
  *
- * It is assumed that x,y,u,v all fit in GPU memory, but not necessarily in cache
+ * It is assumed that x,u all fit in GPU memory, but not necessarily in cache
+ * Batches containing parts of y,v are send back to CPU immediately
  *
  * Naming convention
  * i,j,k = indices in flattened arrays
@@ -76,10 +74,7 @@ int main() {
   summarize_double('v', v, N * DIMS);
 
   clock_gettime(CLOCK_MONOTONIC, &t1);
-  {
-    double dt = (double) (t1.tv_sec - t0.tv_sec) + ((double) (t1.tv_nsec - t0.tv_nsec)) * 1e-9;
-    printf("runtime init: \t%0.3f\n", dt);
-  }
+  printf("runtime init: \t%0.3f\n", dt(t0, t1));
   printf("loop\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
 
@@ -91,16 +86,17 @@ int main() {
 
   // end loop
   clock_gettime(CLOCK_MONOTONIC, &t2);
-  double dt = (double) (t2.tv_sec - t1.tv_sec) + ((double) (t2.tv_nsec - t1.tv_nsec)) * 1e-9;
   printf("done\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
-  printf("runtime loop: \t%0.3f\n", dt);
+  double time = dt(t1, t2);
+  printf("runtime init: \t%0.3f\n", time);
 #ifndef Z
-  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n", flops(dt), FLOP_PER_POINT);
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n", \
+         flops(time), FLOP_PER_POINT);
 #else
-  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n", 2*flops(dt), 2*FLOP_PER_POINT);
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n", \
+         2*flops(time), 2*FLOP_PER_POINT);
 #endif
-  // printf("FLOP_PER_POINT: %i\n", FLOP_PER_POINT);
 
 #ifdef DEBUG
   for (size_t i = 0; i < N2; ++i) {
@@ -115,17 +111,11 @@ int main() {
 #endif
 
   cudaProfilerStop();
-
   write_arrays(x,y,z, u,v,w, N, TXT);
   // write_arrays(x,y,z, u,v,w, N, GRID);
   // write_arrays(x,y,z, u,v,w, N, DAT);
   // write_arrays(x,y,z, u,v,w, 100, DAT);
-  free(x);
-  free(y);
-  free(z);
-  free(u);
-  free(v);
-  free(w);
-
+  free(x); free(y); free(z);
+  free(u); free(v); free(w);
 	return 0;
 }
