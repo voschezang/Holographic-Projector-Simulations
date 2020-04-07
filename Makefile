@@ -58,13 +58,17 @@ build:
 	# nvcc -o main main.cu
 	# -ftz=true // flush dernormal to zero
 	#  -ftz=true -prec-div=false -prec-sqrt=false
-	/usr/local/cuda-10.1/bin/nvcc -o main main.cu
+	/usr/local/cuda-10.2/bin/nvcc -o main main.cu
 
 build-run:
 	make build && make run
 
 run:
 	./main
+	make zip
+
+zip:
+	zip tmp/out.zip tmp/out.txt
 
 py:
 	python3 main.py -r
