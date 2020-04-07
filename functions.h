@@ -63,10 +63,10 @@ double memory_in_MB() {
 void summarize_c(char name, WTYPE *x, size_t len) {
   double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
   for (size_t i = 0; i < len; ++i) {
-    max_amp = fmax(max_amp, ABS(x[i]));
-    min_amp = fmin(min_amp, ABS(x[i]));
+    max_amp = fmax(max_amp, cuCabs(x[i]));
+    min_amp = fmin(min_amp, cuCabs(x[i]));
     max_phase = fmax(max_phase , angle(x[i]));
-    sum += ABS(x[i]);
+    sum += cuCabs(x[i]);
   }
   double mean = sum / (double) N;
   printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f, mean: %f\n", name, min_amp, max_amp, max_phase, mean);
@@ -75,7 +75,7 @@ void summarize_c(char name, WTYPE *x, size_t len) {
 void normalize_amp(WTYPE *x, size_t len, char log_normalize) {
   double max_amp = 0;
   for (size_t i = 0; i < len; ++i)
-    max_amp = fmax(max_amp, ABS(x[i]));
+    max_amp = fmax(max_amp, cuCabs(x[i]));
 
   if (max_amp < 1e-6)
     printf("WARNING, max_amp << 1\n");
@@ -118,10 +118,10 @@ void write_array(char c, STYPE *x, size_t len, FILE *out, char print_key) {
     fprintf(out, "%c:", c);
 
   // first value
-  fprintf(out, "%f", x[0]);
+  fprintf(out, "%e", x[0]);
   // other values, prefixed by ','
   for (size_t i = 1; i < len; ++i) {
-    fprintf(out, ",%f", x[i]);
+    fprintf(out, ",%e", x[i]);
   }
   // newline / return
   fprintf(out, "\n");
@@ -148,7 +148,7 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
   fprintf(out, "#dim 1 - dim 2 - dim 3 - Amplitude - Phase\n");
   for (size_t i = 0; i < len; ++i) {
     size_t j = i * DIMS;
-    fprintf(out, "%f %f %f %f %f\n", u[j], u[j+1], u[j+2], ABS(x[i]), angle(x[i]));
+    fprintf(out, "%f %f %f %f %f\n", u[j], u[j+1], u[j+2], cuCabs(x[i]), angle(x[i]));
   }
   fclose(out);
 }
@@ -191,9 +191,9 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z, STYPE *u, STYPE *v, STYPE *w, si
         /* assert(img[I_(i,j)] == 12); */
         /* img[I_(i,j)] = 31.0; */
         /* printf("i: %i, j: %i, img[%4i]: %f\n", i,j, I_(i,j), img[I_(i,j)]); */
-        img[I_(i,j)] = ABS(y[I_(i,j)]);// + ABS(y[I_(i+1,j)]); // + y[I_(i-1,j)] + y[I_(i,j+1)] + y[I_(i,j-1)];
+        img[I_(i,j)] = cuCabs(y[I_(i,j)]);// + cuCabs(y[I_(i+1,j)]); // + y[I_(i-1,j)] + y[I_(i,j+1)] + y[I_(i,j-1)];
 #ifdef DEBUG
-        assert(ABS(y[I_(i,j)]) < DBL_MAX);
+        assert(cuCabs(y[I_(i,j)]) < DBL_MAX);
 #endif
         /* img[i][j] *= 1./5.; */
         /* printf("i: %i, j: %i, img[%4i]: %f\n", i,j, I_(i,j), img[I_(i,j)]); */
@@ -209,6 +209,19 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z, STYPE *u, STYPE *v, STYPE *w, si
     fclose(out);
   }
 }
+
+void init_random(curandGenerator_t *gen, unsigned int seed) {
+  curandCreateGenerator(gen, CURAND_RNG_PSEUDO_XORWOW);
+  curandCreateGenerator(gen ,CURAND_RNG_PSEUDO_MT19937);
+  curandSetPseudoRandomGeneratorSeed(*gen, seed);
+}
+
+void gen_random(float *x, float *d_x, size_t len, curandGenerator_t gen) {
+  curandGenerateUniform(gen, d_x, len);
+  cudaMemcpy(x, d_x, len * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaDeviceSynchronize();
+}
+
 
 inline void cp_batch_data(const STYPE *v, STYPE *d_v, const size_t count, cudaStream_t stream) {
   // copy "v[i]" for i in batch, where v are the spatial positions belonging to the target datapoints y
@@ -394,7 +407,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
       for (size_t m = 0; m < BATCH_SIZE; ++m) {
         // use full y-array in agg
         size_t i = m + i_batch * BATCH_SIZE;
-        assert(ABS(y[i]) > 0);
+        assert(cuCabs(y[i]) > 0);
       }
 #endif
     }
@@ -418,14 +431,14 @@ inline void transform(const WTYPE *x, WTYPE *y,
     /* assert(y[i_batch] != 10); */
     /* printf("y[%i]: \n", i_batch * BATCH_SIZE); */
     /* assert(y[i_batch * BATCH_SIZE] != 10); */
-    assert(ABS(y[i_batch * BATCH_SIZE]) > 0);
+    assert(cuCabs(y[i_batch * BATCH_SIZE]) > 0);
   }
 
   for (size_t i_batch = 0; i_batch < N_BATCHES; i_batch+=1)
       for (unsigned int i = 0; i < BATCH_SIZE; ++i)
-        assert(ABS(y[i + i_batch * BATCH_SIZE]) > 0);
+        assert(cuCabs(y[i + i_batch * BATCH_SIZE]) > 0);
 
-  for(size_t i = 0; i < N; ++i) assert(ABS(y[i]) > 0);
+  for(size_t i = 0; i < N; ++i) assert(cuCabs(y[i]) > 0);
 #endif
 
   // implicit sync?

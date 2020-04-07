@@ -5,7 +5,7 @@
 /* #include <thrust/reduce.h> */
 /* #include <thrust/complex.h> */
 
-#define DEBUG
+/* #define DEBUG */
 #define Z // compute z transform
 #define RANDOM_Y_SPACE // TODO consider better, non-correlated RNG
 #define RANDOM_Z_SPACE
@@ -14,8 +14,8 @@
 
 #define DIMS 3
 // TODO use N,M
-#define N_sqrt 8
-/* #define N_sqrt 256 */
+/* #define N_sqrt 8 */
+#define N_sqrt 256
 /* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
 #define N (N_sqrt * N_sqrt)
@@ -92,8 +92,8 @@
 #define WTYPE_cuda cuDoubleComplex // wave type for CUDA device
 /* #define WTYPE double complex // wave type */
 /* #define ABS(x) (cabs(x)) */
-#define WTYPE cuDoubleComplex // wave type for CUDA device
-#define ABS(x) (cuCabs(x))
+#define WTYPE cuDoubleComplex // wave type for host
+/* #define ABS(x) (cuCabs(x)) */
 #define STYPE double  // space (coordinate) type
 #else
 #define WTYPE_cuda cuFloatComplex // wave type for CUDA device

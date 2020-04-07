@@ -66,12 +66,12 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
   assert(direction == -1 || direction == 1);
 #endif
 
-  size_t
+  const size_t
     n = i * DIMS,
     m = j * DIMS; // TODO use struct?
   // TODO use softeningSquared?
   // TODO check coalesing
-  double
+  const double
     distance = norm3d(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
     amp = cuCabs(x[i]),
     phase = angle(x[i]);
@@ -86,7 +86,7 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
   if (isinf(distance)) printf("found inf\n");
   // if (amp > 0) printf("amp = %0.5f > 0\n", amp);
   // if (distance > 0) printf("dis: %0.4f\n\n", distance);
-  cuDoubleComplex res = polar(amp, phase);
+  const cuDoubleComplex res = polar(amp, phase);
   if (amp > 0) assert(cuCabs(res) > 0);
 #endif
 
