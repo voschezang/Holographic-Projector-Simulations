@@ -94,6 +94,67 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
   return polar(amp / distance, phase - distance * direction * TWO_PI_OVER_LAMBDA);
 }
 
+inline __device__ void superposition_partial(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y_local, STYPE *v, const char direction) {
+  // inner scope
+  {
+    const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    const size_t stride = blockDim.x * gridDim.x;
+    // size_t j;
+    WTYPE_cuda sum;
+
+    // for each y-datapoint in current batch
+    // TODO test performance diff when switching inner/outer loop and with um cache
+    // TODO change cache size and find new optimal batch size w/ um cache
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+      // add single far away light source, with arbitrary (but constant) phase
+      // assume threadIdx.x is a runtime constant
+      if (direction == -1 && threadIdx.x == 0 && idx == 0) sum = polar(1, 0.4912);
+      else sum = ZERO;
+
+      // Usage of stride allows <<<1,1>>> kernel invocation
+      for (size_t i = idx; i < N; i += stride)
+        sum = cuCadd(superposition_single(i, m, x, u, v, direction), sum);
+
+      // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = sum;
+      y_local[m] = sum;
+#ifdef DEBUG
+      cuCheck(sum);
+#endif
+    }
+  }
+}
+
+inline __device__ void superposition_cp_result(WTYPE_cuda *local, WTYPE_cuda *tmp) {
+#ifndef PARTIAL_AGG
+  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+    tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = local[m];
+#else
+  if (BLOCKDIM == 1) {
+    // note that gridDim can still be nonzero
+    // TODO
+    assert(0);
+    return; // no divergence because this cannot be true for other threads
+  }
+
+  // use 1/2 a much shared memory
+
+  const unsigned int halfBlockSize = BLOCKDIM / 2;
+  // write before first sync. note that integer division is used
+  if (threadIdx.x >= halfBlockSize)
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+      tmp[m + (threadIdx.x - halfBlockSize ) * KERNEL_BATCH_SIZE] = local[m];
+
+  __syncthreads();
+  if (threadIdx.x < BLOCKDIM / 2)
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+      tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = \
+        cuCadd(local[m], tmp[m + threadIdx.x * KERNEL_BATCH_SIZE]);
+#endif
+
+  __syncthreads();
+}
+
+
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
 // TODO use __restrict__, const
 __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
@@ -106,96 +167,76 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
    */
   //
   // TODO use shared mem for u-data
-  __shared__ WTYPE_cuda tmp[THREADS_PER_BLOCK * BATCH_SIZE];
-#ifdef CACHE_BATCH
-  // cache v[batch] because it is read by every thread
-  // v_cached is constant and equal for each block
-  __shared__ STYPE v_cached[BATCH_SIZE * DIMS];
-  // use strides when THREADS_PER_BLOCK < BATCH_SIZE * DIMS
-  for (unsigned int i = threadIdx.x; i < BATCH_SIZE * DIMS; i+=THREADS_PER_BLOCK)
-    v_cached[i] = v[i];
-
-  __syncthreads();
-
-  // if (threadIdx.x == 0 && blockIdx.x == 0 && i_batch == 0) {
-  //   printf("\n v: \t\t");
-  //   for (unsigned int i = 0; i < 2 * DIMS; i+=1)
-  //     printf("%8f ", v[i]);
-
-  //   printf("\n v_cached: \t");
-  //   for (unsigned int i = 0; i < 2 * DIMS; i+=1)
-  //     printf("%8f ", v_cached[i]);
-
-  //   printf("\n");
-  // }
+#if (defined(PARTIAL_AGG) && KERNEL_BATCH_SIZE > 1)
+  __shared__ WTYPE_cuda tmp[BLOCKDIM * KERNEL_BATCH_SIZE / 2];
+#else
+  __shared__ WTYPE_cuda tmp[BLOCKDIM * KERNEL_BATCH_SIZE];
 #endif
-  // TODO use cuda.y-stride? - note the double for loop - how much memory fits in an SM?
-  // TODO switch y-loop and x-loop and let sum : [BATCH_SIZE]? assuming y-batch is in local memory
-  // printf("idx %i -", threadIdx.x);
+
   {
-    const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const size_t stride = blockDim.x * gridDim.x;
-    // size_t j;
-    WTYPE_cuda sum;
+#ifdef CACHE_BATCH
+    // cache v[batch] because it is read by every thread
+    // v_cached is constant and equal for each block
+    __shared__ STYPE v_cached[KERNEL_BATCH_SIZE * DIMS];
+    // use strides when BLOCKDIM < BATCH_SIZE * DIMS
+    for (unsigned int i = threadIdx.x; i < KERNEL_BATCH_SIZE * DIMS; i+=BLOCKDIM)
+      v_cached[i] = v[i];
 
-    // for each y-datapoint in current batch
-    // TODO test performance diff when switching inner/outer loop and with um cache
-    // TODO change cache size and find new optimal batch size w/ um cache
-    for(unsigned int m = 0; m < BATCH_SIZE; ++m) {
-// #ifndef CACHE_BATCH
-//       const size_t j = m + i_batch * BATCH_SIZE;
-// #endif
-      sum = ZERO;
-      // Usage of stride allows <<<1,1>>> kernel invocation
-      for (size_t i = idx; i < N; i += stride) {
-// #ifdef CACHE_BATCH
-        // assert(v[(m + i_batch * BATCH_SIZE) * DIMS] == v_cached[m * DIMS]);
-        sum = cuCadd(superposition_single(i, m, x, u, v_cached, direction), sum);
-// #else
-//         sum = cuCadd(superposition_single(i, j, x, u, v, direction), sum);
-// #endif
-        // TODO do this in separate func
-        //TODO err: i_batch does not depend on x
-      }
-      // assume threadIdx.x is a runtime constant
-      if (direction == -1 && threadIdx.x == 0 && idx == 0) {
-        // add single far away light source, with arbitrary (but constant) phase
-        // TODO this causes a strange offset in z
-        sum = cuCadd(polar(1, 0.4912), sum);
-      }
-      sum = cuCadd(polar(1, 1.94912), sum); // TODO rm
-      tmp[m + threadIdx.x * BATCH_SIZE] = sum;
-      // tmp[m * THREADS_PER_BLOCK + threadIdx.x] = sum;
-#ifdef DEBUG
-      cuCheck(sum);
+    __syncthreads();
+#else
+    STYPE *v_cached = v;
 #endif
+
+    // TODO use cuda.y-stride? - note the double for loop - how much memory fits in an SM?
+    // TODO switch y-loop and x-loop and let sum : [BATCH_SIZE]? assuming y-batch is in local memory
+    // printf("idx %i -", threadIdx.x);
+
+    {
+      WTYPE_cuda local[KERNEL_BATCH_SIZE];
+      superposition_partial(x, u, local, v_cached, direction);
+      superposition_cp_result(local, tmp);
     }
+  // free v_cached // TODO check if this does anything
   }
 
-  // TODO do smarter agg
-  // sync all (incl non-aggregating cores)
-  __syncthreads();
+  const unsigned int quarterBlockSize = BLOCKDIM / 2;
+
+  // TODO let first quarter do y1, let second quarter do y2..?
+  // if (threadIdx.x < quarterBlockSize) {
+  //   // TOOD spread out mem access to reduce memory bank conflicts
+  //   for(unsigned int m = 0; m < BATCH_SIZE; ++m) {
+  //     const unsigned int i = m + threadIdx.x * BATCH_SIZE;
+  //     tmp[i] = \
+  //       cuCadd(tmp[i], tmp[i + quarterBlockSize]);
+  //   }
+  // }
 
   // aggregate locally (within blocks)
+  __syncthreads();
   if (threadIdx.x == 0) {
     // for each y-datapoint in current batch
-    for(unsigned int m = 0; m < BATCH_SIZE; ++m) {
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
       WTYPE_cuda sum;
       sum = ZERO;
-      for (unsigned int k = 0; k < THREADS_PER_BLOCK; ++k)
-        sum = cuCadd(sum, tmp[m + k * BATCH_SIZE]);
-      // for (unsigned int k = 0; k < THREADS_PER_BLOCK; ++k)
-      //   sum = cuCadd(sum, tmp[k + m * THREADS_PER_BLOCK]);
+
+#if (defined(PARTIAL_AGG) && BLOCKDIM > 1)
+      for (unsigned int k = 0; k < BLOCKDIM / 2; ++k)
+#else
+      for (unsigned int k = 0; k < BLOCKDIM; ++k)
+#endif
+        sum = cuCadd(sum, tmp[m + k * KERNEL_BATCH_SIZE]);
+      // for (unsigned int k = 0; k < BLOCKDIM; ++k)
+      //   sum = cuCadd(sum, tmp[k + m * BLOCKDIM]);
 
 #ifdef DEBUG
       cuCheck(sum);
 #endif
 
       // TODO foreach batch element
-      // y[blockIdx.x + m * BLOCKDIM] = sum;
-      const unsigned int i = blockIdx.x + m * BLOCKDIM;
+      // y[blockIdx.x + m * GRIDDIM] = sum;
+      const unsigned int i = blockIdx.x + m * GRIDDIM;
       y[i] = sum.x;
-      y[i + BLOCKDIM * BATCH_SIZE] = sum.y;
+      y[i + GRIDDIM * KERNEL_BATCH_SIZE] = sum.y;
       // y[m + blockIdx.x * BATCH_SIZE] = sum;
     }
   }

@@ -37,18 +37,19 @@ int main() {
   printf("\t"); printf("BATCH_SIZE:\t%8i", BATCH_SIZE);
   printf("\t"); printf("N_BATCHES: %8i", N_BATCHES);
 
-  printf("\n"); printf(" BLOCKDIM: %8i", BLOCKDIM);
-  printf("\t"); printf("THREADS_PER_BLOCK: %8i", THREADS_PER_BLOCK);
-  printf("\t"); printf("E[tasks] = %0.3fk", BLOCKDIM * THREADS_PER_BLOCK * 1e-3);
+  printf("\n"); printf(" GRIDDIM: %8i", GRIDDIM);
+  printf("\t"); printf("BLOCKDIM: %8i", BLOCKDIM);
+  printf("\t"); printf("E[tasks] = %0.3fk", GRIDDIM * BLOCKDIM * 1e-3);
   printf("\t"); printf("\tN/thread: %i", N_PER_THREAD);
   printf("\n"); printf(" N_STREAMS %3i \t\tSTREAM SIZE: %i (x3)", N_STREAMS, STREAM_SIZE);
   printf("\t"); printf("\tBATCHES_PER_STREAM (x BATCH_SIZE = N): %i (x %i = %i)\n", BATCHES_PER_STREAM, BATCH_SIZE, BATCHES_PER_STREAM * BATCH_SIZE);
+  printf("KERNELS_PER_BATCH %3i \t\tKERNEL BATCH SIZE: %i\n", KERNELS_PER_BATCH, KERNEL_BATCH_SIZE);
   // if (BATCHES_PER_STREAM < BATCH_SIZE)
   //   printf("BATCHES_PER_STREAM (%i) < BATCH_SIZE (%i)\n", BATCHES_PER_STREAM, BATCH_SIZE);
 
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
   {
-    double n = THREADS_PER_BLOCK * BATCH_SIZE;
+    double n = BLOCKDIM * BATCH_SIZE;
     double m = n * sizeof(WTYPE_cuda) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
@@ -82,6 +83,7 @@ int main() {
 #ifdef Z
   printf("\nSecond transform:\n");
   transform(y, z, v, w, 1);
+  // transform(x, z, u, v, 1);
 #endif
 
   // end loop

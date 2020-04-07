@@ -45,10 +45,12 @@ void check_params() {
 #elif (N_STREAMS * BATCHES_PER_STREAM != N_BATCHES)
   printf("Invalid param: incompatible N_STREAMS and N\n"); assert(0);
 #endif
+  assert(KERNEL_BATCH_SIZE <= BATCH_SIZE);
+  assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == BATCH_SIZE);
   assert(N_PER_THREAD > 0);
   assert(N == N_STREAMS * STREAM_SIZE);
   assert(N == BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
-  assert(N_PER_THREAD * THREADS_PER_BLOCK * BLOCKDIM == N);
+  assert(N_PER_THREAD * BLOCKDIM * GRIDDIM == N);
   assert(sizeof(WTYPE) == sizeof(WTYPE_cuda));
 }
 
@@ -271,10 +273,8 @@ void init_planes(WTYPE *x, STYPE *u, STYPE *v, STYPE *w) {
 #endif
       v[Ix(i,j,2)] = -0.02;
 
-
-
 #ifdef RANDOM_Z_SPACE
-      w[Ix(i,j,0)] = j * dS - offset + random_range * \
+      w[Ix(i,j,0)] = i * dS - offset + random_range * \
         (random[j*4+2] - 0.5);
       w[Ix(i,j,1)] = j * dS - offset + random_range * \
         (random[j*4+3] - 0.5);
@@ -305,14 +305,21 @@ inline void transform_batch(WTYPE_cuda *d_x, STYPE *d_u, STYPE *d_v,
                             double *d_y_block)
 {
   // start kernel
+  // TODO GRIDDIM should be GRIDDIM
+  for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
+    // d_y_block : BATCH_SIZE x GRIDDIM x 2
+    const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE * 2;
+    const unsigned int k = i * KERNEL_BATCH_SIZE;
 #ifdef MEMCPY_ASYNC
-  kernel3<<< BLOCKDIM, THREADS_PER_BLOCK, 0, stream >>>
-    (d_x, d_u, d_y_block, d_v, direction );
+    kernel3<<< GRIDDIM, BLOCKDIM, 0, stream >>>
+      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
+    /* ( d_x, d_u, d_y_block, d_v, direction ); */
 #else
-  // TODO alt, dynamic blocksize: k<<<N,M,batch_size>>>
-  kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>
-    ( d_x, d_u, d_y_block, d_v, direction );
+    // TODO alt, dynamic blocksize: k<<<N,M,batch_size>>>
+    kernel3<<< GRIDDIM, BLOCKDIM >>>
+      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
 #endif
+  }
 }
 
 inline void agg_batch_blocks(cudaStream_t stream,
@@ -324,20 +331,20 @@ inline void agg_batch_blocks(cudaStream_t stream,
   // TODO is a reduction call for each datapoint really necessary?
   for (unsigned int m = 0; m < BATCH_SIZE; ++m) {
     // assume two independent reductions are faster or equal to a large reduction
-    thrust::device_ptr<double> ptr(d_y_block + m * BLOCKDIM);
+    thrust::device_ptr<double> ptr(d_y_block + m * GRIDDIM);
 #ifdef MEMCPY_ASYNC
     // launch a 1x1 kernel in selected stream, which calls thrust indirectly
-    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
+    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
 #else
-    ptr_d_y_batch[m] = thrust::reduce(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>());
+    ptr_d_y_batch[m] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
 #endif
 
-    ptr += BLOCKDIM * BATCH_SIZE;
+    ptr += GRIDDIM * BATCH_SIZE;
 
 #ifdef MEMCPY_ASYNC
-    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
+    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
 #else
-    ptr_d_y_batch[m + BATCH_SIZE] = thrust::reduce(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>());
+    ptr_d_y_batch[m + BATCH_SIZE] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
 #endif
   }
 }
@@ -401,7 +408,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
     cu( cudaMallocHost( (void **) &d_y_batch[i_stream],
                     BATCH_SIZE * 2 * sizeof(WTYPE_cuda) ) );
     cu( cudaMallocHost( (void **) &d_y_block[i_stream],
-                    BATCH_SIZE * BLOCKDIM * 2 * sizeof(double) ) );
+                    BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
     cu( cudaMallocHost( (void **) &d_v[i_stream],
                     BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
 #else
@@ -410,7 +417,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
     cu( cudaMalloc( (void **) &d_y_batch[i_stream],
                     BATCH_SIZE * 2 * sizeof(WTYPE_cuda) ) );
     cu( cudaMalloc( (void **) &d_y_block[i_stream],
-                    BATCH_SIZE * BLOCKDIM * 2 * sizeof(double) ) );
+                    BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
     cu( cudaMalloc( (void **) &d_v[i_stream],
                     BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
 #endif
