@@ -25,8 +25,8 @@
 /* #define BATCH_SIZE (N / 65536 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 /* #define BATCH_SIZE (N / 32768 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 /* #define BATCH_SIZE (N / 8192) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
-#define BATCH_SIZE 2 // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead
-#define KERNEL_BATCH_SIZE 2 // TODO unequal size causes output diff
+#define BATCH_SIZE 8 // stream batch size // TODO rename to STREAM_BATCH_SIZE?
+#define KERNEL_BATCH_SIZE 4
 #define KERNELS_PER_BATCH (BATCH_SIZE / KERNEL_BATCH_SIZE)
 // TODO compute optimal batch size as function of N
 
@@ -67,7 +67,7 @@
 #if (N_sqrt <= 32)
 #define BLOCKDIM 1
 #elif (N_sqrt <= 64)
-#define BLOCKDIM 4
+#define BLOCKDIM 16
 #elif (N_sqrt <= 128)
 #define BLOCKDIM 2
 #elif (N_sqrt <= 512)

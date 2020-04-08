@@ -308,7 +308,7 @@ inline void transform_batch(WTYPE_cuda *d_x, STYPE *d_u, STYPE *d_v,
   // TODO GRIDDIM should be GRIDDIM
   for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
     // d_y_block : BATCH_SIZE x GRIDDIM x 2
-    const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE * 2;
+    const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
 #ifdef MEMCPY_ASYNC
     kernel3<<< GRIDDIM, BLOCKDIM, 0, stream >>>

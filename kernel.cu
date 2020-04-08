@@ -26,7 +26,7 @@ cudaError_t cudaCheck(cudaError_t result, const char *file, int line)
   return result;
 }
 
-__device__ void cuCheck(cuDoubleComplex  z) {
+__host__ __device__ void cuCheck(cuDoubleComplex  z) {
   double a = cuCreal(z), b = cuCimag(z);
   if (isnan(a)) printf("cu found nan re\n");
   if (isinf(a)) printf("cu found inf re\n");
@@ -34,8 +34,7 @@ __device__ void cuCheck(cuDoubleComplex  z) {
   if (isinf(b)) printf("cu found inf I\n");
 }
 
-inline
-__host__ __device__ double angle(cuDoubleComplex  z) {
+inline __host__ __device__ double angle(cuDoubleComplex  z) {
   return atan2(cuCreal(z), cuCimag(z));
 }
 
@@ -55,12 +54,9 @@ __global__ void kernel_zero(WTYPE_cuda *x, size_t n) {
     x[i] = ZERO;
 }
 
-// TODO consider non-complex types (double real, double imag)
-// and check computational cost
 inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j,
                         const WTYPE_cuda *x, const STYPE *u, STYPE *v,
                         const char direction) {
-  // TODO unpack input to u1,u2,3 v1,v2,v3?
   // TODO consider unguarded functions, intrinsic functions
 #ifdef DEBUG
   assert(direction == -1 || direction == 1);
@@ -68,9 +64,8 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
 
   const size_t
     n = i * DIMS,
-    m = j * DIMS; // TODO use struct?
+    m = j * DIMS;
   // TODO use softeningSquared?
-  // TODO check coalesing
   const double
     distance = norm3d(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
     amp = cuCabs(x[i]),
@@ -78,49 +73,34 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
 
 #ifdef DEBUG
   if (distance == 0) { printf("ERROR: distance must be nonzero\n"); asm("trap;"); }
-  // if (amp > 0) printf(">0 \ti: %i, abs: %0.4f, dis: %0.3f\n", i, amp, distance);
-  // // TODO check overflows
-  if (isnan(amp)) printf("found nan\n");
-  if (isinf(amp)) printf("found inf\n");
-  if (isnan(distance)) printf("found nan\n");
-  if (isinf(distance)) printf("found inf\n");
-  // if (amp > 0) printf("amp = %0.5f > 0\n", amp);
-  // if (distance > 0) printf("dis: %0.4f\n\n", distance);
-  const cuDoubleComplex res = polar(amp, phase);
-  if (amp > 0) assert(cuCabs(res) > 0);
 #endif
-
   // TODO __ddiv_rd, __dmul_ru
   return polar(amp / distance, phase - distance * direction * TWO_PI_OVER_LAMBDA);
 }
 
 inline __device__ void superposition_partial(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y_local, STYPE *v, const char direction) {
-  // inner scope
-  {
-    const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const size_t stride = blockDim.x * gridDim.x;
-    // size_t j;
-    WTYPE_cuda sum;
+  const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  const size_t stride = blockDim.x * gridDim.x;
+  WTYPE_cuda sum;
 
-    // for each y-datapoint in current batch
-    // TODO test performance diff when switching inner/outer loop and with um cache
-    // TODO change cache size and find new optimal batch size w/ um cache
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-      // add single far away light source, with arbitrary (but constant) phase
-      // assume threadIdx.x is a runtime constant
-      if (direction == -1 && threadIdx.x == 0 && idx == 0) sum = polar(1, 0.4912);
-      else sum = ZERO;
+  // for each y-datapoint in current batch
+  // TODO test performance diff when switching inner/outer loop and with um cache
+  // TODO change cache size and find new optimal batch size w/ um cache
+  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+    // add single far away light source, with arbitrary (but constant) phase
+    // assume threadIdx.x is a runtime constant
+    if (direction == -1 && threadIdx.x == 0 && idx == 0) sum = polar(1, 0.4912);
+    else sum = ZERO;
 
-      // Usage of stride allows <<<1,1>>> kernel invocation
-      for (size_t i = idx; i < N; i += stride)
-        sum = cuCadd(superposition_single(i, m, x, u, v, direction), sum);
+    // Usage of stride allows <<<1,1>>> kernel invocation
+    for (size_t i = idx; i < N; i += stride)
+      sum = cuCadd(superposition_single(i, m, x, u, v, direction), sum);
 
-      // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = sum;
-      y_local[m] = sum;
+    // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = sum;
+    y_local[m] = sum;
 #ifdef DEBUG
-      cuCheck(sum);
+    cuCheck(sum);
 #endif
-    }
   }
 }
 
@@ -128,6 +108,7 @@ inline __device__ void superposition_cp_result(WTYPE_cuda *local, WTYPE_cuda *tm
 #ifndef PARTIAL_AGG
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
     tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = local[m];
+    // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = local[m];
 #else
   if (BLOCKDIM == 1) {
     // note that gridDim can still be nonzero
@@ -157,6 +138,7 @@ inline __device__ void superposition_cp_result(WTYPE_cuda *local, WTYPE_cuda *tm
 
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
 // TODO use __restrict__, const
+// TODO template<unsigned int blockSize>
 __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
                         const char direction)
 {
@@ -186,11 +168,6 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
 #else
     STYPE *v_cached = v;
 #endif
-
-    // TODO use cuda.y-stride? - note the double for loop - how much memory fits in an SM?
-    // TODO switch y-loop and x-loop and let sum : [BATCH_SIZE]? assuming y-batch is in local memory
-    // printf("idx %i -", threadIdx.x);
-
     {
       WTYPE_cuda local[KERNEL_BATCH_SIZE];
       superposition_partial(x, u, local, v_cached, direction);
@@ -201,13 +178,15 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
 
   const unsigned int quarterBlockSize = BLOCKDIM / 2;
 
-  // TODO let first quarter do y1, let second quarter do y2..?
-  // if (threadIdx.x < quarterBlockSize) {
-  //   // TOOD spread out mem access to reduce memory bank conflicts
-  //   for(unsigned int m = 0; m < BATCH_SIZE; ++m) {
+  // TODO for m = threadIdx; ; m+=stride
+  // for(unsigned int m = threadIdx.x; m < KERNEL_BATCH_SIZE; m+=quarterBlockSize) {
+
+  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+  // // TODO let first quarter do y1, let second quarter do y2..?
+  //   if (threadIdx.x < quarterBlockSize) {
+  //     // TOOD spread out mem access to reduce memory bank conflicts
   //     const unsigned int i = m + threadIdx.x * BATCH_SIZE;
-  //     tmp[i] = \
-  //       cuCadd(tmp[i], tmp[i + quarterBlockSize]);
+  //     tmp[i] = cuCadd(tmp[i], tmp[i + quarterBlockSize]);
   //   }
   // }
 
@@ -215,7 +194,11 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
   __syncthreads();
   if (threadIdx.x == 0) {
     // for each y-datapoint in current batch
+#if (defined(PARTIAL_AGG) && KERNEL_BATCH_SIZE > 1 && 0)
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
+#else
     for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+#endif
       WTYPE_cuda sum;
       sum = ZERO;
 
@@ -232,12 +215,9 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
       cuCheck(sum);
 #endif
 
-      // TODO foreach batch element
-      // y[blockIdx.x + m * GRIDDIM] = sum;
       const unsigned int i = blockIdx.x + m * GRIDDIM;
       y[i] = sum.x;
-      y[i + GRIDDIM * KERNEL_BATCH_SIZE] = sum.y;
-      // y[m + blockIdx.x * BATCH_SIZE] = sum;
+      y[i + GRIDDIM * BATCH_SIZE] = sum.y; // note the use of stream batch size
     }
   }
 
