@@ -11,14 +11,15 @@
 #define RANDOM_Z_SPACE
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 /* #define PINNED_MEM // use cudaMallocHost over cudaMalloc // disable if in case of host memory issues // TODO speedup > 1 in absense of kernal invocation and otherwise < 1 */
-#define PARTIAL_AGG
+/* #define PARTIAL_AGG */
+#define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
 
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
-#define N_sqrt 64
+/* #define N_sqrt 64 */
 /* #define N_sqrt 256 */
-/* #define N_sqrt 512 */
+#define N_sqrt 512
 /* #define N_sqrt 1024 */
 #define N (N_sqrt * N_sqrt)
 #define N2 (N_sqrt * N_sqrt)
@@ -26,9 +27,10 @@
 /* #define BATCH_SIZE (N / 32768 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 /* #define BATCH_SIZE (N / 8192) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 #define BATCH_SIZE 8 // stream batch size // TODO rename to STREAM_BATCH_SIZE?
-#define KERNEL_BATCH_SIZE 4
+#define KERNEL_BATCH_SIZE 2
 #define KERNELS_PER_BATCH (BATCH_SIZE / KERNEL_BATCH_SIZE)
 // TODO compute optimal batch size as function of N
+
 
 #define N_STREAMS 4
 #define STREAM_SIZE (N / N_STREAMS)
@@ -68,19 +70,22 @@
 #define BLOCKDIM 1
 #elif (N_sqrt <= 64)
 #define BLOCKDIM 16
-#elif (N_sqrt <= 128)
-#define BLOCKDIM 2
+/* #elif (N_sqrt <= 128) */
+/* #define BLOCKDIM 64 */
 #elif (N_sqrt <= 512)
-#define BLOCKDIM (WARP_SIZE * 2)
+#define BLOCKDIM 64
 #else
-#define BLOCKDIM 128
+#define BLOCKDIM 256
 #endif
 /* #define BLOCKDIM 8 */
 /* #define BLOCKDIM 128 */
 /* #define BLOCKDIM 256 */
 /* #define GRIDDIM 256 */
-#define GRIDDIM (2 * BLOCKDIM)
-// #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM
+/* #define GRIDDIM (2 * BLOCKDIM) */
+#define GRIDDIM (4 * BLOCKDIM)
+/* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
+
+#define SHARED_MEMORY_SIZE ((BLOCKDIM * KERNEL_BATCH_SIZE) / REDUCE_SHARED_MEMORY)
 
 #define N_PER_THREAD (N / GRIDDIM / BLOCKDIM) // for input (x), thus independent of batches
 // the value N_PER_THREAD is used implicitly in gridDim.x
@@ -110,6 +115,9 @@
 
 
 #define ZERO make_cuDoubleComplex(0,0)
+#define VOL(type, x) *((type *) &x)
+#define Volatile
+/* #define Volatile volatile */
 
 
 // #define Ix(i,j) i + j * N_sqrt

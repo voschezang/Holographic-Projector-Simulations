@@ -79,6 +79,19 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
 }
 
 inline __device__ void superposition_partial(WTYPE_cuda *x, STYPE *u, WTYPE_cuda *y_local, STYPE *v, const char direction) {
+#ifdef CACHE_BATCH
+  // cache v[batch] because it is read by every thread
+  // v_cached is constant and equal for each block
+  __shared__ STYPE v_cached[KERNEL_BATCH_SIZE * DIMS];
+  // use strides when BLOCKDIM < BATCH_SIZE * DIMS
+  for (unsigned int i = threadIdx.x; i < KERNEL_BATCH_SIZE * DIMS; i+=BLOCKDIM)
+    v_cached[i] = v[i];
+
+  __syncthreads();
+#else
+  STYPE *v_cached = v;
+#endif
+
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   const size_t stride = blockDim.x * gridDim.x;
   WTYPE_cuda sum;
@@ -94,7 +107,7 @@ inline __device__ void superposition_partial(WTYPE_cuda *x, STYPE *u, WTYPE_cuda
 
     // Usage of stride allows <<<1,1>>> kernel invocation
     for (size_t i = idx; i < N; i += stride)
-      sum = cuCadd(superposition_single(i, m, x, u, v, direction), sum);
+      sum = cuCadd(superposition_single(i, m, x, u, v_cached, direction), sum);
 
     // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = sum;
     y_local[m] = sum;
@@ -105,36 +118,112 @@ inline __device__ void superposition_partial(WTYPE_cuda *x, STYPE *u, WTYPE_cuda
 }
 
 inline __device__ void superposition_cp_result(WTYPE_cuda *local, WTYPE_cuda *tmp) {
-#ifndef PARTIAL_AGG
+  // TODO rename tmp => shared
+#if (BLOCKDIM == 1 || REDUCE_SHARED_MEMORY == 1)
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-    tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = local[m];
+    tmp[threadIdx.x + m * BLOCKDIM] = local[m];
     // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = local[m];
 #else
-  if (BLOCKDIM == 1) {
-    // note that gridDim can still be nonzero
-    // TODO
-    assert(0);
-    return; // no divergence because this cannot be true for other threads
-  }
-
-  // use 1/2 a much shared memory
-
-  const unsigned int halfBlockSize = BLOCKDIM / 2;
   // write before first sync. note that integer division is used
-  if (threadIdx.x >= halfBlockSize)
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-      tmp[m + (threadIdx.x - halfBlockSize ) * KERNEL_BATCH_SIZE] = local[m];
 
-  __syncthreads();
-  if (threadIdx.x < BLOCKDIM / 2)
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-      tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = \
-        cuCadd(local[m], tmp[m + threadIdx.x * KERNEL_BATCH_SIZE]);
+  if (KERNEL_BATCH_SIZE < 2) {
+    // use 1/2 a much shared memory
+
+    const unsigned int halfBlockSize = BLOCKDIM / 2;
+    // simple reduction, first half writes first, then second half add their result
+    if (threadIdx.x >= halfBlockSize)
+      for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+        tmp[threadIdx.x - halfBlockSize + m * BLOCKDIM] = local[m];
+        // tmp[m + (threadIdx.x - halfBlockSize ) * KERNEL_BATCH_SIZE] = local[m];
+
+    __syncthreads();
+    if (threadIdx.x < halfBlockSize)
+      for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+        tmp[threadIdx.x + m * KERNEL_BATCH_SIZE] = \
+          cuCadd(local[m], tmp[threadIdx.x + m * KERNEL_BATCH_SIZE]);
+        // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = \
+        //   cuCadd(local[m], tmp[m + threadIdx.x * KERNEL_BATCH_SIZE]);
+  }
+  else {
+    // still use 1/2 of shared memory, but without idle threads
+    // TODO consider another step, resulting in 1/4
+    // dm  = threadIdx.x < halfBlockSize ? 0 : BLOCKSIZE * KERNEL_BATCH_SIZE / 2,
+
+    const unsigned int size = BLOCKDIM / REDUCE_SHARED_MEMORY;
+    // const unsigned int halfBlockSize = BLOCKDIM / 2;
+    const unsigned int idx = \
+      threadIdx.x < size ? threadIdx.x : threadIdx.x - size;
+    {
+      const unsigned int
+        dm  = threadIdx.x < size ? 0 : KERNEL_BATCH_SIZE / 2;
+      for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
+        // first half writes first half of batch, idem for second half
+        // tmp[(m + dm) + idx * KERNEL_BATCH_SIZE] = local[m + dm];
+        tmp[idx + (m + dm) * BLOCKDIM] = local[m + dm];
+      }
+    }
+
+    __syncthreads();
+    const unsigned int
+      dm = threadIdx.x < size ? KERNEL_BATCH_SIZE / 2 : 0;
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
+      // first half adds+writes first half of batch, idem for second half
+      const unsigned int i = idx + (m + dm) * BLOCKDIM;
+      // const unsigned int i = (m + dm) + idx * KERNEL_BATCH_SIZE;
+      tmp[i] = cuCadd(tmp[i], local[m + dm]);
+    }
+
+#if (REDUCE_SHARED_MEMORY == 4)
+    not implemented // TODO
+#endif
+
+  } // end else
 #endif
 
   __syncthreads();
 }
 
+template <unsigned int blockSize, typename T>
+inline __device__ void warp_reduce(volatile T *s, unsigned int i) {
+  // example code from Nvidia
+  if (blockSize >= 64) s[i] += s[i + 32];
+  if (blockSize >= 32) s[i] += s[i + 16];
+  if (blockSize >= 16) s[i] += s[i +  8];
+  if (blockSize >=  8) s[i] += s[i +  4];
+  if (blockSize >=  4) s[i] += s[i +  2];
+  if (blockSize >=  2) s[i] += s[i +  1]; // TODO rm last line
+}
+
+// volatile WTYPE_cuda& operator=(volatile WTYPE_cuda&) volatile;
+
+template <unsigned int blockSize, typename T>
+inline __device__ void warp_reduce_c(Volatile T *s, const unsigned int i) {
+  // example code from Nvidia
+  // volatile T x[10];
+  // x[0] = make_cuDoubleComplex(x[1].x, x[1].y);
+  // volatile T y = x[0];
+  // volatile float2 z = {1,1};
+  // volatile float2 *y;
+  // y = ((float2 *) &z);
+  // y = &VOL(float2, z);
+  // *y = VOL(float2, z);
+  // s[i] = VOL(T, s[i]);
+  // s[i] = cuCadd(VOL(T,s[i]), VOL(T,s[i+1]));
+  // s[i] = cuCadd(s[i], s[i+1]);
+
+  if (blockSize >= 64) s[i] = cuCadd(s[i], s[i + 32]);
+  __threadfence();
+  if (blockSize >= 32) s[i] = cuCadd(s[i], s[i + 16]);
+  __threadfence();
+  if (blockSize >= 16) s[i] = cuCadd(s[i], s[i +  8]);
+  __threadfence();
+  if (blockSize >=  8) s[i] = cuCadd(s[i], s[i +  4]);
+  __threadfence();
+  if (blockSize >=  4) s[i] = cuCadd(s[i], s[i +  2]);
+  __threadfence();
+  if (blockSize >=  2) s[i] = cuCadd(s[i], s[i +  1]); // TODO rm last line
+  __threadfence();
+}
 
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
 // TODO use __restrict__, const
@@ -149,66 +238,97 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
    */
   //
   // TODO use shared mem for u-data
-#if (defined(PARTIAL_AGG) && KERNEL_BATCH_SIZE > 1)
-  __shared__ WTYPE_cuda tmp[BLOCKDIM * KERNEL_BATCH_SIZE / 2];
+#if (REDUCE_SHARED_MEMORY > 1 && KERNEL_BATCH_SIZE >= REDUCE_SHARED_MEMORY)
+  __shared__ WTYPE_cuda tmp[KERNEL_BATCH_SIZE * BLOCKDIM / REDUCE_SHARED_MEMORY];
 #else
-  __shared__ WTYPE_cuda tmp[BLOCKDIM * KERNEL_BATCH_SIZE];
+  __shared__ WTYPE_cuda tmp[KERNEL_BATCH_SIZE * BLOCKDIM];
 #endif
-
+  // TODO transpose tmp array? - memory bank conflicts
   {
-#ifdef CACHE_BATCH
-    // cache v[batch] because it is read by every thread
-    // v_cached is constant and equal for each block
-    __shared__ STYPE v_cached[KERNEL_BATCH_SIZE * DIMS];
-    // use strides when BLOCKDIM < BATCH_SIZE * DIMS
-    for (unsigned int i = threadIdx.x; i < KERNEL_BATCH_SIZE * DIMS; i+=BLOCKDIM)
-      v_cached[i] = v[i];
-
-    __syncthreads();
-#else
-    STYPE *v_cached = v;
-#endif
-    {
-      WTYPE_cuda local[KERNEL_BATCH_SIZE];
-      superposition_partial(x, u, local, v_cached, direction);
-      superposition_cp_result(local, tmp);
-    }
-  // free v_cached // TODO check if this does anything
+    WTYPE_cuda local[KERNEL_BATCH_SIZE];
+    superposition_partial(x, u, local, v, direction);
+    superposition_cp_result(local, tmp);
   }
 
-  const unsigned int quarterBlockSize = BLOCKDIM / 2;
+  const unsigned int tid = threadIdx.x;
 
-  // TODO for m = threadIdx; ; m+=stride
-  // for(unsigned int m = threadIdx.x; m < KERNEL_BATCH_SIZE; m+=quarterBlockSize) {
+#if (BLOCKDIM > (2 * REDUCE_SHARED_MEMORY))
+  // size = half of shared memory size / KERNEL_BATCH_SIZE
+  // const unsigned int size = BLOCKDIM / (REDUCE_SHARED_MEMORY);
 
+// #if (KERNEL_BATCH_SIZE <= 2)
+
+  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+  //   // TOOD spread out mem access to reduce memory bank conflicts
+  //   if (threadIdx.x < size) {
+  //     const unsigned int i = threadIdx.x + m * BLOCKDIM;
+  //     tmp[i] = cuCadd(tmp[i], tmp[i + size]);
+  //     // const unsigned int i = m + threadIdx.x * KERNEL_BATCH_SIZE;
+  //     // tmp[i] = cuCadd(tmp[i], tmp[i + size]);
+  //   }
+  // }
+  // __syncthreads();
+
+  // inter warp
+  // TODO do this in parallel for the next warp in case of next batch
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-  // TODO let first quarter do y1, let second quarter do y2..?
-    if (threadIdx.x < quarterBlockSize) {
-      // TOOD spread out mem access to reduce memory bank conflicts
-      const unsigned int i = m + threadIdx.x * KERNEL_BATCH_SIZE;
-      tmp[i] = cuCadd(tmp[i], tmp[i + quarterBlockSize]);
-    }
-  }
+    // TOOD spread out mem access to reduce memory bank conflicts
 
-  // aggregate locally (within blocks)
-  __syncthreads();
+    if (SHARED_MEMORY_SIZE >= 512) {if (tid < 256) { tmp[tid] = cuCadd(tmp[tid], tmp[tid + 256]); __syncthreads(); } }
+    if (SHARED_MEMORY_SIZE >= 256) {if (tid < 128) { tmp[tid] = cuCadd(tmp[tid], tmp[tid + 128]); __syncthreads(); } }
+    if (SHARED_MEMORY_SIZE >= 128) {if (tid <  64) { tmp[tid] = cuCadd(tmp[tid], tmp[tid +  64]); __syncthreads(); } }
+  }
+  // intra warp
+
+
+  // #else
+  //   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
+  //     const unsigned int idx = \
+  //       threadIdx.x < size ? threadIdx.x : threadIdx.x - size;
+
+  //     const unsigned int
+  //       dm  = threadIdx.x < size ? 0 : KERNEL_BATCH_SIZE / 2;
+  //     const unsigned int i = m + dm + threadIdx.x * KERNEL_BATCH_SIZE;
+  //     tmp[i] = cuCadd(tmp[i], tmp[i + size]);
+  //   }
+  // #endif
+
+#endif
+
+  // final intra block aggregation
+  const unsigned int relBlockSize = BLOCKDIM / REDUCE_SHARED_MEMORY;
+  // TODO do this in parallel for the next warp in case of next batch
+  const unsigned int n_warps = BLOCKDIM / WARP_SIZE;
+  const unsigned int wid = tid / WARP_SIZE;
+  const unsigned int lane = tid % 32;
+  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; m+=n_warps)
+    for(unsigned int w = 0; w < n_warps; ++w)
+      if (wid == w)
+        warp_reduce_c<relBlockSize>(&tmp[m * relBlockSize], lane);
+
+  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE * relBlockSize; m+=relBlockSize)
+  //   warp_reduce_c<relBlockSize>(&tmp[m * relBlockSize], tid % 32);
+
+  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+  //   if (tid < 32)
+  //     warp_reduce_c<relBlockSize>(&tmp[m * relBlockSize], tid);
+
   if (threadIdx.x == 0) {
     // for each y-datapoint in current batch
-// #if (defined(PARTIAL_AGG) && KERNEL_BATCH_SIZE > 1)
-//     for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
-// #else
     for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
       WTYPE_cuda sum;
-      sum = ZERO;
+      // sum = ZERO;
+      sum = tmp[0];
 
-#if (defined(PARTIAL_AGG) && BLOCKDIM > 1)
-      for (unsigned int k = 0; k < BLOCKDIM / 4; ++k)
-#else
-      for (unsigned int k = 0; k < BLOCKDIM; ++k)
-#endif
-        sum = cuCadd(sum, tmp[m + k * KERNEL_BATCH_SIZE]);
-      // for (unsigned int k = 0; k < BLOCKDIM; ++k)
-      //   sum = cuCadd(sum, tmp[k + m * BLOCKDIM]);
+// #if (REDUCE_SHARED_MEMORY >= 2 && BLOCKDIM >= REDUCE_SHARED_MEMORY)
+//       for (unsigned int k = 0; k < size; ++k)
+// #else
+//       for (unsigned int k = 0; k < BLOCKDIM; ++k)
+// #endif
+//         sum = cuCadd(sum, tmp[k + m * BLOCKDIM]);
+//         // sum = cuCadd(sum, tmp[m + k * KERNEL_BATCH_SIZE]);
+//       // for (unsigned int k = 0; k < BLOCKDIM; ++k)
+//       //   sum = cuCadd(sum, tmp[k + m * BLOCKDIM]);
 
 #ifdef DEBUG
       cuCheck(sum);
