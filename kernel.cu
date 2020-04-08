@@ -181,29 +181,28 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
   // TODO for m = threadIdx; ; m+=stride
   // for(unsigned int m = threadIdx.x; m < KERNEL_BATCH_SIZE; m+=quarterBlockSize) {
 
-  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-  // // TODO let first quarter do y1, let second quarter do y2..?
-  //   if (threadIdx.x < quarterBlockSize) {
-  //     // TOOD spread out mem access to reduce memory bank conflicts
-  //     const unsigned int i = m + threadIdx.x * BATCH_SIZE;
-  //     tmp[i] = cuCadd(tmp[i], tmp[i + quarterBlockSize]);
-  //   }
-  // }
+  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+  // TODO let first quarter do y1, let second quarter do y2..?
+    if (threadIdx.x < quarterBlockSize) {
+      // TOOD spread out mem access to reduce memory bank conflicts
+      const unsigned int i = m + threadIdx.x * KERNEL_BATCH_SIZE;
+      tmp[i] = cuCadd(tmp[i], tmp[i + quarterBlockSize]);
+    }
+  }
 
   // aggregate locally (within blocks)
   __syncthreads();
   if (threadIdx.x == 0) {
     // for each y-datapoint in current batch
-#if (defined(PARTIAL_AGG) && KERNEL_BATCH_SIZE > 1 && 0)
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
-#else
+// #if (defined(PARTIAL_AGG) && KERNEL_BATCH_SIZE > 1)
+//     for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
+// #else
     for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-#endif
       WTYPE_cuda sum;
       sum = ZERO;
 
 #if (defined(PARTIAL_AGG) && BLOCKDIM > 1)
-      for (unsigned int k = 0; k < BLOCKDIM / 2; ++k)
+      for (unsigned int k = 0; k < BLOCKDIM / 4; ++k)
 #else
       for (unsigned int k = 0; k < BLOCKDIM; ++k)
 #endif
