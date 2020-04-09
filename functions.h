@@ -13,6 +13,7 @@
 
 #include "macros.h"
 #include "kernel.cu"
+#include "superposition.cu"
 
 enum FileType {TXT, DAT, GRID};
 
@@ -45,6 +46,7 @@ void check_params() {
 #elif (N_STREAMS * BATCHES_PER_STREAM != N_BATCHES)
   printf("Invalid param: incompatible N_STREAMS and N\n"); assert(0);
 #endif
+  assert(REDUCE_SHARED_MEMORY <= BLOCKDIM);
   assert(KERNEL_BATCH_SIZE <= BATCH_SIZE);
   assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == BATCH_SIZE);
   assert(N_PER_THREAD > 0);
@@ -311,12 +313,12 @@ inline void transform_batch(WTYPE_cuda *d_x, STYPE *d_u, STYPE *d_v,
     const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
 #ifdef MEMCPY_ASYNC
-    kernel3<<< GRIDDIM, BLOCKDIM, 0, stream >>>
+    superposition_per_block<<< GRIDDIM, BLOCKDIM, 0, stream >>>
       (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
     /* ( d_x, d_u, d_y_block, d_v, direction ); */
 #else
     // TODO alt, dynamic blocksize: k<<<N,M,batch_size>>>
-    kernel3<<< GRIDDIM, BLOCKDIM >>>
+    superposition_per_block<<< GRIDDIM, BLOCKDIM >>>
       (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
 #endif
   }
@@ -352,10 +354,8 @@ inline void agg_batch_blocks(cudaStream_t stream,
 inline void agg_batch(WTYPE *y,
                       cudaStream_t stream,
                       WTYPE_cuda *d_y_stream,
-                      double *d_y_batch)
-{
-  // TODO do cpu aggregation in a separate loop?, make thrust calls async
-
+                      double *d_y_batch) {
+  // wrapper for thrust call using streams
   zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
 
 #ifdef MEMCPY_ASYNC

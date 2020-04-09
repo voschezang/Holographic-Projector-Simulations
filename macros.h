@@ -116,8 +116,6 @@
 
 #define ZERO make_cuDoubleComplex(0,0)
 #define VOL(type, x) *((type *) &x)
-#define Volatile
-/* #define Volatile volatile */
 
 
 // #define Ix(i,j) i + j * N_sqrt
