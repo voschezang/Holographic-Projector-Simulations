@@ -52,6 +52,7 @@ inline __device__ WTYPE_cuda single(const size_t i, const size_t j,
   return polar(amp / distance, phase - distance * direction * TWO_PI_OVER_LAMBDA);
 }
 
+// TODO template<const char direction>
 inline __device__ void per_thread(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
                                   WTYPE_cuda *__restrict__ y_local, STYPE *__restrict__ v,
                                   const char direction) {
@@ -70,25 +71,27 @@ inline __device__ void per_thread(WTYPE_cuda *__restrict__ x, STYPE *__restrict_
 
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   const size_t stride = blockDim.x * gridDim.x;
-  WTYPE_cuda sum;
+
+#pragma unroll
+  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+    y_local[m].x = 0;
+    y_local[m].y = 0;
+  }
+
+  // add single far away light source, with arbitrary (but constant) phase
+  // assume threadIdx.x is a runtime constant
+  if (BLOCKDIM >= KERNEL_BATCH_SIZE)
+    if (idx < KERNEL_BATCH_SIZE)
+      y_local[idx] = polar(1, 0.4912);
 
   // for each y-datapoint in current batch
-  // TODO test performance diff when switching inner/outer loop and with um cache
-  // TODO change cache size and find new optimal batch size w/ um cache
+  // outer loop for batch, inner loop for index is faster than vice versa
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-    // add single far away light source, with arbitrary (but constant) phase
-    // assume threadIdx.x is a runtime constant
-    if (direction == -1 && threadIdx.x == 0 && idx == 0) sum = polar(1, 0.4912);
-    else sum = ZERO;
-
-    // Usage of stride allows <<<1,1>>> kernel invocation
     for (size_t i = idx; i < N; i += stride)
-      sum = cuCadd(single(i, m, x, u, v_cached, direction), sum);
+      y_local[m] = cuCadd(y_local[m], single(i, m, x, u, v_cached, direction));
 
-    // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = sum;
-    y_local[m] = sum;
 #ifdef DEBUG
-    cuCheck(sum);
+    cuCheck(y_local[m]);
 #endif
   }
 }
@@ -205,9 +208,6 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
           && lane < size)
         warp_reduce_c<size, WTYPE_cuda>(&tmp[(m+w) * size], lane);
 
-  // if (tid == 0)
-  //   tmp[0] = tmp[1 * size + 31];
-
   // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
   //   if (tid < WARP_SIZE && tid < size)
   //     warp_reduce_c<size>(&tmp[m * size], tid);
@@ -250,17 +250,6 @@ __global__ void per_block(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
     superposition::copy_result(local, tmp);
   }
   superposition::aggregate_blocks(tmp, y);
-}
-
-__global__ void naive(WTYPE_cuda *x, STYPE *u, WTYPE_cuda  *y, STYPE *v) {
-  // Single kernel, used in y_i = \sum_j superposition::single(y_i,x_j)
-  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-  WTYPE_cuda sum = ZERO;
-
-  for(int n = 0; n < N; ++n)
-    sum = cuCadd(single(n, i, x, u, v, 1), sum);
-
-  y[i] = sum;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
