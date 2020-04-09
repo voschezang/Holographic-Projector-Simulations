@@ -6,6 +6,35 @@ REMOTE_DIR := nikhef:/project/detrd/markv/Holographic-Projector/tmp
 jupyter:
 	jupyter notebook
 
+build:
+	# make add-to-path
+	# nvcc -o main main.cu
+	# -ftz=true // flush dernormal to zero
+	#  -ftz=true -prec-div=false -prec-sqrt=false
+	/usr/local/cuda-10.2/bin/nvcc -o main main.cu -l curand
+
+build-run:
+	make build && make run
+
+run:
+	./main
+	make zip
+
+zip:
+	zip tmp/out.zip tmp/out.txt
+
+py:
+	python3 main.py -r
+
+plot:
+	python3 main.py -scatter
+
+remote-run:
+	sh remote_run.sh
+
+remote-run-plot:
+	make remote-run plot
+
 ssh:
 	ssh $(ADDRESS)
 	# emacs: use SPC f f /sshx:nikhef
@@ -44,7 +73,6 @@ rsync:
 	# rsync -azP nikhef:/project/detrd/markv/Holographic-Projector/test mnt
 	# rsync -avP --numeric-ids --exclude='/dev' --exclude='/proc' --exclude='/sys' / root@xxx.xxx.xxx.xxx:/
 
-
 info:
 	lscpu
 	lspci -vnn | grep VGA -A 12
@@ -52,33 +80,3 @@ info:
 
 add-to-path:
 	echo 'export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}'
-
-build:
-	# make add-to-path
-	# nvcc -o main main.cu
-	# -ftz=true // flush dernormal to zero
-	#  -ftz=true -prec-div=false -prec-sqrt=false
-	/usr/local/cuda-10.2/bin/nvcc -o main main.cu
-
-build-run:
-	make build && make run
-
-run:
-	./main
-	make zip
-
-zip:
-	zip tmp/out.zip tmp/out.txt
-
-py:
-	python3 main.py -r
-
-plot:
-	python3 main.py -scatter
-	# gnuplot gnuplot.gnu
-
-remote-run:
-	sh remote_run.sh
-
-remote-run-plot:
-	make remote-run plot
