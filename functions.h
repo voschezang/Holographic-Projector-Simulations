@@ -13,6 +13,7 @@
 
 #include "macros.h"
 #include "kernel.cu"
+#include "superposition.cu"
 
 enum FileType {TXT, DAT, GRID};
 
@@ -45,10 +46,14 @@ void check_params() {
 #elif (N_STREAMS * BATCHES_PER_STREAM != N_BATCHES)
   printf("Invalid param: incompatible N_STREAMS and N\n"); assert(0);
 #endif
+  assert(REDUCE_SHARED_MEMORY <= BLOCKDIM);
+  assert(KERNEL_BATCH_SIZE <= BATCH_SIZE);
+  assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == BATCH_SIZE);
+  assert(BLOCKDIM / REDUCE_SHARED_MEMORY);
   assert(N_PER_THREAD > 0);
   assert(N == N_STREAMS * STREAM_SIZE);
   assert(N == BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
-  assert(N_PER_THREAD * THREADS_PER_BLOCK * BLOCKDIM == N);
+  assert(N_PER_THREAD * BLOCKDIM * GRIDDIM == N);
   assert(sizeof(WTYPE) == sizeof(WTYPE_cuda));
 }
 
@@ -210,6 +215,11 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z, STYPE *u, STYPE *v, STYPE *w, si
   }
 }
 
+double dt(struct timespec t0, struct timespec t1) {
+  return (double) (t1.tv_sec - t0.tv_sec) + \
+    ((double) (t1.tv_nsec - t0.tv_nsec)) * 1e-9;
+}
+
 void init_random(curandGenerator_t *gen, unsigned int seed) {
   curandCreateGenerator(gen, CURAND_RNG_PSEUDO_XORWOW);
   curandCreateGenerator(gen ,CURAND_RNG_PSEUDO_MT19937);
@@ -222,6 +232,66 @@ void gen_random(float *x, float *d_x, size_t len, curandGenerator_t gen) {
   cudaDeviceSynchronize();
 }
 
+void init_planes(WTYPE *x, STYPE *u, STYPE *v, STYPE *w) {
+  // each plane x,u y,v z,w is a set of points in 3d space
+  const double width = 0.0005; // m
+  const double dS = width * SCALE / (double) N_sqrt; // actually dS^(1/DIMS)
+  const double offset = 0.5 * width;
+#if defined(RANDOM_X_SPACE) || defined(RANDOM_Y_SPACE) || defined(RANDOM_Z_SPACE)
+  const double margin = 0.;
+  const double random_range = dS - 0.5 * margin;
+  curandGenerator_t generator;
+  init_random(&generator, 11235);
+#endif
+  printf("Domain: X : %f x %f, dS: %f\n", width, width, dS);
+  float *d_random, random[4 * N_sqrt];
+  cu( cudaMalloc( (void **) &d_random, 4 * N_sqrt * sizeof(float) ) );
+  for(unsigned int i = 0; i < N_sqrt; ++i) {
+    gen_random(random, d_random, 4 * N_sqrt, generator);
+    for(unsigned int j = 0; j < N_sqrt; ++j) {
+      size_t idx = i * N_sqrt + j;
+      x[idx].x = 0; // real part
+      x[idx].y = 0; // imag part
+      if (i == N_sqrt * 1/2 && j == N_sqrt / 2) x[idx].x = 1;
+      // if (i == N_sqrt * 1/3 && j == N_sqrt / 2) x[idx] = 1;
+      // if (i == N_sqrt * 2/3 && j == N_sqrt / 2) x[idx] = 1;
+      // if (i == N_sqrt * 1/4 && j == N_sqrt / 4) x[idx] = 1;
+      // if (i == N_sqrt * 3/4 && j == N_sqrt / 4) x[idx] = 1;
+
+      u[Ix(i,j,0)] = i * dS - offset;
+      u[Ix(i,j,1)] = j * dS - offset;
+      u[Ix(i,j,2)] = 0;
+
+#ifdef RANDOM_Y_SPACE
+      v[Ix(i,j,0)] = i * dS - offset + random_range * \
+        (random[j*4+0] - 0.5);
+      v[Ix(i,j,1)] = j * dS - offset + random_range * \
+        (random[j*4+1] - 0.5);
+      if (i == 2 && j == 2) {
+        printf("rand: %f, %f; %f, %f\n", v[Ix(i,j,0)], v[Ix(i-1,j,0)], v[Ix(i,j-1,0)], v[Ix(i-1,j-1,0)]);
+      }
+#else
+      v[Ix(i,j,0)] = i * dS - offset;
+      v[Ix(i,j,1)] = j * dS - offset;
+#endif
+      v[Ix(i,j,2)] = -0.02;
+
+#ifdef RANDOM_Z_SPACE
+      w[Ix(i,j,0)] = i * dS - offset + random_range * \
+        (random[j*4+2] - 0.5);
+      w[Ix(i,j,1)] = j * dS - offset + random_range * \
+        (random[j*4+3] - 0.5);
+#else
+      w[Ix(i,j,0)] = i * dS - offset;
+      w[Ix(i,j,1)] = j * dS - offset;
+#endif
+      w[Ix(i,j,2)] = 0;
+    }
+  }
+
+  curandDestroyGenerator(generator);
+  cu( cudaFree( d_random ) );
+}
 
 inline void cp_batch_data(const STYPE *v, STYPE *d_v, const size_t count, cudaStream_t stream) {
   // copy "v[i]" for i in batch, where v are the spatial positions belonging to the target datapoints y
@@ -238,14 +308,21 @@ inline void transform_batch(WTYPE_cuda *d_x, STYPE *d_u, STYPE *d_v,
                             double *d_y_block)
 {
   // start kernel
+  // TODO GRIDDIM should be GRIDDIM
+  for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
+    // d_y_block : BATCH_SIZE x GRIDDIM x 2
+    const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
+    const unsigned int k = i * KERNEL_BATCH_SIZE;
 #ifdef MEMCPY_ASYNC
-  kernel3<<< BLOCKDIM, THREADS_PER_BLOCK, 0, stream >>>
-    (d_x, d_u, d_y_block, d_v, direction );
+    superposition::per_block<<< GRIDDIM, BLOCKDIM, 0, stream >>>
+      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
+    /* ( d_x, d_u, d_y_block, d_v, direction ); */
 #else
-  // TODO alt, dynamic blocksize: k<<<N,M,batch_size>>>
-  kernel3<<< BLOCKDIM, THREADS_PER_BLOCK >>>
-    ( d_x, d_u, d_y_block, d_v, direction );
+    // TODO alt, dynamic blocksize: k<<<N,M,batch_size>>>
+    superposition::per_block<<< GRIDDIM, BLOCKDIM >>>
+      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
 #endif
+  }
 }
 
 inline void agg_batch_blocks(cudaStream_t stream,
@@ -257,20 +334,20 @@ inline void agg_batch_blocks(cudaStream_t stream,
   // TODO is a reduction call for each datapoint really necessary?
   for (unsigned int m = 0; m < BATCH_SIZE; ++m) {
     // assume two independent reductions are faster or equal to a large reduction
-    thrust::device_ptr<double> ptr(d_y_block + m * BLOCKDIM);
+    thrust::device_ptr<double> ptr(d_y_block + m * GRIDDIM);
 #ifdef MEMCPY_ASYNC
     // launch a 1x1 kernel in selected stream, which calls thrust indirectly
-    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
+    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
 #else
-    ptr_d_y_batch[m] = thrust::reduce(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>());
+    ptr_d_y_batch[m] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
 #endif
 
-    ptr += BLOCKDIM * BATCH_SIZE;
+    ptr += GRIDDIM * BATCH_SIZE;
 
 #ifdef MEMCPY_ASYNC
-    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
+    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
 #else
-    ptr_d_y_batch[m + BATCH_SIZE] = thrust::reduce(ptr, ptr + BLOCKDIM, 0.0, thrust::plus<double>());
+    ptr_d_y_batch[m + BATCH_SIZE] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
 #endif
   }
 }
@@ -278,10 +355,8 @@ inline void agg_batch_blocks(cudaStream_t stream,
 inline void agg_batch(WTYPE *y,
                       cudaStream_t stream,
                       WTYPE_cuda *d_y_stream,
-                      double *d_y_batch)
-{
-  // TODO do cpu aggregation in a separate loop?, make thrust calls async
-
+                      double *d_y_batch) {
+  // wrapper for thrust call using streams
   zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
 
 #ifdef MEMCPY_ASYNC
@@ -334,7 +409,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
     cu( cudaMallocHost( (void **) &d_y_batch[i_stream],
                     BATCH_SIZE * 2 * sizeof(WTYPE_cuda) ) );
     cu( cudaMallocHost( (void **) &d_y_block[i_stream],
-                    BATCH_SIZE * BLOCKDIM * 2 * sizeof(double) ) );
+                    BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
     cu( cudaMallocHost( (void **) &d_v[i_stream],
                     BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
 #else
@@ -343,7 +418,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
     cu( cudaMalloc( (void **) &d_y_batch[i_stream],
                     BATCH_SIZE * 2 * sizeof(WTYPE_cuda) ) );
     cu( cudaMalloc( (void **) &d_y_block[i_stream],
-                    BATCH_SIZE * BLOCKDIM * 2 * sizeof(double) ) );
+                    BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
     cu( cudaMalloc( (void **) &d_v[i_stream],
                     BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
 #endif
@@ -351,8 +426,9 @@ inline void transform(const WTYPE *x, WTYPE *y,
 
 
   // Init memory
-	cudaMemcpy( d_x, x, N * sizeof(WTYPE), cudaMemcpyHostToDevice );
-	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
+	cu ( cudaMemcpy( d_x, x, N * sizeof(WTYPE), cudaMemcpyHostToDevice ) );
+	cu ( cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice ) );
+
 #ifdef MEMCPY_ASYNC
   // note that N_BATCHES != number of streams
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
