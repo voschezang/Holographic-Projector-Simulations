@@ -159,7 +159,7 @@ inline __device__ void superposition_cp_result(WTYPE_cuda *local, WTYPE_cuda *tm
       for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
         // first half writes first half of batch, idem for second half
         // tmp[(m + dm) + idx * KERNEL_BATCH_SIZE] = local[m + dm];
-        tmp[idx + (m + dm) * BLOCKDIM] = local[m + dm];
+        tmp[idx + (m + dm) * size] = local[m + dm];
       }
     }
 
@@ -168,7 +168,7 @@ inline __device__ void superposition_cp_result(WTYPE_cuda *local, WTYPE_cuda *tm
       dm = threadIdx.x < size ? KERNEL_BATCH_SIZE / 2 : 0;
     for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
       // first half adds+writes first half of batch, idem for second half
-      const unsigned int i = idx + (m + dm) * BLOCKDIM;
+      const unsigned int i = idx + (m + dm) * size;
       // const unsigned int i = (m + dm) + idx * KERNEL_BATCH_SIZE;
       tmp[i] = cuCadd(tmp[i], local[m + dm]);
     }
@@ -196,33 +196,80 @@ inline __device__ void warp_reduce(volatile T *s, unsigned int i) {
 
 // volatile WTYPE_cuda& operator=(volatile WTYPE_cuda&) volatile;
 
-template <unsigned int blockSize, typename T>
+template <unsigned int size, typename T>
 inline __device__ void warp_reduce_c(Volatile T *s, const unsigned int i) {
   // example code from Nvidia
-  // volatile T x[10];
-  // x[0] = make_cuDoubleComplex(x[1].x, x[1].y);
-  // volatile T y = x[0];
-  // volatile float2 z = {1,1};
-  // volatile float2 *y;
-  // y = ((float2 *) &z);
-  // y = &VOL(float2, z);
-  // *y = VOL(float2, z);
-  // s[i] = VOL(T, s[i]);
-  // s[i] = cuCadd(VOL(T,s[i]), VOL(T,s[i+1]));
-  // s[i] = cuCadd(s[i], s[i+1]);
 
-  if (blockSize >= 64) s[i] = cuCadd(s[i], s[i + 32]);
+  if (size >= 64) s[i] = cuCadd(s[i], s[i + 32]);
   __threadfence();
-  if (blockSize >= 32) s[i] = cuCadd(s[i], s[i + 16]);
+  if (size >= 32) s[i] = cuCadd(s[i], s[i + 16]);
   __threadfence();
-  if (blockSize >= 16) s[i] = cuCadd(s[i], s[i +  8]);
+  if (size >= 16) s[i] = cuCadd(s[i], s[i +  8]);
   __threadfence();
-  if (blockSize >=  8) s[i] = cuCadd(s[i], s[i +  4]);
+  if (size >=  8) s[i] = cuCadd(s[i], s[i +  4]);
   __threadfence();
-  if (blockSize >=  4) s[i] = cuCadd(s[i], s[i +  2]);
+  if (size >=  4) s[i] = cuCadd(s[i], s[i +  2]);
   __threadfence();
-  if (blockSize >=  2) s[i] = cuCadd(s[i], s[i +  1]); // TODO rm last line
+  if (size >=  2) s[i] = cuCadd(s[i], s[i +  1]); // TODO rm last line
   __threadfence();
+}
+
+inline __device__ void superposition_agg(WTYPE_cuda *tmp, double *y) {
+  const unsigned int tid = threadIdx.x;
+  const unsigned int size = BLOCKDIM / REDUCE_SHARED_MEMORY;
+
+  // inter warp
+  // TODO do this in parallel for the next warp in case of next batch
+  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+    // TOOD check for memory bank conflicts
+    WTYPE_cuda *x = &tmp[m * size];
+    if (size > 512) assert(0);
+    if(size == 512){if(tid < 256){ x[tid] = cuCadd(x[tid], x[tid + 256]); __syncthreads();}}
+    if(size >= 256){if(tid < 128){ x[tid] = cuCadd(x[tid], x[tid + 128]); __syncthreads();}}
+    if(size >= 128){if(tid <  64){ x[tid] = cuCadd(x[tid], x[tid +  64]); __syncthreads();}}
+  }
+
+
+  // final intra warp aggregation
+  // TODO do this in parallel for the next warp in case of next batch
+  const unsigned int n_warps = BLOCKDIM / WARP_SIZE;
+  const unsigned int wid = tid / WARP_SIZE;
+  const unsigned int lane = tid % 32;
+  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; m+=n_warps)
+    for(unsigned int w = 0; w < n_warps; ++w)
+      if (wid == w
+          && (m+w) < KERNEL_BATCH_SIZE
+          && lane < size)
+        warp_reduce_c<size, WTYPE_cuda>(&tmp[(m+w) * size], lane);
+
+  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+  //   if (tid < WARP_SIZE && tid < size)
+  //     warp_reduce_c<size>(&tmp[m * size], tid);
+
+
+#if (BLOCKDIM >= KERNEL_BATCH_SIZE)
+  if (tid < KERNEL_BATCH_SIZE) {
+    unsigned int m = tid;
+#else
+    // for each y-datapoint in current batch
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+#endif
+
+    WTYPE_cuda sum;
+    // sum = ZERO;
+    sum = tmp[m * size];
+
+#ifdef DEBUG
+    cuCheck(sum);
+#endif
+
+    const unsigned int i = blockIdx.x + m * GRIDDIM;
+    y[i] = sum.x;
+    y[i + GRIDDIM * BATCH_SIZE] = sum.y; // note the use of stream batch size
+    // }
+  }
+
+  // do not sync blocks, exit kernel and agg block results locally or in diff kernel
 }
 
 // TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
@@ -249,98 +296,7 @@ __global__ void kernel3(WTYPE_cuda *x, STYPE *u, double *y, STYPE *v,
     superposition_partial(x, u, local, v, direction);
     superposition_cp_result(local, tmp);
   }
-
-  const unsigned int tid = threadIdx.x;
-
-#if (BLOCKDIM > (2 * REDUCE_SHARED_MEMORY))
-  // size = half of shared memory size / KERNEL_BATCH_SIZE
-  // const unsigned int size = BLOCKDIM / (REDUCE_SHARED_MEMORY);
-
-// #if (KERNEL_BATCH_SIZE <= 2)
-
-  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-  //   // TOOD spread out mem access to reduce memory bank conflicts
-  //   if (threadIdx.x < size) {
-  //     const unsigned int i = threadIdx.x + m * BLOCKDIM;
-  //     tmp[i] = cuCadd(tmp[i], tmp[i + size]);
-  //     // const unsigned int i = m + threadIdx.x * KERNEL_BATCH_SIZE;
-  //     // tmp[i] = cuCadd(tmp[i], tmp[i + size]);
-  //   }
-  // }
-  // __syncthreads();
-
-  // inter warp
-  // TODO do this in parallel for the next warp in case of next batch
-  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-    // TOOD spread out mem access to reduce memory bank conflicts
-
-    if (SHARED_MEMORY_SIZE >= 512) {if (tid < 256) { tmp[tid] = cuCadd(tmp[tid], tmp[tid + 256]); __syncthreads(); } }
-    if (SHARED_MEMORY_SIZE >= 256) {if (tid < 128) { tmp[tid] = cuCadd(tmp[tid], tmp[tid + 128]); __syncthreads(); } }
-    if (SHARED_MEMORY_SIZE >= 128) {if (tid <  64) { tmp[tid] = cuCadd(tmp[tid], tmp[tid +  64]); __syncthreads(); } }
-  }
-  // intra warp
-
-
-  // #else
-  //   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
-  //     const unsigned int idx = \
-  //       threadIdx.x < size ? threadIdx.x : threadIdx.x - size;
-
-  //     const unsigned int
-  //       dm  = threadIdx.x < size ? 0 : KERNEL_BATCH_SIZE / 2;
-  //     const unsigned int i = m + dm + threadIdx.x * KERNEL_BATCH_SIZE;
-  //     tmp[i] = cuCadd(tmp[i], tmp[i + size]);
-  //   }
-  // #endif
-
-#endif
-
-  // final intra block aggregation
-  const unsigned int relBlockSize = BLOCKDIM / REDUCE_SHARED_MEMORY;
-  // TODO do this in parallel for the next warp in case of next batch
-  const unsigned int n_warps = BLOCKDIM / WARP_SIZE;
-  const unsigned int wid = tid / WARP_SIZE;
-  const unsigned int lane = tid % 32;
-  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; m+=n_warps)
-    for(unsigned int w = 0; w < n_warps; ++w)
-      if (wid == w)
-        warp_reduce_c<relBlockSize>(&tmp[m * relBlockSize], lane);
-
-  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE * relBlockSize; m+=relBlockSize)
-  //   warp_reduce_c<relBlockSize>(&tmp[m * relBlockSize], tid % 32);
-
-  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-  //   if (tid < 32)
-  //     warp_reduce_c<relBlockSize>(&tmp[m * relBlockSize], tid);
-
-  if (threadIdx.x == 0) {
-    // for each y-datapoint in current batch
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-      WTYPE_cuda sum;
-      // sum = ZERO;
-      sum = tmp[0];
-
-// #if (REDUCE_SHARED_MEMORY >= 2 && BLOCKDIM >= REDUCE_SHARED_MEMORY)
-//       for (unsigned int k = 0; k < size; ++k)
-// #else
-//       for (unsigned int k = 0; k < BLOCKDIM; ++k)
-// #endif
-//         sum = cuCadd(sum, tmp[k + m * BLOCKDIM]);
-//         // sum = cuCadd(sum, tmp[m + k * KERNEL_BATCH_SIZE]);
-//       // for (unsigned int k = 0; k < BLOCKDIM; ++k)
-//       //   sum = cuCadd(sum, tmp[k + m * BLOCKDIM]);
-
-#ifdef DEBUG
-      cuCheck(sum);
-#endif
-
-      const unsigned int i = blockIdx.x + m * GRIDDIM;
-      y[i] = sum.x;
-      y[i + GRIDDIM * BATCH_SIZE] = sum.y; // note the use of stream batch size
-    }
-  }
-
-  // do not sync blocks, exit kernel and agg block results locally or in diff kernel
+  superposition_agg(tmp, y);
 }
 
 

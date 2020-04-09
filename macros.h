@@ -18,8 +18,8 @@
 // TODO use N,M
 /* #define N_sqrt 8 */
 /* #define N_sqrt 64 */
-/* #define N_sqrt 256 */
-#define N_sqrt 512
+#define N_sqrt 128
+/* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
 #define N (N_sqrt * N_sqrt)
 #define N2 (N_sqrt * N_sqrt)
@@ -70,8 +70,8 @@
 #define BLOCKDIM 1
 #elif (N_sqrt <= 64)
 #define BLOCKDIM 16
-/* #elif (N_sqrt <= 128) */
-/* #define BLOCKDIM 64 */
+#elif (N_sqrt <= 128)
+#define BLOCKDIM 32
 #elif (N_sqrt <= 512)
 #define BLOCKDIM 64
 #else
@@ -85,7 +85,7 @@
 #define GRIDDIM (4 * BLOCKDIM)
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
 
-#define SHARED_MEMORY_SIZE ((BLOCKDIM * KERNEL_BATCH_SIZE) / REDUCE_SHARED_MEMORY)
+/* #define SHARED_MEMORY_SIZE ((BLOCKDIM * KERNEL_BATCH_SIZE) / REDUCE_SHARED_MEMORY) */
 
 #define N_PER_THREAD (N / GRIDDIM / BLOCKDIM) // for input (x), thus independent of batches
 // the value N_PER_THREAD is used implicitly in gridDim.x
