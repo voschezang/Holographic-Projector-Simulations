@@ -86,8 +86,9 @@ y:2,3,3,4
     #  plot subset
     N = data['y'].shape[0]
     N_sqrt = np.sqrt(N).astype(int)
-    n = 50
-    indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
+    n = int(5e3)
+    # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
+    indices = np.random.randint(0, N, n)
     plot.scatter_multiple(data['y'][indices], data['v'][indices],
                           'y', filename='y-scatter-sub', s=1)
     plot.scatter_multiple(data['z'][indices], data['w'][indices],
