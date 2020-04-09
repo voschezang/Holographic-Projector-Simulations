@@ -47,20 +47,27 @@ inline __device__ void warp_reduce(volatile T *s, unsigned int i) {
 
 template <unsigned int size, typename T>
 inline __device__ void warp_reduce_c(T *s, const unsigned int i) {
-  // example code from Nvidia
+#pragma unroll
+  for (unsigned int n = 32; n >= 2; n/=2) {
+    if (size >= n+n)
+      s[i] = cuCadd(s[i], s[i + n]);
 
-  if (size >= 64) s[i] = cuCadd(s[i], s[i + 32]);
-  __threadfence();
-  if (size >= 32) s[i] = cuCadd(s[i], s[i + 16]);
-  __threadfence();
-  if (size >= 16) s[i] = cuCadd(s[i], s[i +  8]);
-  __threadfence();
-  if (size >=  8) s[i] = cuCadd(s[i], s[i +  4]);
-  __threadfence();
-  if (size >=  4) s[i] = cuCadd(s[i], s[i +  2]);
-  __threadfence();
-  if (size >=  2) s[i] = cuCadd(s[i], s[i +  1]); // TODO rm last line
-  __threadfence();
+    __threadfence();
+  }
+
+  // example code from Nvidia
+  // if (size >= 64) s[i] = cuCadd(s[i], s[i + 32]);
+  // __threadfence();
+  // if (size >= 32) s[i] = cuCadd(s[i], s[i + 16]);
+  // __threadfence();
+  // if (size >= 16) s[i] = cuCadd(s[i], s[i +  8]);
+  // __threadfence();
+  // if (size >=  8) s[i] = cuCadd(s[i], s[i +  4]);
+  // __threadfence();
+  // if (size >=  4) s[i] = cuCadd(s[i], s[i +  2]);
+  // __threadfence();
+  // if (size >=  2) s[i] = cuCadd(s[i], s[i +  1]); // TODO rm last line
+  // __threadfence();
 }
 
 __global__ void kernel_zero(WTYPE_cuda *x, size_t n) {

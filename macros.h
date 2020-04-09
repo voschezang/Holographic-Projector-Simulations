@@ -70,10 +70,10 @@
 #define BLOCKDIM 1
 #elif (N_sqrt <= 64)
 #define BLOCKDIM 16
-#elif (N_sqrt <= 128)
-#define BLOCKDIM 32
+/* #elif (N_sqrt <= 128) */
+/* #define BLOCKDIM 32 */
 #elif (N_sqrt <= 512)
-#define BLOCKDIM 64
+#define BLOCKDIM 128
 #else
 #define BLOCKDIM 256
 #endif
@@ -82,7 +82,7 @@
 /* #define BLOCKDIM 256 */
 /* #define GRIDDIM 256 */
 /* #define GRIDDIM (2 * BLOCKDIM) */
-#define GRIDDIM (4 * BLOCKDIM)
+#define GRIDDIM (BLOCKDIM)
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
 
 /* #define SHARED_MEMORY_SIZE ((BLOCKDIM * KERNEL_BATCH_SIZE) / REDUCE_SHARED_MEMORY) */
@@ -115,7 +115,7 @@
 
 
 #define ZERO make_cuDoubleComplex(0,0)
-#define VOL(type, x) *((type *) &x)
+/* #define VOL(type, x) *((type *) &x) */
 
 
 // #define Ix(i,j) i + j * N_sqrt

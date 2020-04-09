@@ -49,6 +49,7 @@ void check_params() {
   assert(REDUCE_SHARED_MEMORY <= BLOCKDIM);
   assert(KERNEL_BATCH_SIZE <= BATCH_SIZE);
   assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == BATCH_SIZE);
+  assert(BLOCKDIM / REDUCE_SHARED_MEMORY);
   assert(N_PER_THREAD > 0);
   assert(N == N_STREAMS * STREAM_SIZE);
   assert(N == BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
@@ -313,12 +314,12 @@ inline void transform_batch(WTYPE_cuda *d_x, STYPE *d_u, STYPE *d_v,
     const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
 #ifdef MEMCPY_ASYNC
-    superposition_per_block<<< GRIDDIM, BLOCKDIM, 0, stream >>>
+    superposition::per_block<<< GRIDDIM, BLOCKDIM, 0, stream >>>
       (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
     /* ( d_x, d_u, d_y_block, d_v, direction ); */
 #else
     // TODO alt, dynamic blocksize: k<<<N,M,batch_size>>>
-    superposition_per_block<<< GRIDDIM, BLOCKDIM >>>
+    superposition::per_block<<< GRIDDIM, BLOCKDIM >>>
       (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
 #endif
   }
@@ -425,8 +426,9 @@ inline void transform(const WTYPE *x, WTYPE *y,
 
 
   // Init memory
-	cudaMemcpy( d_x, x, N * sizeof(WTYPE), cudaMemcpyHostToDevice );
-	cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice );
+	cu ( cudaMemcpy( d_x, x, N * sizeof(WTYPE), cudaMemcpyHostToDevice ) );
+	cu ( cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice ) );
+
 #ifdef MEMCPY_ASYNC
   // note that N_BATCHES != number of streams
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {

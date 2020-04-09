@@ -9,7 +9,6 @@
 #include "macros.h"
 #include "kernel.cu"
 
-
 inline __host__ __device__ double angle(cuDoubleComplex  z) {
   return atan2(cuCreal(z), cuCimag(z));
 }
@@ -22,7 +21,14 @@ inline __device__ cuDoubleComplex polar(double a, double phi) {
   return make_cuDoubleComplex(a * res.x, a * res.y);
 }
 
-inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j,
+
+///////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+namespace superposition {
+///////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+
+inline __device__ WTYPE_cuda single(const size_t i, const size_t j,
                         const WTYPE_cuda *x, const STYPE *u, STYPE *v,
                         const char direction) {
   // TODO consider unguarded functions, intrinsic functions
@@ -46,9 +52,9 @@ inline __device__ WTYPE_cuda superposition_single(const size_t i, const size_t j
   return polar(amp / distance, phase - distance * direction * TWO_PI_OVER_LAMBDA);
 }
 
-inline __device__ void superposition_partial(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
-                                             WTYPE_cuda *__restrict__ y_local, STYPE *__restrict__ v,
-                                             const char direction) {
+inline __device__ void per_thread(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
+                                  WTYPE_cuda *__restrict__ y_local, STYPE *__restrict__ v,
+                                  const char direction) {
 #ifdef CACHE_BATCH
   // cache v[batch] because it is read by every thread
   // v_cached is constant and equal for each block
@@ -77,7 +83,7 @@ inline __device__ void superposition_partial(WTYPE_cuda *__restrict__ x, STYPE *
 
     // Usage of stride allows <<<1,1>>> kernel invocation
     for (size_t i = idx; i < N; i += stride)
-      sum = cuCadd(superposition_single(i, m, x, u, v_cached, direction), sum);
+      sum = cuCadd(single(i, m, x, u, v_cached, direction), sum);
 
     // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = sum;
     y_local[m] = sum;
@@ -87,7 +93,7 @@ inline __device__ void superposition_partial(WTYPE_cuda *__restrict__ x, STYPE *
   }
 }
 
-inline __device__ void superposition_cp_result(WTYPE_cuda *__restrict__ local, WTYPE_cuda *__restrict__ tmp) {
+inline __device__ void copy_result(WTYPE_cuda *__restrict__ local, WTYPE_cuda *__restrict__ tmp) {
   // TODO rename tmp => shared
   const unsigned int tid = threadIdx.x;
 
@@ -165,7 +171,7 @@ inline __device__ void superposition_cp_result(WTYPE_cuda *__restrict__ local, W
   __syncthreads();
 }
 
-inline __device__ void superposition_agg(WTYPE_cuda *__restrict__ tmp, double *__restrict__ y) {
+inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__restrict__ y) {
   const unsigned int tid = threadIdx.x;
   const unsigned int size = BLOCKDIM / REDUCE_SHARED_MEMORY;
 
@@ -174,15 +180,21 @@ inline __device__ void superposition_agg(WTYPE_cuda *__restrict__ tmp, double *_
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
     // TOOD check for memory bank conflicts
     WTYPE_cuda *x = &tmp[m * size];
-    if (size > 512) assert(0);
-    if(size == 512){if(tid < 256){ x[tid] = cuCadd(x[tid], x[tid + 256]); __syncthreads();}}
-    if(size >= 256){if(tid < 128){ x[tid] = cuCadd(x[tid], x[tid + 128]); __syncthreads();}}
-    if(size >= 128){if(tid <  64){ x[tid] = cuCadd(x[tid], x[tid +  64]); __syncthreads();}}
+#pragma unroll
+    for (unsigned int s = size / 2; s >= 2 * WARP_SIZE; s/=2) {
+      if(tid < s)
+        x[tid] = cuCadd(x[tid], x[tid + s]);
+
+      __syncthreads();
+    }
+
+    // if(size == 512){ if(tid < 256){ x[tid] = cuCadd(x[tid], x[tid + 256]);} __syncthreads();}
+    // if(size >= 256){ if(tid < 128){ x[tid] = cuCadd(x[tid], x[tid + 128]);} __syncthreads();}
+    // if(size >= 128){ if(tid <  64){ x[tid] = cuCadd(x[tid], x[tid +  64]);} __syncthreads();}
   }
 
 
   // final intra warp aggregation
-  // TODO do this in parallel for the next warp in case of next batch
   const unsigned int n_warps = BLOCKDIM / WARP_SIZE;
   const unsigned int wid = tid / WARP_SIZE;
   const unsigned int lane = tid % 32;
@@ -192,6 +204,9 @@ inline __device__ void superposition_agg(WTYPE_cuda *__restrict__ tmp, double *_
           && (m+w) < KERNEL_BATCH_SIZE
           && lane < size)
         warp_reduce_c<size, WTYPE_cuda>(&tmp[(m+w) * size], lane);
+
+  // if (tid == 0)
+  //   tmp[0] = tmp[1 * size + 31];
 
   // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
   //   if (tid < WARP_SIZE && tid < size)
@@ -209,29 +224,20 @@ inline __device__ void superposition_agg(WTYPE_cuda *__restrict__ tmp, double *_
     WTYPE_cuda sum;
     // sum = ZERO;
     sum = tmp[m * size];
-
 #ifdef DEBUG
     cuCheck(sum);
 #endif
-
     const unsigned int i = blockIdx.x + m * GRIDDIM;
     y[i] = sum.x;
     y[i + GRIDDIM * BATCH_SIZE] = sum.y; // note the use of stream batch size
-    // }
   }
 
   // do not sync blocks, exit kernel and agg block results locally or in diff kernel
 }
 
-// TODO optimize memory / prevent Shared memory bank conflicts for x,u arrays
-// TODO use __restrict__, const
-// TODO template<unsigned int blockSize>
-
-// namespace superposition {
-__global__ void superposition_per_block(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
-                                        double *__restrict__ y, STYPE *__restrict__ v,
-                                        const char direction)
-{
+__global__ void per_block(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
+                          double *__restrict__ y, STYPE *__restrict__ v,
+                          const char direction) {
 #if (REDUCE_SHARED_MEMORY > 1 && KERNEL_BATCH_SIZE >= REDUCE_SHARED_MEMORY)
   __shared__ WTYPE_cuda tmp[KERNEL_BATCH_SIZE * BLOCKDIM / REDUCE_SHARED_MEMORY];
 #else
@@ -240,23 +246,26 @@ __global__ void superposition_per_block(WTYPE_cuda *__restrict__ x, STYPE *__res
   // TODO transpose tmp array? - memory bank conflicts
   {
     WTYPE_cuda local[KERNEL_BATCH_SIZE];
-    superposition_partial(x, u, local, v, direction);
-    superposition_cp_result(local, tmp);
+    superposition::per_thread(x, u, local, v, direction);
+    superposition::copy_result(local, tmp);
   }
-  superposition_agg(tmp, y);
+  superposition::aggregate_blocks(tmp, y);
 }
 
- __global__ void naive(WTYPE_cuda *x, STYPE *u, WTYPE_cuda  *y, STYPE *v)
- {
-   // Single kernel, used in y_i = \sum_j superposition_single(y_i,x_j)
-   size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-   WTYPE_cuda sum = ZERO;
+__global__ void naive(WTYPE_cuda *x, STYPE *u, WTYPE_cuda  *y, STYPE *v) {
+  // Single kernel, used in y_i = \sum_j superposition::single(y_i,x_j)
+  size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  WTYPE_cuda sum = ZERO;
 
-   for(int n = 0; n < N; ++n)
-     sum = cuCadd(superposition_single(n, i, x, u, v, 1), sum);
+  for(int n = 0; n < N; ++n)
+    sum = cuCadd(single(n, i, x, u, v, 1), sum);
 
-   y[i] = sum;
- }
+  y[i] = sum;
+}
 
-
+///////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+} // end namespace
+///////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
 #endif
