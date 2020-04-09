@@ -48,14 +48,14 @@ inline __device__ void warp_reduce(volatile T *s, unsigned int i) {
 template <unsigned int size, typename T>
 inline __device__ void warp_reduce_c(T *s, const unsigned int i) {
 #pragma unroll
-  for (unsigned int n = 32; n >= 1; n/=2) {
+  for (int n = 32; n >= 1; n/=2) {
     if (size >= n+n)
       s[i] = cuCadd(s[i], s[i + n]);
 
     __threadfence();
   }
 
-  // example code from Nvidia
+  // // example code from Nvidia
   // if (size >= 64) s[i] = cuCadd(s[i], s[i + 32]);
   // __threadfence();
   // if (size >= 32) s[i] = cuCadd(s[i], s[i + 16]);

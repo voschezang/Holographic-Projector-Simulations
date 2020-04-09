@@ -13,6 +13,8 @@
 
 #include "macros.h"
 #include "kernel.cu"
+#include "init.h"
+#include "util.h"
 #include "functions.h"
 
 /**

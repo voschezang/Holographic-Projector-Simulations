@@ -1,26 +1,22 @@
 #ifndef MACROS
 #define MACROS
 
-/* #include <thrust/device_vector.h> */
-/* #include <thrust/reduce.h> */
-/* #include <thrust/complex.h> */
-
 /* #define DEBUG */
 #define Z // compute z transform
 #define RANDOM_Y_SPACE // TODO consider better, non-correlated RNG
 #define RANDOM_Z_SPACE
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 /* #define PINNED_MEM // use cudaMallocHost over cudaMalloc // disable if in case of host memory issues // TODO speedup > 1 in absense of kernal invocation and otherwise < 1 */
-/* #define PARTIAL_AGG */
 #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
+#define PARALLEL_INTRA_WARP_AGG
 
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
 /* #define N_sqrt 64 */
-/* #define N_sqrt 128 */
+#define N_sqrt 128
 /* #define N_sqrt 512 */
-#define N_sqrt 1024
+/* #define N_sqrt 1024 */
 #define N (N_sqrt * N_sqrt)
 #define N2 (N_sqrt * N_sqrt)
 /* #define BATCH_SIZE (N / 65536 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
@@ -70,8 +66,8 @@
 #define BLOCKDIM 1
 #elif (N_sqrt <= 64)
 #define BLOCKDIM 16
-/* #elif (N_sqrt <= 128) */
-/* #define BLOCKDIM 32 */
+#elif (N_sqrt <= 128)
+#define BLOCKDIM 64
 #elif (N_sqrt <= 512)
 #define BLOCKDIM 128
 #else
@@ -82,7 +78,7 @@
 /* #define BLOCKDIM 256 */
 /* #define GRIDDIM 256 */
 /* #define GRIDDIM (2 * BLOCKDIM) */
-#define GRIDDIM (4 * BLOCKDIM)
+#define GRIDDIM (2 * BLOCKDIM)
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
 
 /* #define SHARED_MEMORY_SIZE ((BLOCKDIM * KERNEL_BATCH_SIZE) / REDUCE_SHARED_MEMORY) */

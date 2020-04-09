@@ -198,6 +198,8 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
 
 
   // final intra warp aggregation
+#ifdef PARALLEL_INTRA_WARP_AGG
+  // let each warp aggregate a different batch
   const unsigned int n_warps = BLOCKDIM / WARP_SIZE;
   const unsigned int wid = tid / WARP_SIZE;
   const unsigned int lane = tid % 32;
@@ -205,12 +207,13 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
     for(unsigned int w = 0; w < n_warps; ++w)
       if (wid == w
           && (m+w) < KERNEL_BATCH_SIZE
-          && lane < size)
+          && lane < size / 2)
         warp_reduce_c<size, WTYPE_cuda>(&tmp[(m+w) * size], lane);
-
-  // for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-  //   if (tid < WARP_SIZE && tid < size)
-  //     warp_reduce_c<size>(&tmp[m * size], tid);
+#else
+  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+    if (tid < WARP_SIZE && tid < size / 2)
+      warp_reduce_c<size>(&tmp[m * size], tid);
+#endif
 
 
 #if (BLOCKDIM >= KERNEL_BATCH_SIZE)
