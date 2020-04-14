@@ -152,11 +152,17 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
   fclose(out);
 }
 
-void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z, STYPE *u, STYPE *v, STYPE *w, size_t len, enum FileType type) {
+void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z,
+                  STYPE *u, STYPE *v, STYPE *w,
+                  size_t len, enum FileType type) {
   printf("Save results as ");
+  // TODO use csv for i/o, read python generated x
   if (type == TXT) {
     printf(".txt\n");
-    // TODO use csv for i/o, read python generated x
+    char fn[] = "tmp/out.txt";
+    printf("..\n");
+    remove(fn); // fails if file does not exist
+    printf("..\n");
     FILE *out = fopen("tmp/out.txt", "wb");
     write_carray('x', x, len, out);
     write_carray('y', y, len, out);
@@ -176,7 +182,8 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z, STYPE *u, STYPE *v, STYPE *w, si
     printf(".grid\n");
     FILE *out = fopen("tmp/out-y.grid", "wb");
     assert(len == N2);
-    double img[N2];
+    if (len > 1e9) exit(1);
+    double img[len];
     // ignore borders
     /* img[I_(0,0)] = 0; */
     /* img[I_(0,N_sqrt-1)] = 0; */
