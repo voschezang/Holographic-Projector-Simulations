@@ -57,11 +57,11 @@ int main() {
   }
   check_params();
   struct timespec t0, t1, t2;
-	const size_t size = N * sizeof( WTYPE );
+	const size_t size = N * sizeof(WTYPE);
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // host
-  // problem with cudaMallocManaged: cuda complex dtypes differ from normal
+  // vector<WTYPE> x1(0,N);
   WTYPE
     *x = (WTYPE *) malloc(size),
     *y = (WTYPE *) malloc(size),
@@ -81,12 +81,16 @@ int main() {
   printf("loop\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
 
-  transform(x, y, u, v, -1);
-#ifdef Z
-  printf("\nSecond transform:\n");
-  transform(y, z, v, w, 1);
-  // transform(x, z, u, v, 1);
-#endif
+  if (Y) {
+    transform(x, y, u, v, -1);
+  } else {
+    printf("skipping y\n");
+  }
+  if (Z) {
+    printf("\nSecond transform:\n");
+    transform(y, z, v, w, 1);
+    // transform(x, z, u, v, 1);
+  }
 
   // end loop
   clock_gettime(CLOCK_MONOTONIC, &t2);
@@ -94,13 +98,13 @@ int main() {
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   double time = dt(t1, t2);
   printf("runtime init: \t%0.3f\n", time);
-#ifndef Z
-  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n", \
-         flops(time), FLOP_PER_POINT);
-#else
-  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n", \
+
+  if (Z)
+    printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
+           flops(time), FLOP_PER_POINT);
+  else
+    printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
          2*flops(time), 2*FLOP_PER_POINT);
-#endif
 
 #ifdef DEBUG
   for (size_t i = 0; i < N2; ++i) {
@@ -109,17 +113,18 @@ int main() {
   }
 #endif
 
-  summarize_c('y', y, N);
-#ifdef Z
-  summarize_c('z', z, N);
-#endif
+  if (Y) summarize_c('y', y, N);
+  if (Z) summarize_c('z', z, N);
 
   cudaProfilerStop();
+  printf("save results\n");
   write_arrays(x,y,z, u,v,w, N, TXT);
   // write_arrays(x,y,z, u,v,w, N, GRID);
   // write_arrays(x,y,z, u,v,w, N, DAT);
   // write_arrays(x,y,z, u,v,w, 100, DAT);
+  printf("free xyz\n");
   free(x); free(y); free(z);
+  printf("free uvw\n");
   free(u); free(v); free(w);
 	return 0;
 }

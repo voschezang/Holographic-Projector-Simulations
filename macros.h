@@ -2,7 +2,8 @@
 #define MACROS
 
 /* #define DEBUG */
-#define Z // compute z transform
+#define Y 0 // compute y transform
+#define Z 0 // compute z transform
 #define RANDOM_Y_SPACE // TODO consider better, non-correlated RNG
 #define RANDOM_Z_SPACE
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
@@ -14,19 +15,15 @@
 // TODO use N,M
 /* #define N_sqrt 8 */
 /* #define N_sqrt 64 */
-#define N_sqrt 128
+/* #define N_sqrt 128 */
 /* #define N_sqrt 512 */
-/* #define N_sqrt 1024 */
+#define N_sqrt 1024
 #define N (N_sqrt * N_sqrt)
 #define N2 (N_sqrt * N_sqrt)
-/* #define BATCH_SIZE (N / 65536 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
-/* #define BATCH_SIZE (N / 32768 ) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
-/* #define BATCH_SIZE (N / 8192) // number of y-datapoints per batch (kernel invocation), increase this to reduce sync overhead */
 #define BATCH_SIZE 8 // stream batch size // TODO rename to STREAM_BATCH_SIZE?
 #define KERNEL_BATCH_SIZE 2
 #define KERNELS_PER_BATCH (BATCH_SIZE / KERNEL_BATCH_SIZE)
 // TODO compute optimal batch size as function of N
-
 
 #define N_STREAMS 4
 #define STREAM_SIZE (N / N_STREAMS)
