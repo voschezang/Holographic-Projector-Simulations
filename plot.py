@@ -172,24 +172,18 @@ def scatter_multiple(y, v=None, title='', prefix='', filename=None, **kwargs):
     plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
     ax = plt.subplot(1, n_subplots, 1)
     scatter(y[:, 0], v, 'Amplitude', fig=fig, **kwargs)
-    sci_labels(ax)
-    plt.xlabel("Space dim1 (m)")
-    plt.ylabel("Space dim2 (m)")
+    scatter_markup(ax)
 
-    ax = plt.subplot(1, n_subplots, 2)
-    scatter(irradiance(to_polar(y[:, 0], y[:, 1])), v, 'Irradiance', fig=fig,
-            **kwargs)
-    sci_labels(ax)
-    plt.xlabel("Space dim1 (m)")
-    plt.ylabel("Space dim2 (m)")
+    ax = plt.subplot(1, n_subplots, 3)
+    scatter(y[:, 1] / np.pi, v, 'Phase', fig=fig, **kwargs)
+    scatter_markup(ax)
 
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = 'twilight'
-    ax = plt.subplot(1, n_subplots, 3)
-    scatter(y[:, 1] / np.pi, v, 'Phase', fig=fig, **kwargs)
-    sci_labels(ax)
-    plt.xlabel("Space dim1 (m)")
-    plt.ylabel("Space dim2 (m)")
+    ax = plt.subplot(1, n_subplots, 2)
+    scatter(irradiance(to_polar(y[:, 0], y[:, 1])), v, 'Irradiance', fig=fig,
+            **kwargs)
+    scatter_markup(ax)
 
     # TODO tight layout?
     if filename is not None:
@@ -202,6 +196,50 @@ def scatter_multiple(y, v=None, title='', prefix='', filename=None, **kwargs):
     # # scatter(y, v, '%s (a*)' % prefix, lambda a, phi: a * np.sin(phi))
     # # scatter(y, v, r'%s ($\phi$)' % prefix)
     # slice(y, v)
+
+
+def hexbin_multiple(x, v, title='', filename=None,  **kwargs):
+    """
+    x   2d array of amp, phase
+    v   3d array of spacial locations of data x
+    """
+    a, phi = x.T
+    if 'cmap' not in kwargs:
+        global cmap
+        kwargs['cmap'] = cmap
+
+    n_subplots = 3
+    fig = plt.figure(figsize=(n_subplots * 5, 4))
+    plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
+
+    ax = plt.subplot(131)
+    plt.hexbin(v[:, 1], v[:, 0], a, **kwargs)
+    scatter_markup(ax)
+    plt.title('Amplitude')
+
+    ax = plt.subplot(133)
+    plt.hexbin(v[:, 1], v[:, 0], irradiance(to_polar(a, phi)), **kwargs)
+    scatter_markup(ax)
+    plt.title('Irradiance')
+
+    # cyclic cmap: hsv, twilight
+    kwargs['cmap'] = 'twilight'
+    ax = plt.subplot(132)
+    plt.hexbin(v[:, 1], v[:, 0], phi, **kwargs)
+    scatter_markup(ax)
+    plt.title('Phase')
+
+    # plt.tight_layout()
+    if filename is not None:
+        save_fig(filename, ext='png')
+
+    return fig
+
+
+def scatter_markup(ax):
+    sci_labels(ax)
+    plt.xlabel("Space dim1 (m)")
+    plt.ylabel("Space dim2 (m)")
 
 
 def entropy(H, w, title='H',  **kwargs):

@@ -27,7 +27,7 @@ py:
 	python3 main.py -r
 
 plot:
-	python3 main.py -scatter
+	python3 main.py
 
 remote-run:
 	sh remote_run.sh
