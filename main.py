@@ -86,6 +86,7 @@ y:2,3,3,4
     #  plot subset
     N = data['y'].shape[0]
     N_sqrt = np.sqrt(N).astype(int)
+    # n = int(5e3)
     n = int(5e3)
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
     indices = np.random.randint(0, N, n)
@@ -93,3 +94,11 @@ y:2,3,3,4
                           'y', filename='y-scatter-sub', s=1)
     plot.scatter_multiple(data['z'][indices], data['w'][indices],
                           'z', filename='z-scatter-sub', s=1)
+
+    n = indices.size
+    gridsize = round(max(25, n / 5e2))
+    print(f'N^2: {n}, grid: {gridsize}')
+    plot.hexbin_multiple(data['y'][indices], data['v'][indices], 'y',
+                         filename=f'y-hexbin', gridsize=gridsize)
+    plot.hexbin_multiple(data['z'][indices], data['w'][indices], 'z',
+                         filename=f'z-hexbin', gridsize=gridsize)
