@@ -36,12 +36,23 @@ remote-run-plot:
 	make remote-run plot
 
 ssh:
-	ssh $(ADDRESS)
+	ssh -Y $(ADDRESS)
 	# emacs: use SPC f f /sshx:nikhef
 
 # CUDA
 init-path:
 	export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}
+
+profile:
+	make build
+	nvprof ./main
+
+vprofile:
+	make build
+	nvvp ./main
+
+setup-profiler:
+	modprobe nvidia NVreg_RestrictProfilingToAdminUsers=0
 
 deps:
 	# make sure python, python-pip are installed
