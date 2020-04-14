@@ -52,7 +52,7 @@ inline void agg_batch_blocks(cudaStream_t stream,
     thrust::device_ptr<double> ptr(d_y_block + m * GRIDDIM);
 #ifdef MEMCPY_ASYNC
     // launch a 1x1 kernel in selected stream, which calls thrust indirectly
-    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
+    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
 #else
     ptr_d_y_batch[m] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
 #endif
@@ -60,7 +60,7 @@ inline void agg_batch_blocks(cudaStream_t stream,
     ptr += GRIDDIM * BATCH_SIZE;
 
 #ifdef MEMCPY_ASYNC
-    reduce_kernel<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
+    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
 #else
     ptr_d_y_batch[m + BATCH_SIZE] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
 #endif
@@ -72,7 +72,7 @@ inline void agg_batch(WTYPE *y,
                       WTYPE_cuda *d_y_stream,
                       double *d_y_batch) {
   // wrapper for thrust call using streams
-  zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
+  kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
 
 #ifdef MEMCPY_ASYNC
 	cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE_cuda),

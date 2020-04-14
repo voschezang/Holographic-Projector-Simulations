@@ -1,8 +1,10 @@
 #ifndef MACROS
 #define MACROS
 
+#define DIV(x,y) ((x + y - 1) / y) // ceil(int, int)
+
 /* #define DEBUG */
-#define Y 0 // compute y transform
+#define Y 1 // compute y transform
 #define Z 0 // compute z transform
 #define RANDOM_Y_SPACE // TODO consider better, non-correlated RNG
 #define RANDOM_Z_SPACE
@@ -14,21 +16,21 @@
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
-/* #define N_sqrt 64 */
+#define N_sqrt 64
 /* #define N_sqrt 128 */
 /* #define N_sqrt 512 */
-#define N_sqrt 1024
+/* #define N_sqrt 1024 */
 #define N (N_sqrt * N_sqrt)
 #define N2 (N_sqrt * N_sqrt)
 #define BATCH_SIZE 8 // stream batch size // TODO rename to STREAM_BATCH_SIZE?
-#define KERNEL_BATCH_SIZE 2
+#define KERNEL_BATCH_SIZE 8
 #define KERNELS_PER_BATCH (BATCH_SIZE / KERNEL_BATCH_SIZE)
 // TODO compute optimal batch size as function of N
 
 #define N_STREAMS 4
 #define STREAM_SIZE (N / N_STREAMS)
 /* #define N_BATCHES ((N + BATCH_SIZE - 1) / BATCH_SIZE) */
-#define BATCHES_PER_STREAM ((STREAM_SIZE + BATCH_SIZE - 1) / BATCH_SIZE)
+#define BATCHES_PER_STREAM DIV(STREAM_SIZE, BATCH_SIZE)
 #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM)
 /* #define BATCHES_PER_STREAM (N_BATCHES / N_STREAMS) */
 

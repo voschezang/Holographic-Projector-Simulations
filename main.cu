@@ -80,7 +80,7 @@ int main() {
   printf("runtime init: \t%0.3f\n", dt(t0, t1));
   printf("loop\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
-
+  cudaProfilerStart();
   if (Y) {
     transform(x, y, u, v, -1);
   } else {
@@ -91,6 +91,7 @@ int main() {
     transform(y, z, v, w, 1);
     // transform(x, z, u, v, 1);
   }
+  cudaProfilerStop();
 
   // end loop
   clock_gettime(CLOCK_MONOTONIC, &t2);
@@ -116,7 +117,6 @@ int main() {
   if (Y) summarize_c('y', y, N);
   if (Z) summarize_c('z', z, N);
 
-  cudaProfilerStop();
   printf("save results\n");
   write_arrays(x,y,z, u,v,w, N, TXT);
   // write_arrays(x,y,z, u,v,w, N, GRID);

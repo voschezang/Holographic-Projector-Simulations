@@ -40,6 +40,9 @@ void check_params() {
 #elif (N_STREAMS * BATCHES_PER_STREAM != N_BATCHES)
   printf("Invalid param: incompatible N_STREAMS and N\n"); assert(0);
 #endif
+  assert(STREAM_SIZE != 0);
+  assert(N > 0); assert(N_STREAMS > 0); assert(STREAM_SIZE > 0);
+  assert(N_BATCHES > 0); assert(BATCH_SIZE > 0);
   assert(REDUCE_SHARED_MEMORY <= BLOCKDIM);
   assert(KERNEL_BATCH_SIZE <= BATCH_SIZE);
   assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == BATCH_SIZE);
