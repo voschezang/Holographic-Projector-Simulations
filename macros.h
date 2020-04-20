@@ -81,6 +81,12 @@
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
 
 /* #define SHARED_MEMORY_SIZE ((BLOCKDIM * KERNEL_BATCH_SIZE) / REDUCE_SHARED_MEMORY) */
+#if (REDUCE_SHARED_MEMORY > 1 && KERNEL_BATCH_SIZE >= REDUCE_SHARED_MEMORY)
+#define SHARED_MEMORY_SIZE (KERNEL_BATCH_SIZE * BLOCKDIM / REDUCE_SHARED_MEMORY)
+#else
+#define SHARED_MEMORY_SIZE (KERNEL_BATCH_SIZE * BLOCKDIM)
+#endif
+
 
 #define N_PER_THREAD (N / GRIDDIM / BLOCKDIM) // for input (x), thus independent of batches
 // the value N_PER_THREAD is used implicitly in gridDim.x

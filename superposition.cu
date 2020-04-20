@@ -242,11 +242,7 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
 __global__ void per_block(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
                           double *__restrict__ y, STYPE *__restrict__ v,
                           const char direction) {
-#if (REDUCE_SHARED_MEMORY > 1 && KERNEL_BATCH_SIZE >= REDUCE_SHARED_MEMORY)
-  __shared__ WTYPE_cuda tmp[KERNEL_BATCH_SIZE * BLOCKDIM / REDUCE_SHARED_MEMORY];
-#else
-  __shared__ WTYPE_cuda tmp[KERNEL_BATCH_SIZE * BLOCKDIM];
-#endif
+  __shared__ WTYPE_cuda tmp[SHARED_MEMORY_SIZE];
   // TODO transpose tmp array? - memory bank conflicts
   {
     WTYPE_cuda local[KERNEL_BATCH_SIZE];

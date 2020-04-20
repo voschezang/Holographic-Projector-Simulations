@@ -100,13 +100,18 @@ int main() {
   double time = dt(t1, t2);
   printf("runtime init: \t%0.3f\n", time);
 
-  if (Z)
+  if (Z) {
     printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
            flops(time), FLOP_PER_POINT);
-  else
+    printf("Bandwidth: \t%0.5f MB/s (excl. shared memory)\n", bandwidth(time, 2, 0));
+    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 2, 1));
+  }
+  else {
     printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
          2*flops(time), 2*FLOP_PER_POINT);
-
+    printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, 1, 0));
+    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 1, 1));
+  }
 #ifdef DEBUG
   for (size_t i = 0; i < N2; ++i) {
     assert(cuCabs(y[i]) < DBL_MAX);
@@ -118,10 +123,10 @@ int main() {
   if (Z) summarize_c('z', z, N);
 
   printf("save results\n");
-  write_arrays(x,y,z, u,v,w, N, TXT);
-  // write_arrays(x,y,z, u,v,w, N, GRID);
-  // write_arrays(x,y,z, u,v,w, N, DAT);
-  // write_arrays(x,y,z, u,v,w, 100, DAT);
+  write_arrays<TXT>(x,y,z, u,v,w, N);
+  // write_arrays<GRID>(x,y,z, u,v,w, N);
+  // write_arrays<DAT>(x,y,z, u,v,w, N);
+  // write_arrays<DAT>(x,y,z, u,v,w, 100);
   printf("free xyz\n");
   free(x); free(y); free(z);
   printf("free uvw\n");
