@@ -29,13 +29,8 @@ inline void transform_batch(WTYPE_cuda *d_x, STYPE *d_u, STYPE *d_v,
     // d_y_block : BATCH_SIZE x GRIDDIM x 2
     const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
-#ifdef MEMCPY_ASYNC
     superposition::per_block<direction><<< GRIDDIM, BLOCKDIM, 0, stream >>>
       (d_x, d_u, &d_y_block[j], &d_v[k * DIMS] );
-#else
-    superposition::per_block<direction><<< GRIDDIM, BLOCKDIM >>>
-      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS] );
-#endif
   }
 }
 
@@ -47,20 +42,18 @@ inline void agg_batch_blocks(cudaStream_t stream,
   thrust::device_ptr<double> ptr_d_y_batch(d_y_batch);
   // TODO is a reduction call for each datapoint really necessary?
   for (unsigned int m = 0; m < BATCH_SIZE; ++m) {
-    // assume two independent reductions are faster or equal to a large reduction
+    // Assume two independent reductions are at least as fast as a large reduction.
+    // I.e. no kernel overhead and better work distribution
     thrust::device_ptr<double> ptr(d_y_block + m * GRIDDIM);
+
+    // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
 #ifdef MEMCPY_ASYNC
-    // launch a 1x1 kernel in selected stream, which calls thrust indirectly
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
-#else
-    ptr_d_y_batch[m] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
-#endif
-
     ptr += GRIDDIM * BATCH_SIZE;
-
-#ifdef MEMCPY_ASYNC
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
 #else
+    ptr_d_y_batch[m] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
+    ptr += GRIDDIM * BATCH_SIZE;
     ptr_d_y_batch[m + BATCH_SIZE] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
 #endif
   }
@@ -140,6 +133,8 @@ inline void transform(const WTYPE *x, WTYPE *y,
     printf("stream %i cpy init \n", i_stream);
     printf("stream %i nxt \n", i_stream);
   }
+#else
+  streams[0] = 0; // default stream
 #endif
 
   printf("streams post\n");
