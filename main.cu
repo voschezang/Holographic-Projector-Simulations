@@ -52,7 +52,7 @@ int main() {
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
   {
     double n = BLOCKDIM * BATCH_SIZE;
-    double m = n * sizeof(WTYPE_cuda) * 1e-3;
+    double m = n * sizeof(WTYPE) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
   check_params();

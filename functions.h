@@ -22,7 +22,7 @@ inline void cp_batch_data(const STYPE *v, STYPE *d_v, const size_t count, cudaSt
 }
 
 template<const Direction direction>
-inline void transform_batch(WTYPE_cuda *d_x, STYPE *d_u, STYPE *d_v,
+inline void transform_batch(WTYPE *d_x, STYPE *d_u, STYPE *d_v,
                             cudaStream_t stream, double *d_y_block)
 {
   for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
@@ -61,16 +61,16 @@ inline void agg_batch_blocks(cudaStream_t stream,
 
 inline void agg_batch(WTYPE *y,
                       cudaStream_t stream,
-                      WTYPE_cuda *d_y_stream,
+                      WTYPE *d_y_stream,
                       double *d_y_batch) {
   // wrapper for thrust call using streams
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
 
 #ifdef MEMCPY_ASYNC
-	cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE_cuda),
+	cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE),
                       cudaMemcpyDeviceToHost, stream ) );
 #else
-	cu( cudaMemcpy(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE_cuda),
+	cu( cudaMemcpy(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE),
                  cudaMemcpyDeviceToHost ) );
 #endif
 }
@@ -83,15 +83,15 @@ inline void transform(const WTYPE *x, WTYPE *y,
    d_y_batch  = batch results, using doubles because thrust doesn't support cuComplexDouble
    d_y_block  = block results (because blocks cannot sync), agg by thrust
    */
-  WTYPE_cuda *d_y_stream[N_STREAMS];
+  WTYPE *d_y_stream[N_STREAMS];
   double *d_y_batch[N_STREAMS];
   double *d_y_block[N_STREAMS];
   cudaStream_t streams[N_STREAMS];
 	STYPE *d_v[N_STREAMS], *d_u;
-	WTYPE_cuda *d_x;
+	WTYPE *d_x;
 
   // Malloc memory
-  cu( cudaMalloc( (void **) &d_x, N * sizeof(WTYPE_cuda) ) );
+  cu( cudaMalloc( (void **) &d_x, N * sizeof(WTYPE) ) );
   cu( cudaMalloc( (void **) &d_u, DIMS * N * sizeof(STYPE) ) );
 
   // malloc data for all batches before starting streams
@@ -100,18 +100,18 @@ inline void transform(const WTYPE *x, WTYPE *y,
     // TODO use single malloc for each type?
 #ifdef MEMCPY_ASYNC
     cu( cudaMallocHost( (void **) &d_y_stream[i_stream],
-                    BATCH_SIZE * sizeof(WTYPE_cuda) ) );
+                    BATCH_SIZE * sizeof(WTYPE) ) );
     cu( cudaMallocHost( (void **) &d_y_batch[i_stream],
-                    BATCH_SIZE * 2 * sizeof(WTYPE_cuda) ) );
+                    BATCH_SIZE * 2 * sizeof(WTYPE) ) );
     cu( cudaMallocHost( (void **) &d_y_block[i_stream],
                     BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
     cu( cudaMallocHost( (void **) &d_v[i_stream],
                     BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
 #else
     cu( cudaMalloc( (void **) &d_y_stream[i_stream],
-                    BATCH_SIZE * sizeof(WTYPE_cuda) ) );
+                    BATCH_SIZE * sizeof(WTYPE) ) );
     cu( cudaMalloc( (void **) &d_y_batch[i_stream],
-                    BATCH_SIZE * 2 * sizeof(WTYPE_cuda) ) );
+                    BATCH_SIZE * 2 * sizeof(WTYPE) ) );
     cu( cudaMalloc( (void **) &d_y_block[i_stream],
                     BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
     cu( cudaMalloc( (void **) &d_v[i_stream],

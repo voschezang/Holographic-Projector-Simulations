@@ -98,18 +98,18 @@
 #define SCALE (LAMBDA / 0.6328e-6)
 #define PROJECTOR_DISTANCE
 
-#define DOUBLE_PRECISION 1
+#define DOUBLE_PRECISION
 
 #ifdef DOUBLE_PRECISION
-#define WTYPE_cuda cuDoubleComplex // wave type for CUDA device
+/* #define WTYPE_cuda cuDoubleComplex // wave type for CUDA device */
 /* #define WTYPE double complex // wave type */
 /* #define ABS(x) (cabs(x)) */
 #define WTYPE cuDoubleComplex // wave type for host
 /* #define ABS(x) (cuCabs(x)) */
 #define STYPE double  // space (coordinate) type
 #else
-#define WTYPE_cuda cuFloatComplex // wave type for CUDA device
-#define WTYPE float complex // wave type
+/* #define WTYPE_cuda cuFloatComplex // wave type for CUDA device */
+#define WTYPE cuFloatComplex  // wave type
 #define STYPE float // space (coordinate) type
 #endif // DOUBLE_PRECISION
 

@@ -43,7 +43,7 @@ inline __device__ void warp_reduce(volatile T *s, unsigned int i) {
   if (blockSize >=  2) s[i] += s[i +  1]; // TODO rm last line
 }
 
-// volatile WTYPE_cuda& operator=(volatile WTYPE_cuda&) volatile;
+// volatile WTYPE& operator=(volatile WTYPE&) volatile;
 
 template <unsigned int size, typename T>
 inline __device__ void warp_reduce_c(T *s, const unsigned int i) {
@@ -70,20 +70,13 @@ inline __device__ void warp_reduce_c(T *s, const unsigned int i) {
   // __threadfence();
 }
 
-__global__ void kernel_zero(WTYPE_cuda *x, size_t n) {
-  const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-  const size_t stride = blockDim.x * gridDim.x;
-  for (size_t i = idx; i < n; i += stride)
-    x[i] = ZERO;
-}
-
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 namespace kernel {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-__global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_t len, WTYPE_cuda *out) {
+__global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_t len, WTYPE *out) {
   // convert two arrays into array of tuples (i.e. complex numbers)
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   const size_t stride = blockDim.x * gridDim.x;

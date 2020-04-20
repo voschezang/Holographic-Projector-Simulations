@@ -26,12 +26,12 @@ double flops(double runtime) {
 double bandwidth(double runtime, const int n_planes, const char include_tmp) {
   // input phasor  + input space + output space
   const double unit = 1e-6; // MB/s
-  double input = n_planes * N * (sizeof(WTYPE_cuda) + 2 * sizeof(STYPE));
-  double output = n_planes * N * sizeof(WTYPE_cuda);
+  double input = n_planes * N * (sizeof(WTYPE) + 2 * sizeof(STYPE));
+  double output = n_planes * N * sizeof(WTYPE);
   if (!include_tmp)
     return unit * (input + output) / runtime;
 
-  double tmp = GRIDDIM * SHARED_MEMORY_SIZE * sizeof(WTYPE_cuda);
+  double tmp = GRIDDIM * SHARED_MEMORY_SIZE * sizeof(WTYPE);
   return unit * (input + output + tmp) / runtime;
 }
 
@@ -63,7 +63,7 @@ void check_params() {
   assert(N == N_STREAMS * STREAM_SIZE);
   assert(N == BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
   assert(N_PER_THREAD * BLOCKDIM * GRIDDIM == N);
-  assert(sizeof(WTYPE) == sizeof(WTYPE_cuda));
+  assert(sizeof(WTYPE) == sizeof(WTYPE));
 }
 
 double memory_in_MB() {

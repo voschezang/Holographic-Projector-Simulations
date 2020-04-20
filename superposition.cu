@@ -40,8 +40,8 @@ namespace superposition {
 //////////////////////////////////////////////////////////////////////////////////
 
 template<const Direction direction>
-inline __device__ WTYPE_cuda single(const size_t i, const size_t j,
-                        const WTYPE_cuda *x, const STYPE *u, STYPE *v) {
+inline __device__ WTYPE single(const size_t i, const size_t j,
+                        const WTYPE *x, const STYPE *u, STYPE *v) {
   const size_t
     n = i * DIMS,
     m = j * DIMS;
@@ -58,9 +58,9 @@ inline __device__ WTYPE_cuda single(const size_t i, const size_t j,
 }
 
 template<const Direction direction>
-inline __device__ void per_thread(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
-                                  WTYPE_cuda *__restrict__ y_local, STYPE *__restrict__ v) {
-  // type WTYPE_cuda __restrict__ y_local[SHARED_MEMORY_SIZE]
+inline __device__ void per_thread(WTYPE *__restrict__ x, STYPE *__restrict__ u,
+                                  WTYPE *__restrict__ y_local, STYPE *__restrict__ v) {
+  // type WTYPE __restrict__ y_local[SHARED_MEMORY_SIZE]
 #ifdef CACHE_BATCH
   // cache v[batch] because it is read by every thread
   // v_cached is constant and equal for each block
@@ -101,7 +101,7 @@ inline __device__ void per_thread(WTYPE_cuda *__restrict__ x, STYPE *__restrict_
   }
 }
 
-inline __device__ void copy_result(WTYPE_cuda *__restrict__ local, WTYPE_cuda *__restrict__ tmp) {
+inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict__ tmp) {
   // TODO rename tmp => shared
   const unsigned int tid = threadIdx.x;
 
@@ -179,7 +179,7 @@ inline __device__ void copy_result(WTYPE_cuda *__restrict__ local, WTYPE_cuda *_
   __syncthreads();
 }
 
-inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__restrict__ y) {
+inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restrict__ y) {
   const unsigned int tid = threadIdx.x;
   const unsigned int size = BLOCKDIM / REDUCE_SHARED_MEMORY;
 
@@ -187,7 +187,7 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
   // TODO do this in parallel for the next warp in case of next batch
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
     // TOOD check for memory bank conflicts
-    WTYPE_cuda *x = &tmp[m * size];
+    WTYPE *x = &tmp[m * size];
 #pragma unroll
     for (unsigned int s = size / 2; s >= 2 * WARP_SIZE; s/=2) {
       if(tid < s)
@@ -214,11 +214,11 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
       if (wid == w
           && (m+w) < KERNEL_BATCH_SIZE
           && lane < size / 2)
-        warp_reduce_c<size, WTYPE_cuda>(&tmp[(m+w) * size], lane);
+        warp_reduce_c<size, WTYPE>(&tmp[(m+w) * size], lane);
 #else
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
     if (tid < WARP_SIZE && tid < size / 2)
-      warp_reduce_c<size, WTYPE_cuda>(&tmp[m * size], tid);
+      warp_reduce_c<size, WTYPE>(&tmp[m * size], tid);
 #endif
 
 
@@ -230,7 +230,7 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
     for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
 #endif
 
-    WTYPE_cuda sum;
+    WTYPE sum;
     // sum = ZERO;
     sum = tmp[m * size];
 #ifdef DEBUG
@@ -246,12 +246,12 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
 
   // TODO template <direction>? icm kernel <<< >>> syntax?
 template<const Direction direction>
-__global__ void per_block(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
+__global__ void per_block(WTYPE *__restrict__ x, STYPE *__restrict__ u,
                           double *__restrict__ y, STYPE *__restrict__ v) {
-  __shared__ WTYPE_cuda tmp[SHARED_MEMORY_SIZE];
+  __shared__ WTYPE tmp[SHARED_MEMORY_SIZE];
   // TODO transpose tmp array? - memory bank conflicts
   {
-    WTYPE_cuda y_local[KERNEL_BATCH_SIZE];
+    WTYPE y_local[KERNEL_BATCH_SIZE];
     superposition::per_thread<direction>(x, u, y_local, v);
     superposition::copy_result(y_local, tmp);
   }
