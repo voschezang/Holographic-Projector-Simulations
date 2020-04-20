@@ -82,13 +82,13 @@ int main() {
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   cudaProfilerStart();
   if (Y) {
-    transform(x, y, u, v, -1);
+    transform<Backward>(x, y, u, v);
   } else {
     printf("skipping y\n");
   }
   if (Z) {
     printf("\nSecond transform:\n");
-    transform(y, z, v, w, 1);
+    transform<Forward>(y, z, v, w);
     // transform(x, z, u, v, 1);
   }
   cudaProfilerStop();

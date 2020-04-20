@@ -9,6 +9,17 @@
 #include "macros.h"
 #include "kernel.cu"
 
+// TODO consider unguarded functions, intrinsic functions
+// TODO use softeningSquared?
+
+
+// a transformation from projector to projection is forwards, vice versa is backwards
+enum Direction {Forward = 1, Backward = -1};
+
+///////////////////////////////////////////////////////////////////////////////////
+// some utilities specific to this file
+//////////////////////////////////////////////////////////////////////////////////
+
 inline __host__ __device__ double angle(cuDoubleComplex  z) {
   return atan2(cuCreal(z), cuCimag(z));
 }
@@ -28,18 +39,12 @@ namespace superposition {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
+template<const Direction direction>
 inline __device__ WTYPE_cuda single(const size_t i, const size_t j,
-                        const WTYPE_cuda *x, const STYPE *u, STYPE *v,
-                        const char direction) {
-  // TODO consider unguarded functions, intrinsic functions
-#ifdef DEBUG
-  assert(direction == -1 || direction == 1);
-#endif
-
+                        const WTYPE_cuda *x, const STYPE *u, STYPE *v) {
   const size_t
     n = i * DIMS,
     m = j * DIMS;
-  // TODO use softeningSquared?
   const double
     distance = norm3d(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
     amp = cuCabs(x[i]),
@@ -52,10 +57,10 @@ inline __device__ WTYPE_cuda single(const size_t i, const size_t j,
   return polar(amp / distance, phase - distance * direction * TWO_PI_OVER_LAMBDA);
 }
 
-// TODO template<const char direction>
+template<const Direction direction>
 inline __device__ void per_thread(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
-                                  WTYPE_cuda *__restrict__ y_local, STYPE *__restrict__ v,
-                                  const char direction) {
+                                  WTYPE_cuda *__restrict__ y_local, STYPE *__restrict__ v) {
+  // type WTYPE_cuda __restrict__ y_local[SHARED_MEMORY_SIZE]
 #ifdef CACHE_BATCH
   // cache v[batch] because it is read by every thread
   // v_cached is constant and equal for each block
@@ -88,7 +93,7 @@ inline __device__ void per_thread(WTYPE_cuda *__restrict__ x, STYPE *__restrict_
   // outer loop for batch, inner loop for index is faster than vice versa
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
     for (size_t i = idx; i < N; i += stride)
-      y_local[m] = cuCadd(y_local[m], single(i, m, x, u, v_cached, direction));
+      y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_cached));
 
 #ifdef DEBUG
     cuCheck(y_local[m]);
@@ -213,7 +218,7 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
 #else
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
     if (tid < WARP_SIZE && tid < size / 2)
-      warp_reduce_c<size>(&tmp[m * size], tid);
+      warp_reduce_c<size, WTYPE_cuda>(&tmp[m * size], tid);
 #endif
 
 
@@ -239,15 +244,16 @@ inline __device__ void aggregate_blocks(WTYPE_cuda *__restrict__ tmp, double *__
   // do not sync blocks, exit kernel and agg block results locally or in diff kernel
 }
 
+  // TODO template <direction>? icm kernel <<< >>> syntax?
+template<const Direction direction>
 __global__ void per_block(WTYPE_cuda *__restrict__ x, STYPE *__restrict__ u,
-                          double *__restrict__ y, STYPE *__restrict__ v,
-                          const char direction) {
+                          double *__restrict__ y, STYPE *__restrict__ v) {
   __shared__ WTYPE_cuda tmp[SHARED_MEMORY_SIZE];
   // TODO transpose tmp array? - memory bank conflicts
   {
-    WTYPE_cuda local[KERNEL_BATCH_SIZE];
-    superposition::per_thread(x, u, local, v, direction);
-    superposition::copy_result(local, tmp);
+    WTYPE_cuda y_local[KERNEL_BATCH_SIZE];
+    superposition::per_thread<direction>(x, u, y_local, v);
+    superposition::copy_result(y_local, tmp);
   }
   superposition::aggregate_blocks(tmp, y);
 }

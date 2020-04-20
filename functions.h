@@ -21,21 +21,20 @@ inline void cp_batch_data(const STYPE *v, STYPE *d_v, const size_t count, cudaSt
 #endif
 }
 
-
+template<const Direction direction>
 inline void transform_batch(WTYPE_cuda *d_x, STYPE *d_u, STYPE *d_v,
-                            const char direction, cudaStream_t stream,
-                            double *d_y_block)
+                            cudaStream_t stream, double *d_y_block)
 {
   for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
     // d_y_block : BATCH_SIZE x GRIDDIM x 2
     const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
 #ifdef MEMCPY_ASYNC
-    superposition::per_block<<< GRIDDIM, BLOCKDIM, 0, stream >>>
-      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
+    superposition::per_block<direction><<< GRIDDIM, BLOCKDIM, 0, stream >>>
+      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS] );
 #else
-    superposition::per_block<<< GRIDDIM, BLOCKDIM >>>
-      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS], direction );
+    superposition::per_block<direction><<< GRIDDIM, BLOCKDIM >>>
+      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS] );
 #endif
   }
 }
@@ -83,9 +82,9 @@ inline void agg_batch(WTYPE *y,
 #endif
 }
 
+template<const Direction direction>
 inline void transform(const WTYPE *x, WTYPE *y,
-                      const STYPE *u, const STYPE *v,
-                      const char direction) {
+                      const STYPE *u, const STYPE *v) {
   /**
    d_y_stream = reserved memory for each stream, containing batch result as complex doubles.
    d_y_batch  = batch results, using doubles because thrust doesn't support cuComplexDouble
@@ -105,6 +104,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
   // malloc data for all batches before starting streams
   // note that vector of arrays can be more readable
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
+    // TODO use single malloc for each type?
 #ifdef MEMCPY_ASYNC
     cu( cudaMallocHost( (void **) &d_y_stream[i_stream],
                     BATCH_SIZE * sizeof(WTYPE_cuda) ) );
@@ -142,11 +142,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
   }
 #endif
 
-
   printf("streams post\n");
-  // in case of heterogeneous computing, start 4 batches async on gpu, then agg them on cpu, and repeat
-  // in case of pure gpu computing, send single batch to all streams, and repeat (instead filling a single stream with many batches at time)
-
   // assume N_BATCHES is divisible by N_STREAMS
   for (size_t i = 0; i < N_BATCHES; i+=N_STREAMS) {
     // start each distinct kernel in batches
@@ -161,9 +157,8 @@ inline void transform(const WTYPE *x, WTYPE *y,
       cp_batch_data(&v[i_batch * BATCH_SIZE * DIMS], d_v[i_stream],
                     DIMS * BATCH_SIZE * sizeof(STYPE), streams[i_stream]);
 
-      transform_batch(d_x, d_u, d_v[i_stream],
-                      direction, streams[i_stream],
-                      d_y_block[i_stream]
+      transform_batch<direction>(d_x, d_u, d_v[i_stream],
+                      streams[i_stream], d_y_block[i_stream]
                       );
     }
 
