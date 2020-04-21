@@ -19,8 +19,20 @@ double flops(double runtime) {
   //  cores: 5120, tensor cores 640, memory: 32 GB
   // generation Volta, compute capability 7.0
   // max size: 49 152
-  // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOPS_PER_POINT, t, N*N * 1e-9);
+  // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOP_PER_POINT, t, N*N * 1e-9);
   return 1e-12 * N * N * (double) FLOP_PER_POINT / runtime;
+}
+
+double bandwidth(double runtime, const int n_planes, const char include_tmp) {
+  // input phasor  + input space + output space
+  const double unit = 1e-6; // MB/s
+  double input = n_planes * N * (sizeof(WTYPE) + 2 * sizeof(STYPE));
+  double output = n_planes * N * sizeof(WTYPE);
+  if (!include_tmp)
+    return unit * (input + output) / runtime;
+
+  double tmp = GRIDDIM * SHARED_MEMORY_SIZE * sizeof(WTYPE);
+  return unit * (input + output + tmp) / runtime;
 }
 
 void check(WTYPE  z) {
@@ -51,7 +63,7 @@ void check_params() {
   assert(N == N_STREAMS * STREAM_SIZE);
   assert(N == BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
   assert(N_PER_THREAD * BLOCKDIM * GRIDDIM == N);
-  assert(sizeof(WTYPE) == sizeof(WTYPE_cuda));
+  assert(sizeof(WTYPE) == sizeof(WTYPE));
 }
 
 double memory_in_MB() {
@@ -64,6 +76,7 @@ double memory_in_MB() {
 
 void summarize_c(char name, WTYPE *x, size_t len) {
   double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
+  /* for (const auto& x : X) { */
   for (size_t i = 0; i < len; ++i) {
     max_amp = fmax(max_amp, cuCabs(x[i]));
     min_amp = fmin(min_amp, cuCabs(x[i]));
@@ -113,7 +126,6 @@ void print_c(WTYPE x, FILE *out) {
   }
 }
 
-
 void write_array(char c, STYPE *x, size_t len, FILE *out, char print_key) {
   // key
   if (print_key == 1)
@@ -155,9 +167,10 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
   fclose(out);
 }
 
+template <enum FileType type>
 void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z,
                   STYPE *u, STYPE *v, STYPE *w,
-                  size_t len, enum FileType type) {
+                  size_t len) {
   printf("Save results as ");
   // TODO use csv for i/o, read python generated x
   if (type == TXT) {

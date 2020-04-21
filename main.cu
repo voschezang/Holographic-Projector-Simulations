@@ -52,7 +52,7 @@ int main() {
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
   {
     double n = BLOCKDIM * BATCH_SIZE;
-    double m = n * sizeof(WTYPE_cuda) * 1e-3;
+    double m = n * sizeof(WTYPE) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
   check_params();
@@ -61,7 +61,17 @@ int main() {
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // host
-  // vector<WTYPE> x1(0,N);
+  { // TODO consider c++11 types
+    auto size = 100;
+    auto x = std::vector<WTYPE>(size);
+    auto u = std::vector<STYPE>(size);
+    auto v = thrust::host_vector<STYPE>(size);
+
+    // alt, using `type name(arg);` syntax
+    std::vector<WTYPE>
+      y(size),
+      z(size);
+  }
   WTYPE
     *x = (WTYPE *) malloc(size),
     *y = (WTYPE *) malloc(size),
@@ -82,13 +92,13 @@ int main() {
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   cudaProfilerStart();
   if (Y) {
-    transform(x, y, u, v, -1);
+    transform<Backward>(x, y, u, v);
   } else {
     printf("skipping y\n");
   }
   if (Z) {
     printf("\nSecond transform:\n");
-    transform(y, z, v, w, 1);
+    transform<Forward>(y, z, v, w);
     // transform(x, z, u, v, 1);
   }
   cudaProfilerStop();
@@ -100,13 +110,18 @@ int main() {
   double time = dt(t1, t2);
   printf("runtime init: \t%0.3f\n", time);
 
-  if (Z)
+  if (Z) {
     printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
            flops(time), FLOP_PER_POINT);
-  else
+    printf("Bandwidth: \t%0.5f MB/s (excl. shared memory)\n", bandwidth(time, 2, 0));
+    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 2, 1));
+  }
+  else {
     printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
          2*flops(time), 2*FLOP_PER_POINT);
-
+    printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, 1, 0));
+    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 1, 1));
+  }
 #ifdef DEBUG
   for (size_t i = 0; i < N2; ++i) {
     assert(cuCabs(y[i]) < DBL_MAX);
@@ -118,10 +133,10 @@ int main() {
   if (Z) summarize_c('z', z, N);
 
   printf("save results\n");
-  write_arrays(x,y,z, u,v,w, N, TXT);
-  // write_arrays(x,y,z, u,v,w, N, GRID);
-  // write_arrays(x,y,z, u,v,w, N, DAT);
-  // write_arrays(x,y,z, u,v,w, 100, DAT);
+  write_arrays<TXT>(x,y,z, u,v,w, N);
+  // write_arrays<GRID>(x,y,z, u,v,w, N);
+  // write_arrays<DAT>(x,y,z, u,v,w, N);
+  // write_arrays<DAT>(x,y,z, u,v,w, 100);
   printf("free xyz\n");
   free(x); free(y); free(z);
   printf("free uvw\n");

@@ -81,6 +81,12 @@
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
 
 /* #define SHARED_MEMORY_SIZE ((BLOCKDIM * KERNEL_BATCH_SIZE) / REDUCE_SHARED_MEMORY) */
+#if (REDUCE_SHARED_MEMORY > 1 && KERNEL_BATCH_SIZE >= REDUCE_SHARED_MEMORY)
+#define SHARED_MEMORY_SIZE (KERNEL_BATCH_SIZE * BLOCKDIM / REDUCE_SHARED_MEMORY)
+#else
+#define SHARED_MEMORY_SIZE (KERNEL_BATCH_SIZE * BLOCKDIM)
+#endif
+
 
 #define N_PER_THREAD (N / GRIDDIM / BLOCKDIM) // for input (x), thus independent of batches
 // the value N_PER_THREAD is used implicitly in gridDim.x
@@ -92,18 +98,18 @@
 #define SCALE (LAMBDA / 0.6328e-6)
 #define PROJECTOR_DISTANCE
 
-#define DOUBLE_PRECISION 1
+#define DOUBLE_PRECISION
 
 #ifdef DOUBLE_PRECISION
-#define WTYPE_cuda cuDoubleComplex // wave type for CUDA device
+/* #define WTYPE_cuda cuDoubleComplex // wave type for CUDA device */
 /* #define WTYPE double complex // wave type */
 /* #define ABS(x) (cabs(x)) */
 #define WTYPE cuDoubleComplex // wave type for host
 /* #define ABS(x) (cuCabs(x)) */
 #define STYPE double  // space (coordinate) type
 #else
-#define WTYPE_cuda cuFloatComplex // wave type for CUDA device
-#define WTYPE float complex // wave type
+/* #define WTYPE_cuda cuFloatComplex // wave type for CUDA device */
+#define WTYPE cuFloatComplex  // wave type
 #define STYPE float // space (coordinate) type
 #endif // DOUBLE_PRECISION
 
