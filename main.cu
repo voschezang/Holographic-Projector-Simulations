@@ -65,9 +65,9 @@ int main() {
     Z = std::vector<WTYPE>(N);
 
   auto
-    U = std::vector<STYPE>(N),
-    V = std::vector<STYPE>(N),
-    W = std::vector<STYPE>(N);
+    U = std::vector<STYPE>(N * DIMS),
+    V = std::vector<STYPE>(N * DIMS),
+    W = std::vector<STYPE>(N * DIMS);
 
   // use C-style pointers for backwards compatibility
   WTYPE
@@ -90,13 +90,13 @@ int main() {
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   cudaProfilerStart();
   if (Y_TRANSFORM) {
-    transform<Backward>(x, y, u, v);
+    transform<Backward>(X, y, U, v);
   } else {
     printf("skipping y\n");
   }
   if (Z_TRANSFORM) {
     printf("\nSecond transform:\n");
-    transform<Forward>(y, z, v, w);
+    transform<Forward>(Y, z, V, w);
     // transform(x, z, u, v, 1);
   }
   cudaProfilerStop();

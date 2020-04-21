@@ -79,35 +79,51 @@ inline void agg_batch(WTYPE *y,
 #endif
 }
 
-template<const Direction direction>
-inline void transform(const WTYPE *x, WTYPE *y,
-                      const STYPE *u, const STYPE *v) {
-  /**
+/**
+   d_x, d_u are stored in normal (non-pinned) GPU memory
+   d_y, d_v are stored partially, and copied back to CPU on the fly
+
+   Additional temporary memory:
    d_y_stream = reserved memory for each stream, containing batch result as complex doubles.
    d_y_batch  = batch results, using doubles because thrust doesn't support cuComplexDouble
    d_y_block  = block results (because blocks cannot sync), agg by thrust
-   */
+*/
+template<const Direction direction>
+inline void transform(const std::vector<WTYPE> X, WTYPE *y,
+                      const std::vector<STYPE> U, const STYPE *v) {
+  /* inline void transform(const WTYPE *x, WTYPE *y, */
+  /*                       const STYPE *u, const STYPE *v) { */
+
+  // alt, using thrust */
+  // type declarations in c make it more complex/verbose than e.g. python */
+  // c++ has even more type syntax (e.g. `std::func<>`, multiple ways of variable init) */
+  // `auto` gives simpler python-like syntax, with variable names on the right and constructors on the left */
+
+  // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
+
+  // Malloc memory, don't use pinned (page-locked) memory for input data
+  thrust::device_vector<WTYPE> d_X = X;
+  thrust::device_vector<STYPE> d_U = U;
+  // alt syntax
+  /* auto d_X = thrust::device_vector<WTYPE>(X);
+     /* auto d_U = thrust::device_vector<STYPE>(U); */
+
   WTYPE *d_y_stream[N_STREAMS];
   double *d_y_batch[N_STREAMS];
   double *d_y_block[N_STREAMS];
   cudaStream_t streams[N_STREAMS];
-	STYPE *d_v[N_STREAMS], *d_u;
-	WTYPE *d_x;
+	/* STYPE *d_v[N_STREAMS], *d_u; */
+	STYPE *d_v[N_STREAMS];
+	/* WTYPE *d_x; */
 
-  // Malloc memory, no need to used pinned (page-locked) memory for input
-  cu( cudaMalloc( (void **) &d_x, N * sizeof(WTYPE) ) );
-  cu( cudaMalloc( (void **) &d_u, DIMS * N * sizeof(STYPE) ) );
-  // alt
-  //
-  /*   auto x = thrust::host_vector<WTYPE>(size); */
-  /*   auto d_x = thrust::device_vector<WTYPE>(x.begin(), x.end()); */
-  /*   auto u = thrust::host_vector<STYPE>(size); */
-  /*   auto d_u = thrust::device_vector<STYPE>(u.begin(), u.end()); */
-  /*   thrust::device_vector<STYPE> d_u = u;
-  /*   /\* auto d_v = thrust::device_vector<STYPE>(size); *\/ */
-  /* } */
 
-  // malloc data for all batches before starting streams
+  // compatibility
+  const WTYPE *x = &X[0];
+  const STYPE *u = &U[0];
+  WTYPE *d_x = thrust::raw_pointer_cast(&d_X[0]);
+  STYPE *d_u = thrust::raw_pointer_cast(&d_U[0]);
+
+  // malloc data using pinned memory for all batches before starting streams
   // vector arrays are slightly more readable than sub-arrays
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
     // TODO use single malloc for each type?
@@ -131,31 +147,6 @@ inline void transform(const WTYPE *x, WTYPE *y,
                     BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
 #endif
   }
-
-
-  // Init memory
-	cu ( cudaMemcpy( d_x, x, N * sizeof(WTYPE), cudaMemcpyHostToDevice ) );
-	cu ( cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice ) );
-
-  /* { */
-  /*   // alt, using thrust */
-  /*   // type declarations in c make it more complex/verbose than e.g. python */
-  /*   // c++ has even more type syntax (e.g. `std::func<>`, multiple ways of variable init) */
-  /*   // `auto` gives simpler python-like syntax, with variable names on the right and constructors on the left */
-
-  /*   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
-
-  /*   auto size = 100; */
-  /*   auto x = thrust::host_vector<WTYPE>(size); */
-  /*   auto y = thrust::host_vector<WTYPE>(size); */
-  /*   auto d_x = thrust::device_vector<WTYPE>(x.begin(), x.end()); */
-  /*   auto d_v = thrust::device_vector<WTYPE>(size); */
-
-  /*   auto u = thrust::host_vector<STYPE>(size); */
-  /*   auto v = thrust::host_vector<STYPE>(size); */
-  /*   auto d_u = thrust::device_vector<STYPE>(u.begin(), u.end()); */
-  /*   /\* auto d_v = thrust::device_vector<STYPE>(size); *\/ */
-  /* } */
 
 #ifdef MEMCPY_ASYNC
   // note that N_BATCHES != number of streams
@@ -250,8 +241,6 @@ inline void transform(const WTYPE *x, WTYPE *y,
 
   // implicit sync?
 
-	cu( cudaFree( d_x ) );
-	cu( cudaFree( d_u ) );
 	/* cu( cudaFree( d_v ) ); // TODO free host for d_v_batch */
   for (unsigned int i = 0; i < N_STREAMS; ++i) {
 #ifdef MEMCPY_ASYNC
