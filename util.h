@@ -76,6 +76,7 @@ double memory_in_MB() {
 
 void summarize_c(char name, WTYPE *x, size_t len) {
   double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
+  /* for (const auto& x : X) { */
   for (size_t i = 0; i < len; ++i) {
     max_amp = fmax(max_amp, cuCabs(x[i]));
     min_amp = fmin(min_amp, cuCabs(x[i]));

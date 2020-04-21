@@ -61,7 +61,17 @@ int main() {
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // host
-  // vector<WTYPE> x1(0,N);
+  { // TODO consider c++11 types
+    auto size = 100;
+    auto x = std::vector<WTYPE>(size);
+    auto u = std::vector<STYPE>(size);
+    auto v = thrust::host_vector<STYPE>(size);
+
+    // alt, using `type name(arg);` syntax
+    std::vector<WTYPE>
+      y(size),
+      z(size);
+  }
   WTYPE
     *x = (WTYPE *) malloc(size),
     *y = (WTYPE *) malloc(size),

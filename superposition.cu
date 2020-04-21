@@ -78,7 +78,7 @@ inline __device__ void per_thread(WTYPE *__restrict__ x, STYPE *__restrict__ u,
   const size_t stride = blockDim.x * gridDim.x;
 
 #pragma unroll
-  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+  for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
     y_local[m].x = 0;
     y_local[m].y = 0;
   }
@@ -91,7 +91,7 @@ inline __device__ void per_thread(WTYPE *__restrict__ x, STYPE *__restrict__ u,
 
   // for each y-datapoint in current batch
   // outer loop for batch, inner loop for index is faster than vice versa
-  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+  for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
     for (size_t i = idx; i < N; i += stride)
       y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_cached));
 
@@ -106,7 +106,7 @@ inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict_
   const unsigned int tid = threadIdx.x;
 
 #if (BLOCKDIM == 1 || REDUCE_SHARED_MEMORY == 1)
-  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+  for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
     tmp[threadIdx.x + m * BLOCKDIM] = local[m];
     // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = local[m];
 #else
@@ -118,13 +118,13 @@ inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict_
     const unsigned int halfBlockSize = BLOCKDIM / 2;
     // simple reduction, first half writes first, then second half add their result
     if (threadIdx.x >= halfBlockSize)
-      for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+      for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
         tmp[threadIdx.x - halfBlockSize + m * BLOCKDIM] = local[m];
         // tmp[m + (threadIdx.x - halfBlockSize ) * KERNEL_BATCH_SIZE] = local[m];
 
     __syncthreads();
     if (threadIdx.x < halfBlockSize)
-      for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+      for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
         tmp[threadIdx.x + m * KERNEL_BATCH_SIZE] = \
           cuCadd(local[m], tmp[threadIdx.x + m * KERNEL_BATCH_SIZE]);
         // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = \

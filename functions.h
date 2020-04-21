@@ -25,8 +25,11 @@ template<const Direction direction>
 inline void transform_batch(WTYPE *d_x, STYPE *d_u, STYPE *d_v,
                             cudaStream_t stream, double *d_y_block)
 {
+  // TODO consider
+  // for (auto i = 0u;;)
   for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
     // d_y_block : BATCH_SIZE x GRIDDIM x 2
+
     const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
     superposition::per_block<direction><<< GRIDDIM, BLOCKDIM, 0, stream >>>
@@ -48,6 +51,7 @@ inline void agg_batch_blocks(cudaStream_t stream,
 
     // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
 #ifdef MEMCPY_ASYNC
+    // TODO why is here no template?
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
     ptr += GRIDDIM * BATCH_SIZE;
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
@@ -90,12 +94,21 @@ inline void transform(const WTYPE *x, WTYPE *y,
 	STYPE *d_v[N_STREAMS], *d_u;
 	WTYPE *d_x;
 
-  // Malloc memory
+  // Malloc memory, no need to used pinned (page-locked) memory for input
   cu( cudaMalloc( (void **) &d_x, N * sizeof(WTYPE) ) );
   cu( cudaMalloc( (void **) &d_u, DIMS * N * sizeof(STYPE) ) );
+  // alt
+  //
+  /*   auto x = thrust::host_vector<WTYPE>(size); */
+  /*   auto d_x = thrust::device_vector<WTYPE>(x.begin(), x.end()); */
+  /*   auto u = thrust::host_vector<STYPE>(size); */
+  /*   auto d_u = thrust::device_vector<STYPE>(u.begin(), u.end()); */
+  /*   thrust::device_vector<STYPE> d_u = u;
+  /*   /\* auto d_v = thrust::device_vector<STYPE>(size); *\/ */
+  /* } */
 
   // malloc data for all batches before starting streams
-  // note that vector of arrays can be more readable
+  // vector arrays are slightly more readable than sub-arrays
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
     // TODO use single malloc for each type?
 #ifdef MEMCPY_ASYNC
@@ -124,15 +137,39 @@ inline void transform(const WTYPE *x, WTYPE *y,
 	cu ( cudaMemcpy( d_x, x, N * sizeof(WTYPE), cudaMemcpyHostToDevice ) );
 	cu ( cudaMemcpy( d_u, u, DIMS * N * sizeof(STYPE), cudaMemcpyHostToDevice ) );
 
+  /* { */
+  /*   // alt, using thrust */
+  /*   // type declarations in c make it more complex/verbose than e.g. python */
+  /*   // c++ has even more type syntax (e.g. `std::func<>`, multiple ways of variable init) */
+  /*   // `auto` gives simpler python-like syntax, with variable names on the right and constructors on the left */
+
+  /*   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
+
+  /*   auto size = 100; */
+  /*   auto x = thrust::host_vector<WTYPE>(size); */
+  /*   auto y = thrust::host_vector<WTYPE>(size); */
+  /*   auto d_x = thrust::device_vector<WTYPE>(x.begin(), x.end()); */
+  /*   auto d_v = thrust::device_vector<WTYPE>(size); */
+
+  /*   auto u = thrust::host_vector<STYPE>(size); */
+  /*   auto v = thrust::host_vector<STYPE>(size); */
+  /*   auto d_u = thrust::device_vector<STYPE>(u.begin(), u.end()); */
+  /*   /\* auto d_v = thrust::device_vector<STYPE>(size); *\/ */
+  /* } */
+
 #ifdef MEMCPY_ASYNC
   // note that N_BATCHES != number of streams
-  for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
-    /* const size_t i = i_stream * STREAM_SIZE * DIMS; */
-    printf("stream %i create \n", i_stream);
-    cudaStreamCreate(&streams[i_stream]);
-    printf("stream %i cpy init \n", i_stream);
-    printf("stream %i nxt \n", i_stream);
-  }
+  for (auto& stream : streams)
+    cudaStreamCreate(&stream);
+
+  // alt
+  /* for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) { */
+  /*   /\* const size_t i = i_stream * STREAM_SIZE * DIMS; *\/ */
+  /*   printf("stream %i create \n", i_stream); */
+  /*   /\* cudaStreamCreate(&streams[i_stream]); *\/ */
+  /*   printf("stream %i cpy init \n", i_stream); */
+  /*   printf("stream %i nxt \n", i_stream); */
+  /* } */
 #else
   streams[0] = 0; // default stream
 #endif
@@ -143,6 +180,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
     // start each distinct kernel in batches
     // TODO don't do this in case of non-uniform workloads
 
+    // TODO use single stream forloop
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
       const size_t i_batch = i + i_stream;
       if (N_BATCHES > 10 && i_batch % (int) (N_BATCHES / 10) == 0)
@@ -157,6 +195,7 @@ inline void transform(const WTYPE *x, WTYPE *y,
                       );
     }
 
+    // do aggregations in separate stream-loops; yielding a ~2.5x speedup
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
       /* const size_t i_batch = i + i_stream; */
       agg_batch_blocks(streams[i_stream],
