@@ -4,8 +4,8 @@
 #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int)
 
 /* #define DEBUG */
-#define Y 1 // compute y transform
-#define Z 0 // compute z transform
+#define Y_TRANSFORM 1 // compute y transform
+#define Z_TRANSFORM 0 // compute z transform
 #define RANDOM_Y_SPACE // TODO consider better, non-correlated RNG
 #define RANDOM_Z_SPACE
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
@@ -128,15 +128,16 @@
 
 // TODO check # operations for abs/angle etc
 // see https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
+// TODO use sincos instead of exp, and 2 muls (re, im)
 #define WEIGHT_DIV 4
-#define W 8
+#define WEIGHT 8 // complex operations
 #define FLOP_PER_POINT (                            \
              3     /* (u - v) with u,v \in R^3 */ + \
              3+(3+1)*WEIGHT_DIV /* |u| power, sum, power */ +         \
-             2*W   /* abs(x_i), angle(x_i) */ +                       \
+             2*WEIGHT    /* abs(x_i), angle(x_i) */ +                 \
              1     /* amp/distance */ +                               \
              3     /* phase - direction * distance * 2pi/lambda */ +  \
-             1+W   /* a exp(b) */                                     \
+             1+WEIGHT    /* a exp(b) */                               \
              )
 
 #endif

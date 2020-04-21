@@ -57,30 +57,28 @@ int main() {
   }
   check_params();
   struct timespec t0, t1, t2;
-	const size_t size = N * sizeof(WTYPE);
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
-  // host
-  { // TODO consider c++11 types
-    auto size = 100;
-    auto x = std::vector<WTYPE>(size);
-    auto u = std::vector<STYPE>(size);
-    auto v = thrust::host_vector<STYPE>(size);
+  auto
+    X = std::vector<WTYPE>(N),
+    Y = std::vector<WTYPE>(N),
+    Z = std::vector<WTYPE>(N);
 
-    // alt, using `type name(arg);` syntax
-    std::vector<WTYPE>
-      y(size),
-      z(size);
-  }
+  auto
+    U = std::vector<STYPE>(N),
+    V = std::vector<STYPE>(N),
+    W = std::vector<STYPE>(N);
+
+  // use C-style pointers for backwards compatibility
   WTYPE
-    *x = (WTYPE *) malloc(size),
-    *y = (WTYPE *) malloc(size),
-    *z = (WTYPE *) malloc(size);
+    *x = &X[0],
+    *y = &Y[0],
+    *z = &Z[0];
 
   STYPE
-    *u = (STYPE *) malloc(DIMS * N * sizeof(STYPE)),
-    *v = (STYPE *) malloc(DIMS * N * sizeof(STYPE)),
-    *w = (STYPE *) malloc(DIMS * N * sizeof(STYPE));
+    *u = &U[0],
+    *v = &V[0],
+    *w = &W[0];
 
   init_planes(x, u, v, w);
   summarize_double('u', u, N * DIMS);
@@ -91,12 +89,12 @@ int main() {
   printf("loop\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   cudaProfilerStart();
-  if (Y) {
+  if (Y_TRANSFORM) {
     transform<Backward>(x, y, u, v);
   } else {
     printf("skipping y\n");
   }
-  if (Z) {
+  if (Z_TRANSFORM) {
     printf("\nSecond transform:\n");
     transform<Forward>(y, z, v, w);
     // transform(x, z, u, v, 1);
@@ -110,7 +108,7 @@ int main() {
   double time = dt(t1, t2);
   printf("runtime init: \t%0.3f\n", time);
 
-  if (Z) {
+  if (Z_TRANSFORM) {
     printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
            flops(time), FLOP_PER_POINT);
     printf("Bandwidth: \t%0.5f MB/s (excl. shared memory)\n", bandwidth(time, 2, 0));
@@ -129,17 +127,17 @@ int main() {
   }
 #endif
 
-  if (Y) summarize_c('y', y, N);
-  if (Z) summarize_c('z', z, N);
+  if (Y_TRANSFORM) summarize_c('y', y, N);
+  if (Z_TRANSFORM) summarize_c('z', z, N);
 
   printf("save results\n");
   write_arrays<TXT>(x,y,z, u,v,w, N);
   // write_arrays<GRID>(x,y,z, u,v,w, N);
   // write_arrays<DAT>(x,y,z, u,v,w, N);
   // write_arrays<DAT>(x,y,z, u,v,w, 100);
-  printf("free xyz\n");
-  free(x); free(y); free(z);
-  printf("free uvw\n");
-  free(u); free(v); free(w);
+  // printf("free xyz\n");
+  // free(x); free(y); free(z);
+  // printf("free uvw\n");
+  // free(u); free(v); free(w);
 	return 0;
 }
