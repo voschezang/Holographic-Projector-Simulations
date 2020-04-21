@@ -2,6 +2,7 @@ ADDRESS := markv@stbc-g2.nikhef.nl
 PROJECT_DIR := /project/detrd/markv
 MNT_DIR := tmp
 REMOTE_DIR := nikhef:/project/detrd/markv/Holographic-Projector/tmp
+EXE := run
 
 jupyter:
 	jupyter notebook
@@ -11,13 +12,15 @@ build:
 	# nvcc -o main main.cu
 	# -ftz=true // flush dernormal to zero
 	#  -ftz=true -prec-div=false -prec-sqrt=false
-	/usr/local/cuda-10.2/bin/nvcc -o main main.cu -l curand
+	# /usr/local/cuda-10.2/bin/nvcc -o main main.cu -l curand
+	# /usr/local/cuda-10.2/bin/nvcc -o main main.cu -l curand -std=c++11
+	nvcc -o $(EXE) main.cu -l curand -std=c++11
 
 build-run:
-	make build && make run
+	make build && make $(EXE)
 
 run:
-	./main
+	./$(EXE)
 	make zip
 
 zip:
@@ -45,11 +48,11 @@ init-path:
 
 profile:
 	make build
-	nvprof ./main
+	nvprof ./$(EXE)
 
 vprofile:
 	make build
-	nvvp ./main
+	nvvp ./$(EXE)
 
 setup-profiler:
 	modprobe nvidia NVreg_RestrictProfilingToAdminUsers=0
