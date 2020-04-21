@@ -4,7 +4,7 @@ MNT_DIR := tmp
 REMOTE_DIR := nikhef:/project/detrd/markv/Holographic-Projector/tmp
 EXE := run
 
-.PHONY: run
+.PHONY: $(EXE)
 
 jupyter:
 	jupyter notebook
