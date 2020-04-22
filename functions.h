@@ -51,7 +51,7 @@ inline void agg_batch_blocks(cudaStream_t stream,
 
     // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
 #ifdef MEMCPY_ASYNC
-    // TODO why is here no template?
+    // TODO (syntax) why is here no template?
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
     ptr += GRIDDIM * BATCH_SIZE;
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
@@ -87,10 +87,12 @@ inline void agg_batch(WTYPE *y,
    d_y_stream = reserved memory for each stream, containing batch result as complex doubles.
    d_y_batch  = batch results, using doubles because thrust doesn't support cuComplexDouble
    d_y_block  = block results (because blocks cannot sync), agg by thrust
+
+   type& X is used to reference X instead of copying it (similar to a pointer *x, which would require later dereferencing)
 */
 template<const Direction direction>
-inline void transform(const std::vector<WTYPE> X, WTYPE *y,
-                      const std::vector<STYPE> U, const STYPE *v) {
+inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
+                      const std::vector<STYPE>& U, const STYPE *v) {
   /* inline void transform(const WTYPE *x, WTYPE *y, */
   /*                       const STYPE *u, const STYPE *v) { */
 

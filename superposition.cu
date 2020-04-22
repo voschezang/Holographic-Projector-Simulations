@@ -7,6 +7,7 @@
 #include <cuComplex.h>
 
 #include "macros.h"
+#include "util.h"
 #include "kernel.cu"
 
 // TODO consider unguarded functions, intrinsic functions
@@ -14,24 +15,14 @@
 
 
 // a transformation from projector to projection is forwards, vice versa is backwards
-enum Direction {Forward = 1, Backward = -1};
+enum class Direction {Forward, Backward};
 
-///////////////////////////////////////////////////////////////////////////////////
-// some utilities specific to this file
-//////////////////////////////////////////////////////////////////////////////////
-
-inline __host__ __device__ double angle(cuDoubleComplex  z) {
-  return atan2(cuCreal(z), cuCimag(z));
+template<Direction dir>
+inline __device__ double value() {
+  // manual conversion because <type_traits> lib is not yet supported
+  if (dir == Direction::Forward) return double{1.0};
+  else return double{-1.0};
 }
-
-inline __device__ cuDoubleComplex polar(double a, double phi) {
-  // Convert polar coordinates (a,phi) to complex number a * e^(phi I)
-  cuDoubleComplex res;
-  sincos(phi, &res.x, &res.y);
-  // return cuCmul(make_cuDoubleComplex(a, 0), res);
-  return make_cuDoubleComplex(a * res.x, a * res.y);
-}
-
 
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -54,10 +45,14 @@ inline __device__ WTYPE single(const size_t i, const size_t j,
   if (distance == 0) { printf("ERROR: distance must be nonzero\n"); asm("trap;"); }
 #endif
   // TODO __ddiv_rd, __dmul_ru
-  return polar(amp / distance, phase - distance * direction * TWO_PI_OVER_LAMBDA);
+
+  if (direction == Direction::Forward)
+    return polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
+  else
+    return polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
 }
 
-template<const Direction direction>
+template<Direction direction>
 inline __device__ void per_thread(WTYPE *__restrict__ x, STYPE *__restrict__ u,
                                   WTYPE *__restrict__ y_local, STYPE *__restrict__ v) {
   // type WTYPE __restrict__ y_local[SHARED_MEMORY_SIZE]
@@ -245,7 +240,7 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restr
 }
 
   // TODO template <direction>? icm kernel <<< >>> syntax?
-template<const Direction direction>
+template<Direction direction>
 __global__ void per_block(WTYPE *__restrict__ x, STYPE *__restrict__ u,
                           double *__restrict__ y, STYPE *__restrict__ v) {
   __shared__ WTYPE tmp[SHARED_MEMORY_SIZE];

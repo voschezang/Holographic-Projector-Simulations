@@ -10,6 +10,7 @@
 #include <time.h>
 #include <cuda_profiler_api.h>
 #include <thrust/host_vector.h> // unused in this file but causes error if omitted
+#include <iostream>
 
 #include "macros.h"
 #include "kernel.cu"
@@ -51,6 +52,8 @@ int main() {
 
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
   {
+    // auto n = double{BLOCKDIM * BATCH_SIZE};
+    // auto m = double{n * sizeof(WTYPE) * 1e-3};
     double n = BLOCKDIM * BATCH_SIZE;
     double m = n * sizeof(WTYPE) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
@@ -90,13 +93,13 @@ int main() {
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   cudaProfilerStart();
   if (Y_TRANSFORM) {
-    transform<Backward>(X, y, U, v);
+    transform<Direction::Backward>(X, y, U, v);
   } else {
     printf("skipping y\n");
   }
   if (Z_TRANSFORM) {
     printf("\nSecond transform:\n");
-    transform<Forward>(Y, z, V, w);
+    transform<Direction::Forward>(Y, z, V, w);
     // transform(x, z, u, v, 1);
   }
   cudaProfilerStop();
@@ -131,10 +134,10 @@ int main() {
   if (Z_TRANSFORM) summarize_c('z', z, N);
 
   printf("save results\n");
-  write_arrays<TXT>(x,y,z, u,v,w, N);
-  // write_arrays<GRID>(x,y,z, u,v,w, N);
-  // write_arrays<DAT>(x,y,z, u,v,w, N);
-  // write_arrays<DAT>(x,y,z, u,v,w, 100);
+  write_arrays<FileType::TXT>(x,y,z, u,v,w, N);
+  // write_arrays<FileType::GRID>(x,y,z, u,v,w, N);
+  // write_arrays<FileType::DAT>(x,y,z, u,v,w, N);
+  // write_arrays<FileType::DAT>(x,y,z, u,v,w, 100);
   // printf("free xyz\n");
   // free(x); free(y); free(z);
   // printf("free uvw\n");

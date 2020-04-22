@@ -70,6 +70,20 @@ inline __device__ void warp_reduce_c(T *s, const unsigned int i) {
   // __threadfence();
 }
 
+
+inline __host__ __device__ double angle(cuDoubleComplex  z) {
+  return atan2(cuCreal(z), cuCimag(z));
+}
+
+inline __device__ cuDoubleComplex polar(double a, double phi) {
+  // Convert polar coordinates (a,phi) to complex number a * e^(phi I)
+  cuDoubleComplex res;
+  sincos(phi, &res.x, &res.y);
+  // return cuCmul(make_cuDoubleComplex(a, 0), res);
+  return make_cuDoubleComplex(a * res.x, a * res.y);
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 namespace kernel {

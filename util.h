@@ -4,12 +4,12 @@
 #include <assert.h>
 #include <stdio.h>
 #include <time.h>
+/* #include <type_traits> */
 
 #include "macros.h"
 #include "kernel.cu"
-#include "superposition.cu"
 
-enum FileType {TXT, DAT, GRID};
+enum class FileType {TXT, DAT, GRID};
 
 double flops(double runtime) {
   // Tera or Giga FLOP/s
@@ -63,7 +63,6 @@ void check_params() {
   assert(N == N_STREAMS * STREAM_SIZE);
   assert(N == BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
   assert(N_PER_THREAD * BLOCKDIM * GRIDDIM == N);
-  assert(sizeof(WTYPE) == sizeof(WTYPE));
 }
 
 double memory_in_MB() {
@@ -167,13 +166,13 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
   fclose(out);
 }
 
-template <enum FileType type>
+template <FileType type>
 void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z,
                   STYPE *u, STYPE *v, STYPE *w,
                   size_t len) {
   printf("Save results as ");
   // TODO use csv for i/o, read python generated x
-  if (type == TXT) {
+  if (type == FileType::TXT) {
     printf(".txt\n");
     char fn[] = "tmp/out.txt";
     printf("..\n");
@@ -188,13 +187,13 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z,
     write_array('w', w, len*DIMS, out, 1);
     fclose(out);
   }
-  else if (type == DAT) {
+  else if (type == FileType::DAT) {
     printf(".dat\n");
     write_dot('x', x, u, len);
     write_dot('y', y, v, len);
     write_dot('z', z, w, len);
   }
-  else if (type == GRID) {
+  else if (type == FileType::GRID) {
     printf(".grid\n");
     FILE *out = fopen("tmp/out-y.grid", "wb");
     assert(len == N2);
@@ -236,5 +235,23 @@ double dt(struct timespec t0, struct timespec t1) {
   return (double) (t1.tv_sec - t0.tv_sec) + \
     ((double) (t1.tv_nsec - t0.tv_nsec)) * 1e-9;
 }
+
+
+/* /////////////////////////////////////////////////////////////////////////////////// */
+/* ////////////////////////////////////////////////////////////////////////////////// */
+/* namespace util { */
+/* /////////////////////////////////////////////////////////////////////////////////// */
+/* ////////////////////////////////////////////////////////////////////////////////// */
+
+/* template <typename T> */
+/* constexpr auto value(T t) noexcept { */
+/*   return static_cast<std::underlying_type_t<T>>(t); */
+/* } */
+
+/* /////////////////////////////////////////////////////////////////////////////////// */
+/* ////////////////////////////////////////////////////////////////////////////////// */
+/* } // end namespace */
+/* /////////////////////////////////////////////////////////////////////////////////// */
+/* ////////////////////////////////////////////////////////////////////////////////// */
 
 #endif
