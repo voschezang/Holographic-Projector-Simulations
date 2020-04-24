@@ -34,31 +34,6 @@
 #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM)
 /* #define BATCHES_PER_STREAM (N_BATCHES / N_STREAMS) */
 
-/* #define Y_BATCH_SIZE */
-/* #define G_BATCH_SIZE */
-
-#if (N_STREAMS > 1)
-#ifndef MEMCPY_ASYNC
-#define MEMCPY_ASYNC
-#endif
-#endif
-
-/* // MEMCPY_ASYNC requires pinnen memory */
-/* #ifdef MEMCPY_ASYNC */
-/* #ifndef PINNED_MEM */
-/* #define PINNED_MEM */
-/* #endif */
-/* #endif */
-
-// N^2 computations
-// 1) N^2 cores
-// 2) N cores with N datapoints per core
-// 3) N cores with M batches = N/M datapoints per core
-// if N > #cores, use grid-stride loop
-//    for x or for y?
-
-// TODO 1 thread per data element? or streaming? assume N >> total n threads
-
 #define WARP_SIZE 32
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
 #if (N_sqrt <= 32)
@@ -124,6 +99,9 @@
 /* #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * DIMS */
 #define I_(i,j) (j + (i) * N_sqrt)
 #define Ix(i,j,k) (k + (j) * DIMS + (i) * DIMS * N_sqrt)
+
+/* #define Matrix(type, size1, size2) std::vector<std::vector<type>>(size1, std::vector<type>(size2)) */
+#define Matrix(vtype, dtype, size1, size2) vtype<vtype<dtype>>(size1, vtype<dtype>(size2))
 
 
 // TODO check # operations for abs/angle etc

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 
 #include <thrust/host_vector.h>
@@ -14,19 +15,14 @@
 
 inline void cp_batch_data(const STYPE *v, STYPE *d_v, const size_t count, cudaStream_t stream) {
   // copy "v[i]" for i in batch, where v are the spatial positions belonging to the target datapoints y
-#ifdef MEMCPY_ASYNC
   cudaMemcpyAsync( d_v, v, count, cudaMemcpyHostToDevice, stream );
-#else
-  cudaMemcpy( d_v, v, count, cudaMemcpyHostToDevice );
-#endif
+  /* cudaMemcpy( d_v, v, count, cudaMemcpyHostToDevice ); */
 }
 
 template<const Direction direction>
 inline void transform_batch(WTYPE *d_x, STYPE *d_u, STYPE *d_v,
                             cudaStream_t stream, double *d_y_block)
 {
-  // TODO consider
-  // for (auto i = 0u;;)
   for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
     // d_y_block : BATCH_SIZE x GRIDDIM x 2
 
@@ -39,9 +35,7 @@ inline void transform_batch(WTYPE *d_x, STYPE *d_u, STYPE *d_v,
 
 inline void agg_batch_blocks(cudaStream_t stream,
                              double *d_y_batch,
-                             double *d_y_block)
-{
-  // TODO use maxBlocks, maxSize?
+                             double *d_y_block) {
   thrust::device_ptr<double> ptr_d_y_batch(d_y_batch);
   // TODO is a reduction call for each datapoint really necessary?
   for (unsigned int m = 0; m < BATCH_SIZE; ++m) {
@@ -50,33 +44,20 @@ inline void agg_batch_blocks(cudaStream_t stream,
     thrust::device_ptr<double> ptr(d_y_block + m * GRIDDIM);
 
     // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
-#ifdef MEMCPY_ASYNC
     // TODO (syntax) why is here no template?
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m]);
     ptr += GRIDDIM * BATCH_SIZE;
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &ptr_d_y_batch[m + BATCH_SIZE]);
-#else
-    ptr_d_y_batch[m] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
-    ptr += GRIDDIM * BATCH_SIZE;
-    ptr_d_y_batch[m + BATCH_SIZE] = thrust::reduce(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>());
-#endif
   }
 }
 
-inline void agg_batch(WTYPE *y,
-                      cudaStream_t stream,
-                      WTYPE *d_y_stream,
-                      double *d_y_batch) {
+inline void agg_batch(WTYPE *y, cudaStream_t stream,
+                      WTYPE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
 
-#ifdef MEMCPY_ASYNC
 	cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE),
                       cudaMemcpyDeviceToHost, stream ) );
-#else
-	cu( cudaMemcpy(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE),
-                 cudaMemcpyDeviceToHost ) );
-#endif
 }
 
 /**
@@ -103,20 +84,20 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
 
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
 
-  // Malloc memory, don't use pinned (page-locked) memory for input data
+  // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   thrust::device_vector<WTYPE> d_X = X;
   thrust::device_vector<STYPE> d_U = U;
   // alt syntax
   /* auto d_X = thrust::device_vector<WTYPE>(X);
      /* auto d_U = thrust::device_vector<STYPE>(U); */
 
+  cudaStream_t streams[N_STREAMS];
   WTYPE *d_y_stream[N_STREAMS];
   double *d_y_batch[N_STREAMS];
   double *d_y_block[N_STREAMS];
-  cudaStream_t streams[N_STREAMS];
-	/* STYPE *d_v[N_STREAMS], *d_u; */
 	STYPE *d_v[N_STREAMS];
-	/* WTYPE *d_x; */
+  /* // alt */
+  /* auto d_y_stream = std::vector<WTYPE*>(N_STREAMS); */
 
 
   // compatibility
@@ -126,46 +107,23 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
   STYPE *d_u = thrust::raw_pointer_cast(&d_U[0]);
 
   // malloc data using pinned memory for all batches before starting streams
+  // note that these mallocs are executed only once per stream
   // vector arrays are slightly more readable than sub-arrays
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
     // TODO use single malloc for each type?
-#ifdef MEMCPY_ASYNC
+    // manuall malloc because thrust support for pinned memory is limited
     cu( cudaMallocHost( (void **) &d_y_stream[i_stream],
-                    BATCH_SIZE * sizeof(WTYPE) ) );
+                        BATCH_SIZE * sizeof(WTYPE) ) );
     cu( cudaMallocHost( (void **) &d_y_batch[i_stream],
-                    BATCH_SIZE * 2 * sizeof(WTYPE) ) );
+                        BATCH_SIZE * 2 * sizeof(WTYPE) ) );
     cu( cudaMallocHost( (void **) &d_y_block[i_stream],
-                    BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
+                        BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
     cu( cudaMallocHost( (void **) &d_v[i_stream],
-                    BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
-#else
-    cu( cudaMalloc( (void **) &d_y_stream[i_stream],
-                    BATCH_SIZE * sizeof(WTYPE) ) );
-    cu( cudaMalloc( (void **) &d_y_batch[i_stream],
-                    BATCH_SIZE * 2 * sizeof(WTYPE) ) );
-    cu( cudaMalloc( (void **) &d_y_block[i_stream],
-                    BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
-    cu( cudaMalloc( (void **) &d_v[i_stream],
-                    BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
-#endif
+                        BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
   }
 
-#ifdef MEMCPY_ASYNC
-  // note that N_BATCHES != number of streams
   for (auto& stream : streams)
     cudaStreamCreate(&stream);
-
-  // alt
-  /* for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) { */
-  /*   /\* const size_t i = i_stream * STREAM_SIZE * DIMS; *\/ */
-  /*   printf("stream %i create \n", i_stream); */
-  /*   /\* cudaStreamCreate(&streams[i_stream]); *\/ */
-  /*   printf("stream %i cpy init \n", i_stream); */
-  /*   printf("stream %i nxt \n", i_stream); */
-  /* } */
-#else
-  streams[0] = 0; // default stream
-#endif
 
   printf("streams post\n");
   // assume N_BATCHES is divisible by N_STREAMS
@@ -173,7 +131,6 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
     // start each distinct kernel in batches
     // TODO don't do this in case of non-uniform workloads
 
-    // TODO use single stream forloop
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
       const size_t i_batch = i + i_stream;
       if (N_BATCHES > 10 && i_batch % (int) (N_BATCHES / 10) == 0)
@@ -184,8 +141,8 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
                     DIMS * BATCH_SIZE * sizeof(STYPE), streams[i_stream]);
 
       transform_batch<direction>(d_x, d_u, d_v[i_stream],
-                      streams[i_stream], d_y_block[i_stream]
-                      );
+                                 streams[i_stream], d_y_block[i_stream]
+                                 );
     }
 
     // do aggregations in separate stream-loops; yielding a ~2.5x speedup
@@ -213,7 +170,6 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
     }
   }
 
-#ifdef MEMCPY_ASYNC
   printf("destroy streams\n");
   cudaDeviceSynchronize();
 
@@ -223,7 +179,6 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
 
   for (unsigned int i = 0; i < N_STREAMS; ++i)
     cudaStreamDestroy(streams[i]);
-#endif
 
 #ifdef DEBUG
   /* for (size_t i_batch = 0; i_batch < N_BATCHES; i_batch+=1) { */
@@ -235,26 +190,14 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
   }
 
   for (size_t i_batch = 0; i_batch < N_BATCHES; i_batch+=1)
-      for (unsigned int i = 0; i < BATCH_SIZE; ++i)
-        assert(cuCabs(y[i + i_batch * BATCH_SIZE]) > 0);
+    for (unsigned int i = 0; i < BATCH_SIZE; ++i)
+      assert(cuCabs(y[i + i_batch * BATCH_SIZE]) > 0);
 
   for(size_t i = 0; i < N; ++i) assert(cuCabs(y[i]) > 0);
 #endif
 
-  // implicit sync?
-
-	/* cu( cudaFree( d_v ) ); // TODO free host for d_v_batch */
-  for (unsigned int i = 0; i < N_STREAMS; ++i) {
-#ifdef MEMCPY_ASYNC
-    cu( cudaFreeHost( d_y_stream[i] ) );
-    cu( cudaFreeHost( d_y_block[i] ) );
-    cu( cudaFreeHost( d_v[i] ) );
-#else
-    cu( cudaFree( d_y_stream[i] ) );
-    cu( cudaFree( d_y_block[i] ) );
-    cu( cudaFree( d_v[i] ) );
-#endif
-  }
-  /* cudaDeviceReset(); // TODO check if used correctly */
+  for (auto d : d_y_stream) cu( cudaFreeHost(d) );
+  for (auto d : d_y_block)  cu( cudaFreeHost(d) );
+  for (auto d : d_v)        cu( cudaFreeHost(d) );
   normalize_amp(y, N, 0);
 }
