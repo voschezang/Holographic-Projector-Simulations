@@ -10,6 +10,12 @@
 
 #define cu(result) { cudaCheck((result), __FILE__, __LINE__); }
 
+template<typename T>
+struct Array {
+  T *data;
+  size_t size;
+};
+
 inline
 cudaError_t cudaCheck(cudaError_t result, const char *file, int line)
 {
@@ -83,6 +89,29 @@ inline __device__ cuDoubleComplex polar(double a, double phi) {
   return make_cuDoubleComplex(a * res.x, a * res.y);
 }
 
+template<typename T>
+std::vector<T*> pinnedMallocVector(T **d_ptr, size_t dim1, size_t dim2) {
+  cu( cudaMallocHost( (void **) d_ptr, dim1 * dim2 * sizeof(T) ) );
+  auto vec = std::vector<T*>(dim1);
+  // for (auto&& row : matrix)
+  for (size_t i = 0; i < dim1; ++i)
+    vec[i] = *d_ptr + i * dim2;
+  return vec;
+}
+
+template<typename T>
+std::vector<Array<T>> pinnedMallocMatrix(T **d_ptr, size_t dim1, size_t dim2) {
+  cu( cudaMallocHost( (void **) d_ptr, dim1 * dim2 * sizeof(T) ) );
+  auto matrix = std::vector<Array<T>>(dim1);
+  // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
+  for (size_t i = 0; i < dim1; ++i)
+    matrix[i] = Array<T>{.data = *d_ptr + i * dim2, .size = dim2};
+  // matrix[i] = std::vector<T>(*d_ptr + i * dim2, *d_ptr + (i+1) * dim2);
+  // matrix[i] = std::vector<T>(&d_ptr[i * dim2], &d_ptr[(i+1) * dim2]);
+  // matrix[i] = std::vector<T>(d_ptr[i * dim2], d_ptr[(i+1) * dim2]);
+  return matrix;
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -96,6 +125,7 @@ __global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_
   const size_t stride = blockDim.x * gridDim.x;
   for (size_t i = idx; i < len; i+=stride) {
     out[i] = make_cuDoubleComplex(a[i], b[i]);
+    // out[i] = {a[i], b[i]}; // TODO
   }
 }
 

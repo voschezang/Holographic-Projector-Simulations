@@ -56,8 +56,8 @@ inline void agg_batch(WTYPE *y, cudaStream_t stream,
   // wrapper for thrust call using streams
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
 
-	cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE),
-                      cudaMemcpyDeviceToHost, stream ) );
+	/* cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE), */
+  /*                     cudaMemcpyDeviceToHost, stream ) ); */
 }
 
 /**
@@ -92,13 +92,20 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
      /* auto d_U = thrust::device_vector<STYPE>(U); */
 
   cudaStream_t streams[N_STREAMS];
+
+
+
+#ifdef Vecs
+  WTYPE *d_y_stream_ptr;
+  auto d_y_stream = pinnedMallocVector<WTYPE>(&d_y_stream_ptr, N_STREAMS, BATCH_SIZE);
+  double *d_y_batch_ptr;
+  auto d_y_batch = pinnedMallocMatrix<double>(&d_y_batch_ptr, N_STREAMS, 2 * BATCH_SIZE);
+#else
   WTYPE *d_y_stream[N_STREAMS];
   double *d_y_batch[N_STREAMS];
+#endif
   double *d_y_block[N_STREAMS];
 	STYPE *d_v[N_STREAMS];
-  /* // alt */
-  /* auto d_y_stream = std::vector<WTYPE*>(N_STREAMS); */
-
 
   // compatibility
   const WTYPE *x = &X[0];
@@ -112,15 +119,28 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
   for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
     // TODO use single malloc for each type?
     // manuall malloc because thrust support for pinned memory is limited
+
+#ifndef Vecs
     cu( cudaMallocHost( (void **) &d_y_stream[i_stream],
                         BATCH_SIZE * sizeof(WTYPE) ) );
     cu( cudaMallocHost( (void **) &d_y_batch[i_stream],
                         BATCH_SIZE * 2 * sizeof(WTYPE) ) );
+#endif
     cu( cudaMallocHost( (void **) &d_y_block[i_stream],
                         BATCH_SIZE * GRIDDIM * 2 * sizeof(double) ) );
     cu( cudaMallocHost( (void **) &d_v[i_stream],
                         BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) ) );
   }
+
+  /* cu( cudaMallocHost( (void **) &d_y_stream, */
+  /*                     N_STREAMS * BATCH_SIZE * sizeof(WTYPE) )); */
+  /* cu( cudaMallocHost( (void **) &d_y_batch, */
+  /*                     N_STREAMS * BATCH_SIZE * 2 * sizeof(WTYPE) )); */
+  /* cu( cudaMallocHost( (void **) &d_y_block, */
+  /*                     N_STREAMS * BATCH_SIZE * GRIDDIM * 2 * sizeof(double) )); */
+  /* cu( cudaMallocHost( (void **) &d_v, */
+  /*                     N_STREAMS * BATCH_SIZE * DIMS * N_STREAMS * sizeof(STYPE) )); */
+
 
   for (auto& stream : streams)
     cudaStreamCreate(&stream);
@@ -149,7 +169,7 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
       /* const size_t i_batch = i + i_stream; */
       agg_batch_blocks(streams[i_stream],
-                       d_y_batch[i_stream],
+                       d_y_batch[i_stream].data,
                        d_y_block[i_stream]);
     }
 
@@ -158,7 +178,7 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
       agg_batch(&y[i_batch * BATCH_SIZE],
                 streams[i_stream],
                 d_y_stream[i_stream],
-                d_y_batch[i_stream]);
+                d_y_batch[i_stream].data);
 #ifdef DEBUG
       cudaDeviceSynchronize();
       for (size_t m = 0; m < BATCH_SIZE; ++m) {
@@ -196,7 +216,13 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
   for(size_t i = 0; i < N; ++i) assert(cuCabs(y[i]) > 0);
 #endif
 
+#ifdef Vecs
+  cu( cudaFreeHost(d_y_stream_ptr) );
+  cu( cudaFreeHost(d_y_batch_ptr ) );
+#else
   for (auto d : d_y_stream) cu( cudaFreeHost(d) );
+  for (auto d : d_y_batch)  cu( cudaFreeHost(d) );
+#endif
   for (auto d : d_y_block)  cu( cudaFreeHost(d) );
   for (auto d : d_v)        cu( cudaFreeHost(d) );
   normalize_amp(y, N, 0);

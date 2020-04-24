@@ -13,6 +13,8 @@
 #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
 #define PARALLEL_INTRA_WARP_AGG
 
+#define Vecs
+
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
@@ -101,7 +103,8 @@
 #define Ix(i,j,k) (k + (j) * DIMS + (i) * DIMS * N_sqrt)
 
 /* #define Matrix(type, size1, size2) std::vector<std::vector<type>>(size1, std::vector<type>(size2)) */
-#define Matrix(vtype, dtype, size1, size2) vtype<vtype<dtype>>(size1, vtype<dtype>(size2))
+/* #define Matrix(type, size1, size2) std::vector<vtype<dtype>>(size1, type(size2)) */
+/* #define Matrix(type, size1) std::vector<vtype<dtype>>(size1, type(size2)) */
 
 
 // TODO check # operations for abs/angle etc

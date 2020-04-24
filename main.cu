@@ -62,6 +62,7 @@ int main() {
   struct timespec t0, t1, t2;
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
+  // use "complex" datatypes, overhead on CPU side can be ignored
   auto
     X = std::vector<WTYPE>(N),
     Y = std::vector<WTYPE>(N),
