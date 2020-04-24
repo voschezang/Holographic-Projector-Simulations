@@ -53,8 +53,10 @@ inline __device__ WTYPE single(const size_t i, const size_t j,
 }
 
 template<Direction direction>
-inline __device__ void per_thread(WTYPE *__restrict__ x, STYPE *__restrict__ u,
-                                  WTYPE *__restrict__ y_local, STYPE *__restrict__ v) {
+inline __device__ void per_thread(const WTYPE *__restrict__ x,
+                                  const  STYPE *__restrict__ u,
+                                  WTYPE *__restrict__ y_local,
+                                  STYPE *__restrict__ v) {
   // type WTYPE __restrict__ y_local[SHARED_MEMORY_SIZE]
 #ifdef CACHE_BATCH
   // cache v[batch] because it is read by every thread
@@ -241,8 +243,10 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restr
 
   // TODO template <direction>? icm kernel <<< >>> syntax?
 template<Direction direction>
-__global__ void per_block(WTYPE *__restrict__ x, STYPE *__restrict__ u,
-                          double *__restrict__ y, STYPE *__restrict__ v) {
+__global__ void per_block(const WTYPE *__restrict__ x,
+                          const STYPE *__restrict__ u,
+                          double *__restrict__ y,
+                          STYPE *__restrict__ v) {
   __shared__ WTYPE tmp[SHARED_MEMORY_SIZE];
   // TODO transpose tmp array? - memory bank conflicts
   {

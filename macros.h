@@ -13,8 +13,6 @@
 #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
 #define PARALLEL_INTRA_WARP_AGG
 
-#define Vecs
-
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
