@@ -96,16 +96,13 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
   cudaStream_t streams[N_STREAMS];
   // malloc data using pinned memory for all batches before starting streams
   WTYPE *d_y_stream_ptr;
-  double *d_y_batch_ptr;
   double *d_y_block_ptr;
+  double *d_y_batch_ptr;
   STYPE *d_v_ptr;
   auto d_y_stream = pinnedMallocVector<WTYPE>(&d_y_stream_ptr, N_STREAMS, BATCH_SIZE);
-  auto d_y_batch = pinnedMallocMatrix<double>(&d_y_batch_ptr, N_STREAMS,
-                                              2 * BATCH_SIZE);
-  auto d_y_block = pinnedMallocVector<double>(&d_y_block_ptr, N_STREAMS,
-                                              2 * BATCH_SIZE * GRIDDIM);
-  auto d_v = pinnedMallocMatrix<STYPE>(&d_v_ptr, N_STREAMS,
-                                       BATCH_SIZE * DIMS);
+  auto d_y_block = pinnedMallocVector<double>(&d_y_block_ptr, N_STREAMS, 2 * BATCH_SIZE * GRIDDIM);
+  auto d_y_batch = pinnedMallocMatrix<double>(&d_y_batch_ptr, N_STREAMS, 2 * BATCH_SIZE);
+  auto d_v = pinnedMallocMatrix<STYPE>(&d_v_ptr, N_STREAMS, BATCH_SIZE * DIMS);
 
   for (auto& stream : streams)
     cudaStreamCreate(&stream);
@@ -117,7 +114,7 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
     // TODO don't do this in case of non-uniform workloads
 
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
-      const size_t i_batch = i + i_stream;
+      const auto i_batch = i + i_stream;
       if (N_BATCHES > 10 && i_batch % (int) (N_BATCHES / 10) == 0)
         printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
 
@@ -131,14 +128,13 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
 
     // do aggregations in separate stream-loops; yielding a ~2.5x speedup
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
-      /* const size_t i_batch = i + i_stream; */
       agg_batch_blocks(streams[i_stream],
                        d_y_batch[i_stream],
                        d_y_block[i_stream]);
     }
 
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
-      const size_t i_batch = i + i_stream;
+      const auto i_batch = i + i_stream;
       agg_batch(&y[i_batch * BATCH_SIZE],
                 streams[i_stream],
                 d_y_stream[i_stream],
