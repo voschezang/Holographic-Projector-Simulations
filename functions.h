@@ -58,8 +58,8 @@ inline void agg_batch(WTYPE *y, cudaStream_t stream,
   // wrapper for thrust call using streams
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
 
-	/* cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE), */
-  /*                     cudaMemcpyDeviceToHost, stream ) ); */
+	cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE),
+                      cudaMemcpyDeviceToHost, stream ) );
 }
 
 /**
