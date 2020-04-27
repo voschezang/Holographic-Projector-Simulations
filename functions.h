@@ -13,20 +13,17 @@
 #include "superposition.cu"
 
 
-inline void cp_batch_data(const STYPE *v, Array<STYPE> d_v,
-                          cudaStream_t stream) {
+inline void cp_batch_data_to_device(const STYPE *v, Array<STYPE> d_v,
+                                    cudaStream_t stream) {
   // copy "v[i]" for i in batch, where v are the spatial positions belonging to the target datapoints y
   cudaMemcpyAsync( d_v.data, v, d_v.size * sizeof(WTYPE), cudaMemcpyHostToDevice, stream );
-  /* cudaMemcpy( d_v, v, count, cudaMemcpyHostToDevice ); */
 }
 
 template<const Direction direction>
-inline void transform_batch(const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
-                            cudaStream_t stream, double *d_y_block)
+inline void partial_superposition_per_block(const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
+                                            cudaStream_t stream, double *d_y_block)
 {
   for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
-    // d_y_block : BATCH_SIZE x GRIDDIM x 2
-
     const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
     superposition::per_block<direction><<< GRIDDIM, BLOCKDIM, 0, stream >>>
@@ -119,10 +116,10 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
         printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
 
       /* printf("batch %3i stream %3i\n", i_batch, i_stream); */
-      cp_batch_data(&v[i_batch * BATCH_SIZE * DIMS], d_v[i_stream],
-                    streams[i_stream]);
+      cp_batch_data_to_device(&v[i_batch * BATCH_SIZE * DIMS], d_v[i_stream],
+                              streams[i_stream]);
 
-      transform_batch<direction>(d_x, d_u, d_v[i_stream].data,
+      partial_superposition_per_block<direction>(d_x, d_u, d_v[i_stream].data,
                                  streams[i_stream], d_y_block[i_stream]);
     }
 
@@ -139,39 +136,21 @@ inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
                 streams[i_stream],
                 d_y_stream[i_stream],
                 d_y_batch[i_stream].data);
-#ifdef DEBUG
-      cudaDeviceSynchronize();
-      for (size_t m = 0; m < BATCH_SIZE; ++m) {
-        // use full y-array in agg
-        size_t i = m + i_batch * BATCH_SIZE;
-        assert(cuCabs(y[i]) > 0);
-      }
-#endif
     }
   }
 
-  printf("destroy streams\n");
+  // sync all streams before returning
   cudaDeviceSynchronize();
 
-  // TODO is this required?
-  for (unsigned int i = 0; i < N_STREAMS; ++i)
-    cudaStreamSynchronize(streams[i]);
+#ifdef DEBUG
+  printf("done, destroy streams\n");
+#endif
 
   for (unsigned int i = 0; i < N_STREAMS; ++i)
     cudaStreamDestroy(streams[i]);
 
 #ifdef DEBUG
-  /* for (size_t i_batch = 0; i_batch < N_BATCHES; i_batch+=1) { */
-  for (size_t i_batch = 0; i_batch < 2; i_batch+=1) {
-    /* printf("y[%i]: \n", i_batch * BATCH_SIZE); */
-    assert(cuCabs(y[i_batch * BATCH_SIZE]) > 0);
-  }
-
-  for (size_t i_batch = 0; i_batch < N_BATCHES; i_batch+=1)
-    for (unsigned int i = 0; i < BATCH_SIZE; ++i)
-      assert(cuCabs(y[i + i_batch * BATCH_SIZE]) > 0);
-
-  for(size_t i = 0; i < N; ++i) assert(cuCabs(y[i]) > 0);
+  printf("free device memory\n");
 #endif
 
   cu( cudaFreeHost(d_y_stream_ptr) );
