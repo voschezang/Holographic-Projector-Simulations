@@ -11,7 +11,7 @@ build:
 	make -C cuda build
 
 build-run:
-	make build && make run
+	make -C cuda build-run
 
 run:
 	make -C cuda run
@@ -36,27 +36,9 @@ ssh:
 	ssh -Y $(ADDRESS)
 	# emacs: use SPC f f /sshx:nikhef
 
-# CUDA
-init-path:
-	export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}
-
-profile:
-	make build
-	nvprof ./$(EXE)
-
-vprofile:
-	make build
-	nvvp ./$(EXE)
-
-setup-profiler:
-	modprobe nvidia NVreg_RestrictProfilingToAdminUsers=0
-
 deps:
 	# make sure python, python-pip are installed
 	pip --user install -r requirements.txt
-
-vm-update:
-	scp -r {Makefile,util.py,plot.py,halton.py} $(ADDRESS):$(DIR)
 
 mount:
 	# note the `/` at the end of my_dir/
@@ -85,6 +67,3 @@ info:
 	lscpu
 	lspci -vnn | grep VGA -A 12
 	lshw -numeric -C display
-
-add-to-path:
-	echo 'export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}'
