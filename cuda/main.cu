@@ -134,14 +134,9 @@ int main() {
   if (Y_TRANSFORM) summarize_c('y', y, N);
   if (Z_TRANSFORM) summarize_c('z', z, N);
 
+#ifdef DEBUG
   printf("save results\n");
+#endif
   write_arrays<FileType::TXT>(x,y,z, u,v,w, N);
-  // write_arrays<FileType::GRID>(x,y,z, u,v,w, N);
-  // write_arrays<FileType::DAT>(x,y,z, u,v,w, N);
-  // write_arrays<FileType::DAT>(x,y,z, u,v,w, 100);
-  // printf("free xyz\n");
-  // free(x); free(y); free(z);
-  // printf("free uvw\n");
-  // free(u); free(v); free(w);
 	return 0;
 }

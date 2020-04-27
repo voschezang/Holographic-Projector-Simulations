@@ -2,27 +2,19 @@ ADDRESS := markv@stbc-g2.nikhef.nl
 PROJECT_DIR := /project/detrd/markv
 MNT_DIR := tmp
 REMOTE_DIR := nikhef:/project/detrd/markv/Holographic-Projector/tmp
-EXE := run
-
-.PHONY: $(EXE)
 
 jupyter:
 	jupyter notebook
 
 build:
-	# make add-to-path
-	# nvcc -o main main.cu
-	# -ftz=true // flush dernormal to zero
-	#  -ftz=true -prec-div=false -prec-sqrt=false
-	# /usr/local/cuda-10.2/bin/nvcc -o main main.cu -l curand
-	# /usr/local/cuda-10.2/bin/nvcc -o main main.cu -l curand -std=c++11
-	nvcc -o $(EXE) main.cu -l curand -std=c++11
+	# alias
+	make -C cuda build
 
 build-run:
-	make build && make $(EXE)
+	make build && make run
 
 run:
-	./$(EXE)
+	make -C cuda run
 	make zip
 
 zip:

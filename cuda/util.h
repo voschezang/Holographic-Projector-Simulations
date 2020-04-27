@@ -174,11 +174,11 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z,
   // TODO use csv for i/o, read python generated x
   if (type == FileType::TXT) {
     printf(".txt\n");
-    char fn[] = "tmp/out.txt";
+    char fn[] = "../tmp/out.txt";
     printf("..\n");
     remove(fn); // fails if file does not exist
     printf("..\n");
-    FILE *out = fopen("tmp/out.txt", "wb");
+    FILE *out = fopen("../tmp/out.txt", "wb");
     write_carray('x', x, len, out);
     write_carray('y', y, len, out);
     write_carray('z', z, len, out);
@@ -195,7 +195,7 @@ void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z,
   }
   else if (type == FileType::GRID) {
     printf(".grid\n");
-    FILE *out = fopen("tmp/out-y.grid", "wb");
+    FILE *out = fopen("../tmp/out-y.grid", "wb");
     assert(len == N2);
     if (len > 1e9) exit(1);
     double img[len];
