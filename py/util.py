@@ -20,7 +20,7 @@ DIMS = 3
 # N = 30**(DIMS - 1)
 # N = 52**(DIMS - 1)
 # N = 80**(DIMS - 1)
-N = 100**(DIMS - 1)
+N = 80**(DIMS - 1)
 PROJECTOR_DISTANCE = -4
 PROJECTOR_DISTANCE = -1e3 * LAMBDA
 

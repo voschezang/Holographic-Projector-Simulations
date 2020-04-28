@@ -65,13 +65,15 @@ y:2,3,3,4
     indices = np.arange(N)
     plot.scatter_multiple(data['y'][indices], data['v'][indices],
                           'y', filename='y-scatter-sub', s=1)
-    plot.scatter_multiple(data['z'][indices], data['w'][indices],
-                          'z', filename='z-scatter-sub', s=1)
-
+    # plot.scatter_multiple(data['z'][indices], data['w'][indices],
+    #                       'z', filename='z-scatter-sub', s=1)
+    #
     n = indices.size
     gridsize = round(max(25, n / 5e2))
     print(f'hexbin: N^2: {n}, grid: {gridsize}')
     plot.hexbin_multiple(data['y'][indices], data['v'][indices], 'y',
-                         filename=f'y-hexbin', gridsize=gridsize)
-    plot.hexbin_multiple(data['z'][indices], data['w'][indices], 'z',
-                         filename=f'z-hexbin', gridsize=gridsize)
+                         filename=f'y-hexbin', bins=gridsize)
+    # plot.hexbin_multiple(data['z'][indices], data['w'][indices], 'z',
+    #                      filename=f'z-hexbin', gridsize=gridsize)
+    plot.hist_2d_multiple(data['y'][indices], data['v'][indices],
+                          'y', filename='y-hist2d')

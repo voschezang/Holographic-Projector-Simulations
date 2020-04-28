@@ -11,6 +11,124 @@ plt.rcParams['font.family'] = 'serif'
 cmap = 'inferno'
 
 
+def scatter_multiple(x, u=None, title='', prefix='', filename=None, **kwargs):
+    plot_multiple(_scatter_wrapper, x, u, title='',
+                  filename=filename, **kwargs)
+
+
+def hist_2d_multiple(x, u, title='', filename=None, **kwargs):
+    plot_multiple(_hist2d_wrapper, x, u, title='',
+                  filename=filename, bins=10, **kwargs)
+
+
+def hexbin_multiple(x, u, title='', filename=None,  bins=10, **kwargs):
+    plot_multiple(plt.hexbin, x, u, title=title,
+                  filename=filename, gridsize=bins, **kwargs)
+
+
+def _scatter_wrapper(x, y, z, **kwargs):
+    plt.scatter(x, y, c=z, **kwargs)
+    plt.xlim(x.min(), x.max())
+    plt.ylim(y.min(), y.max())
+
+
+def _hist2d_wrapper(x, y, z, **kwargs):
+    plt.hist2d(x, y, weights=z, **kwargs)
+
+
+def plot_multiple(plot_func, x, v, title='', filename=None, **kwargs):
+    """
+    x   2d array of amp, phase
+    v   3d array of spacial locations of data x
+    plot_func(array1, array2, array3, pyplot_args)   e.g. plt.scatter
+    """
+    a, phi = x.T
+    if 'cmap' not in kwargs:
+        global cmap
+        kwargs['cmap'] = cmap
+
+    n_subplots = 3
+    fig = plt.figure(figsize=(n_subplots * 5, 4))
+    plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
+
+    ax = plt.subplot(131)
+    plot_func(v[:, 1], v[:, 0], a, **kwargs)
+    scatter_markup(ax)
+    plt.title('Amplitude')
+
+    ax = plt.subplot(133)
+    plot_func(v[:, 1], v[:, 0], irradiance(to_polar(a, phi)), **kwargs)
+    scatter_markup(ax)
+    plt.title('Irradiance')
+
+    # cyclic cmap: hsv, twilight
+    kwargs['cmap'] = 'twilight'
+    ax = plt.subplot(132)
+    plot_func(v[:, 1], v[:, 0], phi, **kwargs)
+    scatter_markup(ax)
+    plt.title('Phase')
+
+    plt.tight_layout()
+    if filename is not None:
+        save_fig(filename, ext='png')
+
+    return fig
+
+
+def sci_labels(ax, decimals=1, y=True, z=False):
+    formatter = EngFormatter(places=decimals, sep=u"\N{THIN SPACE}")
+    ax.xaxis.set_major_formatter(formatter)
+    if y:
+        ax.yaxis.set_major_formatter(formatter)
+    if z:
+        ax.zaxis.set_major_formatter(formatter)
+
+
+def scatter_markup(ax):
+    sci_labels(ax)
+    plt.xlabel("Space dim1 (m)")
+    plt.ylabel("Space dim2 (m)")
+    plt.colorbar(fraction=0.052, pad=0.05)
+
+
+def entropy(H, w, title='H',  **kwargs):
+    # TODO for entropy: cmap gnuplot
+    n_subplots = 2
+    fig = plt.figure(figsize=(n_subplots * 5, 4))
+    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
+    ax = plt.subplot(1, n_subplots,  1)
+    scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
+    # scatter_markup(ax)
+    ax = plt.subplot(1, n_subplots,  2)
+    scatter(H[:, 1], w, title='Phase', fig=fig, **kwargs)
+    # scatter_markup(ax)
+
+
+def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
+    # invert to have 1 display as white pixels
+    x = 1 - standardize_amplitude(x[:, 0].copy())
+    if pow:
+        x = x ** pow
+    matrix(reshape(x, True), cmap='binary', cb=False)
+    if filename is not None:
+        plt.axis('off')
+        plt.savefig(prefix + filename, dpi='figure',
+                    transparent=True, bbox_inches='tight')
+
+
+def save_fig(filename, ext='pdf', dpi='figure',
+             transparent=True, bbox_inches='tight', interpolation='none'):
+    assert os.path.isdir(IMG_DIR), \
+        '_img_dir.py/IMG_DIR is must be setup correctly'
+    # plt.axis('off') # this only affects the current subplot
+    plt.savefig(f'{IMG_DIR}/{filename}.{ext}', dpi=dpi, transparent=True,
+                interpolation=interpolation, bbox_inches=bbox_inches)
+
+
+###############################################################################
+# Deprecated
+###############################################################################
+
 def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
     # X : list(np.ndarray)
     data = ['a', r'$\phi$', 'I']
@@ -159,129 +277,3 @@ def scatter(x, w, title='', color_func=lambda a, phi: a, log=False, s=10,
     plt.title(title)
     plt.tight_layout()
     return fig
-
-
-def scatter_multiple(y, v=None, title='', prefix='', filename=None, **kwargs):
-    n_subplots = 3
-    fig = plt.figure(figsize=(n_subplots * 5, 4))
-    plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
-    ax = plt.subplot(1, n_subplots, 1)
-    scatter(y[:, 0], v, 'Amplitude', fig=fig, **kwargs)
-    scatter_markup(ax)
-
-    ax = plt.subplot(1, n_subplots, 3)
-    scatter(irradiance(to_polar(y[:, 0], y[:, 1])), v, 'Irradiance', fig=fig,
-            **kwargs)
-    scatter_markup(ax)
-
-    # cyclic cmap: hsv, twilight
-    kwargs['cmap'] = 'twilight'
-    ax = plt.subplot(1, n_subplots, 2)
-    scatter(y[:, 1] / np.pi, v, 'Phase', fig=fig, **kwargs)
-    scatter_markup(ax)
-
-    # TODO tight layout?
-    if filename is not None:
-        # pdf is slow for large scatterplots
-        save_fig(filename, ext='png')
-    # plt.subplot(1, n_subplots, 3)
-    # scatter(irradiance(to_polar(y[:, 0], y[:, 1])),
-    #         v, '%s I' % prefix, lambda a, phi: a * np.sin(phi), fig=fig)
-    # # scatter(y, v, '%s (a)' % prefix)
-    # # scatter(y, v, '%s (a*)' % prefix, lambda a, phi: a * np.sin(phi))
-    # # scatter(y, v, r'%s ($\phi$)' % prefix)
-    # slice(y, v)
-
-
-def hexbin_multiple(x, v, title='', filename=None,  **kwargs):
-    """
-    x   2d array of amp, phase
-    v   3d array of spacial locations of data x
-    """
-    a, phi = x.T
-    if 'cmap' not in kwargs:
-        global cmap
-        kwargs['cmap'] = cmap
-
-    n_subplots = 3
-    fig = plt.figure(figsize=(n_subplots * 5, 4))
-    plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
-
-    ax = plt.subplot(131)
-    plt.hexbin(v[:, 1], v[:, 0], a, **kwargs)
-    scatter_markup(ax)
-    plt.title('Amplitude')
-
-    ax = plt.subplot(133)
-    plt.hexbin(v[:, 1], v[:, 0], irradiance(to_polar(a, phi)), **kwargs)
-    scatter_markup(ax)
-    plt.title('Irradiance')
-
-    # cyclic cmap: hsv, twilight
-    kwargs['cmap'] = 'twilight'
-    ax = plt.subplot(132)
-    plt.hexbin(v[:, 1], v[:, 0], phi, **kwargs)
-    scatter_markup(ax)
-    plt.title('Phase')
-
-    plt.tight_layout()
-    if filename is not None:
-        save_fig(filename, ext='png')
-
-    return fig
-
-
-def sci_labels(ax, decimals=1, y=True, z=False):
-    formatter = EngFormatter(places=decimals, sep=u"\N{THIN SPACE}")
-    ax.xaxis.set_major_formatter(formatter)
-    if y:
-        ax.yaxis.set_major_formatter(formatter)
-    if z:
-        ax.zaxis.set_major_formatter(formatter)
-
-
-def scatter_markup(ax):
-    sci_labels(ax)
-    plt.xlabel("Space dim1 (m)")
-    plt.ylabel("Space dim2 (m)")
-
-
-def entropy(H, w, title='H',  **kwargs):
-    # TODO for entropy: cmap gnuplot
-    n_subplots = 2
-    fig = plt.figure(figsize=(n_subplots * 5, 4))
-    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
-    ax = plt.subplot(1, n_subplots,  1)
-    scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
-    # scatter_markup(ax)
-    ax = plt.subplot(1, n_subplots,  2)
-    scatter(H[:, 1], w, title='Phase', fig=fig, **kwargs)
-    # scatter_markup(ax)
-
-
-def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
-    # invert to have 1 display as white pixels
-    x = 1 - standardize_amplitude(x[:, 0].copy())
-    if pow:
-        x = x ** pow
-    matrix(reshape(x, True), cmap='binary', cb=False)
-    if filename is not None:
-        plt.axis('off')
-        plt.savefig(prefix + filename, dpi='figure',
-                    transparent=True, bbox_inches='tight')
-
-
-def save_fig(filename, ext='pdf', dpi='figure',
-             transparent=True, bbox_inches='tight', interpolation='none'):
-    assert os.path.isdir(IMG_DIR), \
-        '_img_dir.py/IMG_DIR is must be setup correctly'
-    # plt.axis('off') # this only affects the current subplot
-    plt.savefig(f'{IMG_DIR}/{filename}.{ext}', dpi=dpi, transparent=True,
-                interpolation=interpolation, bbox_inches=bbox_inches)
-
-
-if __name__ == '__main__':
-    n = 100
-    x = np.linspace(0, 5 * np.pi, n)
-    plt.plot(x, np.sin(x))
-    plt.savefig(f'{IMG_DIR}/tst.pdf', transparent=True)
