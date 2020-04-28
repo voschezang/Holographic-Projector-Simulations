@@ -1,3 +1,7 @@
+# local img dir
+py/_img_dir.py
+
+# macOS
 *.DS_Store
 
 # Byte-compiled / optimized / DLL files

@@ -4,7 +4,7 @@ MNT_DIR := tmp
 REMOTE_DIR := nikhef:/project/detrd/markv/Holographic-Projector/tmp
 
 jupyter:
-	jupyter notebook
+	make -C py jupyter
 
 build:
 	# alias
@@ -20,11 +20,11 @@ run:
 zip:
 	zip tmp/out.zip tmp/out.txt
 
-py:
-	python3 main.py -r
-
 plot:
-	python3 main.py
+	make -C py plot
+
+init:
+	make -C py init
 
 remote-run:
 	sh remote_run.sh

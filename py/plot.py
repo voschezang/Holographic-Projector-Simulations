@@ -11,11 +11,6 @@ plt.rcParams['font.family'] = 'serif'
 cmap = 'inferno'
 
 
-def sci_labels(ax):
-    formatter = EngFormatter(places=1, sep=u"\N{THIN SPACE}")
-    ax.xaxis.set_major_formatter(formatter)
-
-
 def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
     # X : list(np.ndarray)
     data = ['a', r'$\phi$', 'I']
@@ -175,14 +170,14 @@ def scatter_multiple(y, v=None, title='', prefix='', filename=None, **kwargs):
     scatter_markup(ax)
 
     ax = plt.subplot(1, n_subplots, 3)
-    scatter(y[:, 1] / np.pi, v, 'Phase', fig=fig, **kwargs)
+    scatter(irradiance(to_polar(y[:, 0], y[:, 1])), v, 'Irradiance', fig=fig,
+            **kwargs)
     scatter_markup(ax)
 
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = 'twilight'
     ax = plt.subplot(1, n_subplots, 2)
-    scatter(irradiance(to_polar(y[:, 0], y[:, 1])), v, 'Irradiance', fig=fig,
-            **kwargs)
+    scatter(y[:, 1] / np.pi, v, 'Phase', fig=fig, **kwargs)
     scatter_markup(ax)
 
     # TODO tight layout?
@@ -229,11 +224,20 @@ def hexbin_multiple(x, v, title='', filename=None,  **kwargs):
     scatter_markup(ax)
     plt.title('Phase')
 
-    # plt.tight_layout()
+    plt.tight_layout()
     if filename is not None:
         save_fig(filename, ext='png')
 
     return fig
+
+
+def sci_labels(ax, decimals=1, y=True, z=False):
+    formatter = EngFormatter(places=decimals, sep=u"\N{THIN SPACE}")
+    ax.xaxis.set_major_formatter(formatter)
+    if y:
+        ax.yaxis.set_major_formatter(formatter)
+    if z:
+        ax.zaxis.set_major_formatter(formatter)
 
 
 def scatter_markup(ax):
@@ -249,8 +253,10 @@ def entropy(H, w, title='H',  **kwargs):
     plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
     ax = plt.subplot(1, n_subplots,  1)
     scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
+    # scatter_markup(ax)
     ax = plt.subplot(1, n_subplots,  2)
     scatter(H[:, 1], w, title='Phase', fig=fig, **kwargs)
+    # scatter_markup(ax)
 
 
 def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
@@ -265,11 +271,12 @@ def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
                     transparent=True, bbox_inches='tight')
 
 
-def save_fig(filename, dir='img', ext='pdf', dpi='figure',
+def save_fig(filename, ext='pdf', dpi='figure',
              transparent=True, bbox_inches='tight', interpolation='none'):
-    assert(os.path.isdir(dir))
+    assert os.path.isdir(IMG_DIR), \
+        '_img_dir.py/IMG_DIR is must be setup correctly'
     # plt.axis('off') # this only affects the current subplot
-    plt.savefig(f'{dir}/{filename}.{ext}', dpi=dpi, transparent=True,
+    plt.savefig(f'{IMG_DIR}/{filename}.{ext}', dpi=dpi, transparent=True,
                 interpolation=interpolation, bbox_inches=bbox_inches)
 
 
@@ -277,4 +284,4 @@ if __name__ == '__main__':
     n = 100
     x = np.linspace(0, 5 * np.pi, n)
     plt.plot(x, np.sin(x))
-    plt.savefig('{IMG_DIR}/tst.pdf', transparent=True)
+    plt.savefig(f'{IMG_DIR}/tst.pdf', transparent=True)

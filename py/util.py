@@ -562,3 +562,31 @@ def get_arg(name: str, default_value=None, flag=False, parse_func=int):
             raise IndexError("No value found for argument: {}".format(name))
 
     return parse_func(value)
+
+
+def parse_line(data: dict, k: str, content: str):
+    if k in 'uvw':
+        try:
+            data[k] = np.array(
+                [float(x) for x in content.split(',')]).reshape(-1, DIMS)
+        except ValueError as e:
+            print('! Exception trig\n ->', e)
+            for v in content.split(','):
+                print(v)
+                print(float(v))
+
+    elif k in 'xyz':
+        try:
+            data[k] = np.array(
+                [complex(x) for x in content.split(',')])
+            # reshape to (N, 2)
+            # x = np.array(util.from_polar(data[k]))
+            data[k] = np.array(from_polar(
+                data[k])).T.reshape((-1, 2))
+
+        except ValueError as e:
+            print('! Exception trig\n ->', e)
+            for x in content.split(','):
+                print(x)
+                # this should crash eventually
+                print(complex(x))
