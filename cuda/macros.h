@@ -6,8 +6,8 @@
 /* #define DEBUG */
 #define Y_TRANSFORM 1 // compute y transform
 #define Z_TRANSFORM 0 // compute z transform
-#define RANDOM_Y_SPACE // TODO consider better, non-correlated RNG
-#define RANDOM_Z_SPACE
+#define RANDOM_Y_SPACE true // TODO consider better, non-correlated RNG
+#define RANDOM_Z_SPACE true
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 /* #define PINNED_MEM // use cudaMallocHost over cudaMalloc // disable if in case of host memory issues // TODO speedup > 1 in absense of kernal invocation and otherwise < 1 */
 #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
@@ -103,6 +103,7 @@
 /* #define Matrix(type, size1, size2) std::vector<std::vector<type>>(size1, std::vector<type>(size2)) */
 /* #define Matrix(type, size1, size2) std::vector<vtype<dtype>>(size1, type(size2)) */
 /* #define Matrix(type, size1) std::vector<vtype<dtype>>(size1, type(size2)) */
+#define print(x) std::cout << x << '\n'
 
 
 // TODO check # operations for abs/angle etc

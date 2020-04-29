@@ -53,7 +53,7 @@ inline __device__ WTYPE single(const size_t i, const size_t j,
 }
 
 template<Direction direction>
-inline __device__ void per_thread(const WTYPE *__restrict__ x,
+inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
                                   const  STYPE *__restrict__ u,
                                   WTYPE *__restrict__ y_local,
                                   STYPE *__restrict__ v) {
@@ -73,13 +73,6 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x,
 
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   const size_t stride = blockDim.x * gridDim.x;
-
-#pragma unroll
-  for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-    y_local[m].x = 0;
-    y_local[m].y = 0;
-  }
-
   // add single far away light source, with arbitrary (but constant) phase
   // assume threadIdx.x is a runtime constant
   if (BLOCKDIM >= KERNEL_BATCH_SIZE)
@@ -89,7 +82,7 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x,
   // for each y-datapoint in current batch
   // outer loop for batch, inner loop for index is faster than vice versa
   for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-    for (size_t i = idx; i < N; i += stride)
+    for (size_t i = idx; i < N_x; i += stride)
       y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_cached));
 
 #ifdef DEBUG
@@ -243,15 +236,15 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restr
 
   // TODO template <direction>? icm kernel <<< >>> syntax?
 template<Direction direction>
-__global__ void per_block(const WTYPE *__restrict__ x,
-                          const STYPE *__restrict__ u,
-                          double *__restrict__ y,
-                          STYPE *__restrict__ v) {
+  __global__ void per_block(const WTYPE *__restrict__ x, const size_t N_x,
+                            const STYPE *__restrict__ u,
+                            double *__restrict__ y,
+                            STYPE *__restrict__ v) {
   __shared__ WTYPE tmp[SHARED_MEMORY_SIZE];
   // TODO transpose tmp array? - memory bank conflicts
   {
-    WTYPE y_local[KERNEL_BATCH_SIZE];
-    superposition::per_thread<direction>(x, u, y_local, v);
+    WTYPE y_local[KERNEL_BATCH_SIZE] = {}; // init to zero
+    superposition::per_thread<direction>(x, N_x, u, y_local, v);
     superposition::copy_result(y_local, tmp);
   }
   superposition::aggregate_blocks(tmp, y);

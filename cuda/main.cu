@@ -63,15 +63,18 @@ int main() {
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // use "complex" datatypes, overhead on CPU side can be ignored
+  // TODO use cmd arg for x length
   auto
-    X = std::vector<WTYPE>(N),
+    // X = std::vector<WTYPE>(5, {1.0}),
+    X = std::vector<WTYPE>(N, {0.0}),
     Y = std::vector<WTYPE>(N),
     Z = std::vector<WTYPE>(N);
+  X[0].x = 1;
 
   auto
-    U = std::vector<STYPE>(N * DIMS),
-    V = std::vector<STYPE>(N * DIMS),
-    W = std::vector<STYPE>(N * DIMS);
+    U = std::vector<STYPE>(X.size() * DIMS),
+    V = std::vector<STYPE>(Y.size() * DIMS),
+    W = std::vector<STYPE>(Z.size() * DIMS);
 
   // use C-style pointers for backwards compatibility
   WTYPE
@@ -84,9 +87,9 @@ int main() {
     *v = &V[0],
     *w = &W[0];
 
-  init_planes(x, u, v, w);
-  summarize_double('u', u, N * DIMS);
-  summarize_double('v', v, N * DIMS);
+  init_planes(U, V, W);
+  summarize_double('u', u, U.size());
+  summarize_double('v', v, V.size());
 
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("runtime init: \t%0.3f\n", dt(t0, t1));
@@ -131,12 +134,13 @@ int main() {
   }
 #endif
 
-  if (Y_TRANSFORM) summarize_c('y', y, N);
-  if (Z_TRANSFORM) summarize_c('z', z, N);
+  if (Y_TRANSFORM) summarize_c('y', y, Y.size());
+  if (Z_TRANSFORM) summarize_c('z', z, Z.size());
 
 #ifdef DEBUG
   printf("save results\n");
 #endif
-  write_arrays<FileType::TXT>(x,y,z, u,v,w, N);
+  // write_arrays<FileType::TXT>(x,y,z, u,v,w, N);
+  write_arrays<FileType::TXT>(X,Y,Z, U,V,W);
 	return 0;
 }

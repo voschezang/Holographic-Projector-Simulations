@@ -117,7 +117,7 @@ void summarize_double(char name, double *x, size_t n) {
 }
 
 void print_c(WTYPE x, FILE *out) {
-  check(x);
+  // check(x); //TODO uncomment
   if (x.y >= 0) {
     fprintf(out, "%f+%fj", x.x, x.y);
   } else {
@@ -125,28 +125,27 @@ void print_c(WTYPE x, FILE *out) {
   }
 }
 
-void write_array(char c, STYPE *x, size_t len, FILE *out, char print_key) {
+void write_array(char c, std::vector<STYPE> &x, FILE *out) {
   // key
-  if (print_key == 1)
-    fprintf(out, "%c:", c);
+  fprintf(out, "%c:", c);
 
   // first value
   fprintf(out, "%e", x[0]);
   // other values, prefixed by ','
-  for (size_t i = 1; i < len; ++i) {
+  for (size_t i = 1; i < x.size(); ++i) {
     fprintf(out, ",%e", x[i]);
   }
   // newline / return
   fprintf(out, "\n");
 }
 
-void write_carray(char c, WTYPE *x, size_t len, FILE *out) {
+void write_carray(char c, std::vector<WTYPE> &x, FILE *out) {
   // key
   fprintf(out, "%c:", c);
   // first value
   print_c(x[0], out);
   // other values, prefixed by ','
-  for (size_t i = 1; i < len; ++i) {
+  for (size_t i = 1; i < x.size(); ++i) {
     fprintf(out, ",");
     print_c(x[i], out);
   }
@@ -167,68 +166,17 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
 }
 
 template <FileType type>
-void write_arrays(WTYPE *x, WTYPE *y, WTYPE *z,
-                  STYPE *u, STYPE *v, STYPE *w,
-                  size_t len) {
+void write_arrays(std::vector<WTYPE> &x, std::vector<WTYPE> &y, std::vector<WTYPE> &z,
+                  std::vector<STYPE> &u, std::vector<STYPE> &v, std::vector<STYPE> &w) {
   printf("Save results as ");
   // TODO use csv for i/o, read python generated x
-  if (type == FileType::TXT) {
-    printf(".txt\n");
-    char fn[] = "../tmp/out.txt";
-    printf("..\n");
-    remove(fn); // fails if file does not exist
-    printf("..\n");
-    FILE *out = fopen("../tmp/out.txt", "wb");
-    write_carray('x', x, len, out);
-    write_carray('y', y, len, out);
-    write_carray('z', z, len, out);
-    // ignore 'u'
-    write_array('v', v, len*DIMS, out, 1);
-    write_array('w', w, len*DIMS, out, 1);
-    fclose(out);
-  }
-  else if (type == FileType::DAT) {
-    printf(".dat\n");
-    write_dot('x', x, u, len);
-    write_dot('y', y, v, len);
-    write_dot('z', z, w, len);
-  }
-  else if (type == FileType::GRID) {
-    printf(".grid\n");
-    FILE *out = fopen("../tmp/out-y.grid", "wb");
-    assert(len == N2);
-    if (len > 1e9) exit(1);
-    double img[len];
-    // ignore borders
-    /* img[I_(0,0)] = 0; */
-    /* img[I_(0,N_sqrt-1)] = 0; */
-    /* img[I_(N_sqrt-1, 0)] = 0; */
-    /* img[I_(N_sqrt-1, N_sqrt-1)] = 0; */
-
-    /* for (size_t i = 0; i < N2; ++i) */
-    /*   img[i] = 12; */
-    for (size_t i = 1; i < N_sqrt-1; ++i) {
-      for (size_t j = 1; j < N_sqrt-1; ++j) {
-        /* assert(img[I_(i,j)] == 12); */
-        /* img[I_(i,j)] = 31.0; */
-        /* printf("i: %i, j: %i, img[%4i]: %f\n", i,j, I_(i,j), img[I_(i,j)]); */
-        img[I_(i,j)] = cuCabs(y[I_(i,j)]);// + cuCabs(y[I_(i+1,j)]); // + y[I_(i-1,j)] + y[I_(i,j+1)] + y[I_(i,j-1)];
-#ifdef DEBUG
-        assert(cuCabs(y[I_(i,j)]) < DBL_MAX);
-#endif
-        /* img[i][j] *= 1./5.; */
-        /* printf("i: %i, j: %i, img[%4i]: %f\n", i,j, I_(i,j), img[I_(i,j)]); */
-      }
-    }
-    /* for (size_t i = 1; i < N_sqrt-1; ++i) */
-    /*   for (size_t j = 1; j < N_sqrt-1; ++j) { */
-    /*     printf("i: %i, j: %i, img[%4i]: %f\n", i,j, I_(i,j), img[I_(i,j)]); */
-    /*     assert(img[I_(i,j)] == 31.0); */
-    /*   } */
-
-    write_array('y', img, N2, out, 0);
-    fclose(out);
-  }
+  if (type != FileType::TXT) return;
+  char fn[] = "../tmp/out.txt";
+  remove(fn); // fails if file does not exist
+  FILE *out = fopen(fn, "wb");
+  write_carray('x', x, out); write_carray('y', y, out); write_carray('z', z, out);
+  write_array ('u', u, out); write_array ('v', v, out); write_array ('w', w, out);
+  fclose(out);
 }
 
 double dt(struct timespec t0, struct timespec t1) {

@@ -27,7 +27,7 @@ inline void partial_superposition_per_block(const WTYPE *d_x, const STYPE *d_u, 
     const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
     superposition::per_block<direction><<< GRIDDIM, BLOCKDIM, 0, stream >>>
-      (d_x, d_u, &d_y_block[j], &d_v[k * DIMS] );
+      (d_x, N, d_u, &d_y_block[j], &d_v[k * DIMS] );
   }
 }
 
@@ -71,8 +71,8 @@ inline void agg_batch(WTYPE *y, cudaStream_t stream,
    type& X is used to reference X instead of copying it (similar to a pointer *x, which would require later dereferencing)
 */
 template<const Direction direction>
-inline void transform(const std::vector<WTYPE>& X, WTYPE *y,
-                      const std::vector<STYPE>& U, const STYPE *v) {
+inline void transform(const std::vector<WTYPE> &X, WTYPE *y,
+                      const std::vector<STYPE> &U, const STYPE *v) {
   /* inline void transform(const WTYPE *x, WTYPE *y, */
   /*                       const STYPE *u, const STYPE *v) { */
 
