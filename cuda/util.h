@@ -65,6 +65,13 @@ void check_params() {
   assert(N_PER_THREAD * BLOCKDIM * GRIDDIM == N);
 }
 
+void check_cvector(std::vector<WTYPE> x) {
+#ifdef DEBUG
+  for (size_t i = 0; i < x.size(); ++i)
+    assert(cuCabs(x[i]) < DBL_MAX);
+#endif
+}
+
 double memory_in_MB() {
   // Return lower-bound of memory use
   // complex arrays x,y \in C^N
@@ -73,43 +80,43 @@ double memory_in_MB() {
   return bytes * 1e-6;
 }
 
-void summarize_c(char name, WTYPE *x, size_t len) {
+void summarize_c(char name, std::vector<WTYPE> &x) {
   double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
   /* for (const auto& x : X) { */
-  for (size_t i = 0; i < len; ++i) {
+  for (size_t i = 0; i < x.size(); ++i) {
     max_amp = fmax(max_amp, cuCabs(x[i]));
     min_amp = fmin(min_amp, cuCabs(x[i]));
     max_phase = fmax(max_phase , angle(x[i]));
     sum += cuCabs(x[i]);
   }
-  double mean = sum / (double) N;
+  double mean = sum / (double) x.size();
   printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f, mean: %f\n", name, min_amp, max_amp, max_phase, mean);
 }
 
-void normalize_amp(WTYPE *x, size_t len, char log_normalize) {
+void normalize_amp(std::vector<WTYPE> &x, char log_normalize) {
   double max_amp = 0;
-  for (size_t i = 0; i < len; ++i)
+  for (size_t i = 0; i < x.size(); ++i)
     max_amp = fmax(max_amp, cuCabs(x[i]));
 
   if (max_amp < 1e-6)
     printf("WARNING, max_amp << 1\n");
 
   if (max_amp > 1e-6)
-    for (size_t i = 0; i < len; ++i) {
+    for (size_t i = 0; i < x.size(); ++i) {
       x[i].x /= max_amp;
       x[i].y /= max_amp;
     }
 
   if (log_normalize)
-    for (size_t i = 0; i < len; ++i) {
+    for (size_t i = 0; i < x.size(); ++i) {
       if (x[i].x > 0) x[i].x = -log(x[i].x);
       if (x[i].y > 0) x[i].y = -log(x[i].y);
     }
 }
 
-void summarize_double(char name, double *x, size_t n) {
+void summarize_double(char name, std::vector<double> &x) {
   double max = DBL_MIN, min = DBL_MAX;
-  for (size_t i = 0; i < n; ++i) {
+  for (size_t i = 0; i < x.size(); ++i) {
     max = fmax(max, x[i]);
     min = fmin(min , x[i]);
   }

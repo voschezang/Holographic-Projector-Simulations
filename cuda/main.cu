@@ -62,84 +62,62 @@ int main() {
   struct timespec t0, t1, t2;
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
-  // use "complex" datatypes, overhead on CPU side can be ignored
   // TODO use cmd arg for x length
   auto
-    // X = std::vector<WTYPE>(5, {1.0}),
-    X = std::vector<WTYPE>(N, {0.0}),
-    Y = std::vector<WTYPE>(N),
-    Z = std::vector<WTYPE>(N);
-  X[0].x = 1;
-
+    X = std::vector<WTYPE>(5, {1.0});
   auto
     U = std::vector<STYPE>(X.size() * DIMS),
-    V = std::vector<STYPE>(Y.size() * DIMS),
-    W = std::vector<STYPE>(Z.size() * DIMS);
-
-  // use C-style pointers for backwards compatibility
-  WTYPE
-    *x = &X[0],
-    *y = &Y[0],
-    *z = &Z[0];
-
-  STYPE
-    *u = &U[0],
-    *v = &V[0],
-    *w = &W[0];
+    V = std::vector<STYPE>(N * DIMS),
+    W = std::vector<STYPE>(N * DIMS);
 
   init_planes(U, V, W);
-  summarize_double('u', u, U.size());
-  summarize_double('v', v, V.size());
+  summarize_double('u', U);
+  summarize_double('v', V);
 
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("runtime init: \t%0.3f\n", dt(t0, t1));
   printf("loop\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   cudaProfilerStart();
-  if (Y_TRANSFORM) {
-    transform<Direction::Backward>(X, y, U, v);
-  } else {
-    printf("skipping y\n");
-  }
-  if (Z_TRANSFORM) {
-    printf("\nSecond transform:\n");
-    transform<Direction::Forward>(Y, z, V, w);
-    // transform(x, z, u, v, 1);
-  }
-  cudaProfilerStop();
+#ifdef Y_TRANSFORM
+  auto Y = transform<Direction::Backward>(X, U, V);
+#endif
+
+#ifdef Z_TRANSFORM
+  printf("\nSecond transform:\n");
+  auto Z = transform<Direction::Forward>(Y, V, W);
+#endif
 
   // end loop
   clock_gettime(CLOCK_MONOTONIC, &t2);
+  cudaProfilerStop();
   printf("done\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   double time = dt(t1, t2);
   printf("runtime init: \t%0.3f\n", time);
 
-  if (Z_TRANSFORM) {
-    printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
-           flops(time), FLOP_PER_POINT);
-    printf("Bandwidth: \t%0.5f MB/s (excl. shared memory)\n", bandwidth(time, 2, 0));
-    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 2, 1));
-  }
-  else {
-    printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
+#ifdef Z_TRANSFORM
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
+         flops(time), FLOP_PER_POINT);
+  printf("Bandwidth: \t%0.5f MB/s (excl. shared memory)\n", bandwidth(time, 2, 0));
+  printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 2, 1));
+#else
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
          2*flops(time), 2*FLOP_PER_POINT);
-    printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, 1, 0));
-    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 1, 1));
-  }
-#ifdef DEBUG
-  for (size_t i = 0; i < N2; ++i) {
-    assert(cuCabs(y[i]) < DBL_MAX);
-    assert(cuCabs(z[i]) < DBL_MAX);
-  }
+  printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, 1, 0));
+  printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 1, 1));
 #endif
 
-  if (Y_TRANSFORM) summarize_c('y', y, Y.size());
-  if (Z_TRANSFORM) summarize_c('z', z, Z.size());
+  check_cvector(Y);
+  check_cvector(Z);
 
-#ifdef DEBUG
-  printf("save results\n");
+#ifdef Y_TRANSFORM
+  summarize_c('y', Y);
 #endif
+#ifdef Z_TRANSFORM
+  summarize_c('z', Z);
+#endif
+
   // write_arrays<FileType::TXT>(x,y,z, u,v,w, N);
   write_arrays<FileType::TXT>(X,Y,Z, U,V,W);
 	return 0;

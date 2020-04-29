@@ -71,8 +71,9 @@ inline void agg_batch(WTYPE *y, cudaStream_t stream,
    type& X is used to reference X instead of copying it (similar to a pointer *x, which would require later dereferencing)
 */
 template<const Direction direction>
-inline void transform(const std::vector<WTYPE> &X, WTYPE *y,
-                      const std::vector<STYPE> &U, const STYPE *v) {
+inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
+                                    const std::vector<STYPE> &u,
+                                    const std::vector<STYPE> &v) {
   /* inline void transform(const WTYPE *x, WTYPE *y, */
   /*                       const STYPE *u, const STYPE *v) { */
 
@@ -82,12 +83,14 @@ inline void transform(const std::vector<WTYPE> &X, WTYPE *y,
 
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
 
+  auto y = std::vector<WTYPE>(v.size() / DIMS);
+
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
-  const thrust::device_vector<WTYPE> d_X = X;
-  const thrust::device_vector<STYPE> d_U = U;
+  const thrust::device_vector<WTYPE> d_x = x;
+  const thrust::device_vector<STYPE> d_u = u;
   // cast to pointers to allow usage in non-thrust kernels
-  const auto d_x = thrust::raw_pointer_cast(&d_X[0]);
-  const auto d_u = thrust::raw_pointer_cast(&d_U[0]);
+  const auto d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
+  const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
 
 
   cudaStream_t streams[N_STREAMS];
@@ -119,7 +122,8 @@ inline void transform(const std::vector<WTYPE> &X, WTYPE *y,
       cp_batch_data_to_device(&v[i_batch * BATCH_SIZE * DIMS], d_v[i_stream],
                               streams[i_stream]);
 
-      partial_superposition_per_block<direction>(d_x, d_u, d_v[i_stream].data,
+      partial_superposition_per_block<direction>(d_x_ptr, d_u_ptr,
+                                                 d_v[i_stream].data,
                                  streams[i_stream], d_y_block[i_stream]);
     }
 
@@ -158,5 +162,6 @@ inline void transform(const std::vector<WTYPE> &X, WTYPE *y,
   cu( cudaFreeHost(d_y_block_ptr ) );
   cu( cudaFreeHost(d_v_ptr       ) );
 
-  normalize_amp(y, N, 0);
+  normalize_amp(y, 0);
+  return y;
 }

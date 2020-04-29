@@ -4,8 +4,8 @@
 #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int)
 
 /* #define DEBUG */
-#define Y_TRANSFORM 1 // compute y transform
-#define Z_TRANSFORM 0 // compute z transform
+#define Y_TRANSFORM // compute y transform
+#define Z_TRANSFORM // compute z transform
 #define RANDOM_Y_SPACE true // TODO consider better, non-correlated RNG
 #define RANDOM_Z_SPACE true
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
