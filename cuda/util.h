@@ -52,16 +52,21 @@ void check_params() {
 #elif (N_STREAMS * BATCHES_PER_STREAM != N_BATCHES)
   printf("Invalid param: incompatible N_STREAMS and N\n"); assert(0);
 #endif
+
+  assert(N > 0); assert(N_BATCHES > 0); assert(N_STREAMS > 0);
+  assert(STREAM_BATCH_SIZE > 0); assert(KERNEL_BATCH_SIZE > 0);
   assert(STREAM_SIZE > 0);
-  assert(N > 0); assert(N_STREAMS > 0); assert(STREAM_SIZE > 0);
-  assert(N_BATCHES > 0); assert(BATCH_SIZE > 0);
+  assert(KERNELS_PER_BATCH > 0);
+  assert(BATCHES_PER_STREAM > 0);
+
+  assert(KERNEL_BATCH_SIZE <= STREAM_BATCH_SIZE);
+  assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == STREAM_BATCH_SIZE);
+  assert(N == STREAM_BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
+
   assert(REDUCE_SHARED_MEMORY <= BLOCKDIM);
-  assert(KERNEL_BATCH_SIZE <= BATCH_SIZE);
-  assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == BATCH_SIZE);
   assert(BLOCKDIM / REDUCE_SHARED_MEMORY);
   assert(N_PER_THREAD > 0);
   assert(N == N_STREAMS * STREAM_SIZE);
-  assert(N == BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
   assert(N_PER_THREAD * BLOCKDIM * GRIDDIM == N);
 }
 
@@ -138,15 +143,15 @@ void write_array(char c, std::vector<STYPE> &x, FILE *out) {
 
   // first value
   fprintf(out, "%e", x[0]);
-  // other values, prefixed by ','
-  for (size_t i = 1; i < x.size(); ++i) {
+  // other values, prefixed by a comma
+  for (size_t i = 1; i < x.size(); ++i)
     fprintf(out, ",%e", x[i]);
-  }
+
   // newline / return
   fprintf(out, "\n");
 }
 
-void write_carray(char c, std::vector<WTYPE> &x, FILE *out) {
+void write_complex_array(char c, std::vector<WTYPE> &x, FILE *out) {
   // key
   fprintf(out, "%c:", c);
   // first value
@@ -181,8 +186,9 @@ void write_arrays(std::vector<WTYPE> &x, std::vector<WTYPE> &y, std::vector<WTYP
   char fn[] = "../tmp/out.txt";
   remove(fn); // fails if file does not exist
   FILE *out = fopen(fn, "wb");
-  write_carray('x', x, out); write_carray('y', y, out); write_carray('z', z, out);
-  write_array ('u', u, out); write_array ('v', v, out); write_array ('w', w, out);
+  write_complex_array('x', x, out); write_array('u', u, out);
+  write_complex_array('y', y, out); write_array('v', v, out);
+  write_complex_array('z', z, out); write_array('w', w, out);
   fclose(out);
 }
 

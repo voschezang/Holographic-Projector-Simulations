@@ -5,7 +5,7 @@
 
 /* #define DEBUG */
 #define Y_TRANSFORM // compute y transform
-#define Z_TRANSFORM // compute z transform
+/* #define Z_TRANSFORM // compute z transform */
 #define RANDOM_Y_SPACE true // TODO consider better, non-correlated RNG
 #define RANDOM_Z_SPACE true
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
@@ -22,17 +22,19 @@
 /* #define N_sqrt 1024 */
 #define N (N_sqrt * N_sqrt)
 #define N2 (N_sqrt * N_sqrt)
-#define BATCH_SIZE 8 // stream batch size // TODO rename to STREAM_BATCH_SIZE?
-#define KERNEL_BATCH_SIZE 8
-#define KERNELS_PER_BATCH (BATCH_SIZE / KERNEL_BATCH_SIZE)
+#define STREAM_BATCH_SIZE 8 // n datapoints per stream // stream batch size // TODO rename to STREAM_BATCH_SIZE?
+#define KERNEL_BATCH_SIZE 8 // n datapoints per kernel, must be <= STREAM_BATCH_SIZE
+#define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch
 // TODO compute optimal batch size as function of N
 
-#define N_STREAMS 4
-#define STREAM_SIZE (N / N_STREAMS)
+#define N_STREAMS 4 // TODO single stream results in incorrect output
+#define STREAM_SIZE (N / N_STREAMS) // datapoints per stream
 /* #define N_BATCHES ((N + BATCH_SIZE - 1) / BATCH_SIZE) */
-#define BATCHES_PER_STREAM DIV(STREAM_SIZE, BATCH_SIZE)
+#define BATCHES_PER_STREAM DIV(STREAM_SIZE, STREAM_BATCH_SIZE)
 #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM)
 /* #define BATCHES_PER_STREAM (N_BATCHES / N_STREAMS) */
+
+#define MAX_INPUT_SIZE 0 // TODO, specific for GPU
 
 #define WARP_SIZE 32
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU

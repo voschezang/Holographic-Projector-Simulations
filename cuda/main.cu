@@ -37,15 +37,15 @@
 int main() {
   printf("\nHyperparams:");
   printf("\n"); printf(" N: %4i^2 =%6i", N_sqrt, N);
-  printf("\t"); printf("BATCH_SIZE:\t%8i", BATCH_SIZE);
+  printf("\t"); printf("STREAM_BATCH_SIZE: \t%8i", STREAM_BATCH_SIZE);
   printf("\t"); printf("N_BATCHES: %8i", N_BATCHES);
 
   printf("\n"); printf(" GRIDDIM: %8i", GRIDDIM);
-  printf("\t"); printf("BLOCKDIM: %8i", BLOCKDIM);
+  printf("\t"); printf("BLOCKDIM: \t\t%8i", BLOCKDIM);
   printf("\t"); printf("E[tasks] = %0.3fk", GRIDDIM * BLOCKDIM * 1e-3);
   printf("\t"); printf("\tN/thread: %i", N_PER_THREAD);
   printf("\n"); printf(" N_STREAMS %3i \t\tSTREAM SIZE: %i (x3)", N_STREAMS, STREAM_SIZE);
-  printf("\t"); printf("\tBATCHES_PER_STREAM (x BATCH_SIZE = N): %i (x %i = %i)\n", BATCHES_PER_STREAM, BATCH_SIZE, BATCHES_PER_STREAM * BATCH_SIZE);
+  printf("\n"); printf("BATCHES_PER_STREAM (x STREAM_BATCH_SIZE = N): %i (x %i = %i)\n", BATCHES_PER_STREAM, STREAM_BATCH_SIZE, BATCHES_PER_STREAM * STREAM_BATCH_SIZE);
   printf("KERNELS_PER_BATCH %3i \t\tKERNEL BATCH SIZE: %i\n", KERNELS_PER_BATCH, KERNEL_BATCH_SIZE);
   // if (BATCHES_PER_STREAM < BATCH_SIZE)
   //   printf("BATCHES_PER_STREAM (%i) < BATCH_SIZE (%i)\n", BATCHES_PER_STREAM, BATCH_SIZE);
@@ -54,7 +54,7 @@ int main() {
   {
     // auto n = double{BLOCKDIM * BATCH_SIZE};
     // auto m = double{n * sizeof(WTYPE) * 1e-3};
-    double n = BLOCKDIM * BATCH_SIZE;
+    double n = BLOCKDIM * STREAM_BATCH_SIZE;
     double m = n * sizeof(WTYPE) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
@@ -64,7 +64,8 @@ int main() {
 
   // TODO use cmd arg for x length
   auto
-    X = std::vector<WTYPE>(5, {1.0});
+    X = std::vector<WTYPE>(1, {1.0});
+
   auto
     U = std::vector<STYPE>(X.size() * DIMS),
     V = std::vector<STYPE>(N * DIMS),
@@ -80,12 +81,15 @@ int main() {
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   cudaProfilerStart();
 #ifdef Y_TRANSFORM
+  // if X does not fit on GPU then do y += transform(x') for each subset x' in X
   auto Y = transform<Direction::Backward>(X, U, V);
 #endif
 
 #ifdef Z_TRANSFORM
   printf("\nSecond transform:\n");
   auto Z = transform<Direction::Forward>(Y, V, W);
+#else
+  auto Z = std::vector<WTYPE>(1);
 #endif
 
   // end loop

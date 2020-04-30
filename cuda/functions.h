@@ -37,7 +37,7 @@ inline void agg_batch_blocks(cudaStream_t stream,
   auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
   auto y2 = thrust::device_ptr<double>(&d_y_batch.data[d_y_batch.size / 2]);
   // TODO is a reduction call for each datapoint really necessary?
-  for (unsigned int m = 0; m < BATCH_SIZE; ++m) {
+  for (unsigned int m = 0; m < STREAM_BATCH_SIZE; ++m) {
     // Assume two independent reductions are at least as fast as a large reduction.
     // I.e. no kernel overhead and better work distribution
     thrust::device_ptr<double> ptr(d_y_block + m * GRIDDIM);
@@ -45,7 +45,7 @@ inline void agg_batch_blocks(cudaStream_t stream,
     // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
     // TODO (syntax) why is here no template?
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &y1[m]);
-    ptr += GRIDDIM * BATCH_SIZE;
+    ptr += GRIDDIM * STREAM_BATCH_SIZE;
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &y2[m]);
   }
 }
@@ -53,9 +53,8 @@ inline void agg_batch_blocks(cudaStream_t stream,
 inline void agg_batch(WTYPE *y, cudaStream_t stream,
                       WTYPE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
-  kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[BATCH_SIZE], BATCH_SIZE, d_y_stream);
-
-	cu( cudaMemcpyAsync(y, d_y_stream, BATCH_SIZE * sizeof(WTYPE),
+  kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[STREAM_BATCH_SIZE], STREAM_BATCH_SIZE, d_y_stream);
+	cu( cudaMemcpyAsync(y, d_y_stream, STREAM_BATCH_SIZE * sizeof(WTYPE),
                       cudaMemcpyDeviceToHost, stream ) );
 }
 
@@ -99,10 +98,10 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   double *d_y_block_ptr;
   double *d_y_batch_ptr;
   STYPE *d_v_ptr;
-  auto d_y_stream = pinnedMallocVector<WTYPE>(&d_y_stream_ptr, N_STREAMS, BATCH_SIZE);
-  auto d_y_block = pinnedMallocVector<double>(&d_y_block_ptr, N_STREAMS, 2 * BATCH_SIZE * GRIDDIM);
-  auto d_y_batch = pinnedMallocMatrix<double>(&d_y_batch_ptr, N_STREAMS, 2 * BATCH_SIZE);
-  auto d_v = pinnedMallocMatrix<STYPE>(&d_v_ptr, N_STREAMS, BATCH_SIZE * DIMS);
+  auto d_y_stream = pinnedMallocVector<WTYPE>(&d_y_stream_ptr, N_STREAMS, STREAM_BATCH_SIZE);
+  auto d_y_block = pinnedMallocVector<double>(&d_y_block_ptr, N_STREAMS, 2 * STREAM_BATCH_SIZE * GRIDDIM);
+  auto d_y_batch = pinnedMallocMatrix<double>(&d_y_batch_ptr, N_STREAMS, 2 * STREAM_BATCH_SIZE);
+  auto d_v = pinnedMallocMatrix<STYPE>(&d_v_ptr, N_STREAMS, STREAM_BATCH_SIZE * DIMS);
 
   for (auto& stream : streams)
     cudaStreamCreate(&stream);
@@ -119,7 +118,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
         printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
 
       /* printf("batch %3i stream %3i\n", i_batch, i_stream); */
-      cp_batch_data_to_device(&v[i_batch * BATCH_SIZE * DIMS], d_v[i_stream],
+      cp_batch_data_to_device(&v[i_batch * STREAM_BATCH_SIZE * DIMS], d_v[i_stream],
                               streams[i_stream]);
 
       partial_superposition_per_block<direction>(d_x_ptr, d_u_ptr,
@@ -136,7 +135,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
       const auto i_batch = i + i_stream;
-      agg_batch(&y[i_batch * BATCH_SIZE],
+      agg_batch(&y[i_batch * STREAM_BATCH_SIZE],
                 streams[i_stream],
                 d_y_stream[i_stream],
                 d_y_batch[i_stream].data);

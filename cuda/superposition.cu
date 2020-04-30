@@ -228,7 +228,7 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restr
 #endif
     const unsigned int i = blockIdx.x + m * GRIDDIM;
     y[i] = sum.x;
-    y[i + GRIDDIM * BATCH_SIZE] = sum.y; // note the use of stream batch size
+    y[i + GRIDDIM * STREAM_BATCH_SIZE] = sum.y; // note the use of stream batch size
   }
 
   // do not sync blocks, exit kernel and agg block results locally or in diff kernel
