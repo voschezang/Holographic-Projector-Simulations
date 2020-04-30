@@ -1,5 +1,6 @@
 C := nvcc # e.g. /usr/local/cuda-10.2/bin/nvcc
 EXE := run
+ZIP := ../tmp/out.zip
 .PHONY: $(EXE)
 
 build:
@@ -12,6 +13,12 @@ build-run:
 
 run:
 	./$(EXE)
+	make zip
+
+
+zip:
+	rm -f $(ZIP)
+	zip $(ZIP) ../tmp/out.txt
 
 # CUDA
 init-path:

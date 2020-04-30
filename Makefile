@@ -15,10 +15,7 @@ build-run:
 
 run:
 	make -C cuda run
-	make zip
-
-zip:
-	zip tmp/out.zip tmp/out.txt
+	# make zip
 
 plot:
 	make -C py plot
