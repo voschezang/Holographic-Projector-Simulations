@@ -59,6 +59,7 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
                                   STYPE *__restrict__ v) {
   // type WTYPE __restrict__ y_local[SHARED_MEMORY_SIZE]
 #ifdef CACHE_BATCH
+  // TODO don't fill array in case N_x < tid
   // cache v[batch] because it is read by every thread
   // v_cached is constant and equal for each block
   __shared__ STYPE v_cached[KERNEL_BATCH_SIZE * DIMS];
@@ -172,6 +173,7 @@ inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict_
 inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restrict__ y) {
   const unsigned int tid = threadIdx.x;
   const unsigned int size = BLOCKDIM / REDUCE_SHARED_MEMORY;
+  // TODO rename tmp
 
   // inter warp
   // TODO do this in parallel for the next warp in case of next batch
@@ -211,27 +213,15 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restr
       warp_reduce_c<size, WTYPE>(&tmp[m * size], tid);
 #endif
 
-
-#if (BLOCKDIM >= KERNEL_BATCH_SIZE)
-  if (tid < KERNEL_BATCH_SIZE) {
-    unsigned int m = tid;
-#else
-    // for each y-datapoint in current batch
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-#endif
-
-    WTYPE sum;
-    // sum = ZERO;
-    sum = tmp[m * size];
-#ifdef DEBUG
-    cuCheck(sum);
-#endif
+  // TODO check case of small Blockdim
+  for(unsigned int m = tid; m < KERNEL_BATCH_SIZE; m+=BLOCKDIM) {
     const unsigned int i = blockIdx.x + m * GRIDDIM;
+    const auto sum = tmp[m * size];
     y[i] = sum.x;
     y[i + GRIDDIM * STREAM_BATCH_SIZE] = sum.y; // note the use of stream batch size
   }
 
-  // do not sync blocks, exit kernel and agg block results locally or in diff kernel
+  // do not sync blocks, exit kernel and agg block results locally or in different kernel
 }
 
   // TODO template <direction>? icm kernel <<< >>> syntax?

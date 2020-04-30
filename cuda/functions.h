@@ -96,6 +96,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   const auto d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
   const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
 
+  // Note that in case x.size < GRIDDIM the remaining entries in the agg array are zero
   cudaStream_t streams[N_STREAMS];
   // malloc data using pinned memory for all batches before starting streams
   WTYPE *d_y_stream_ptr;
