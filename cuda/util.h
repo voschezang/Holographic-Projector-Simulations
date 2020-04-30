@@ -59,6 +59,9 @@ void check_params() {
   assert(KERNELS_PER_BATCH > 0);
   assert(BATCHES_PER_STREAM > 0);
 
+  assert(N >= STREAM_BATCH_SIZE); // otherwise too much data would be copied back
+  assert(N >= KERNEL_BATCH_SIZE);
+
   assert(KERNEL_BATCH_SIZE <= STREAM_BATCH_SIZE);
   assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == STREAM_BATCH_SIZE);
   assert(N == STREAM_BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);

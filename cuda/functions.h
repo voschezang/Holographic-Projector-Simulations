@@ -13,7 +13,7 @@
 #include "superposition.cu"
 
 
-inline void cp_batch_data_to_device(const STYPE *v, Array<STYPE> d_v,
+inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
                                     cudaStream_t stream) {
   // copy "v[i]" for i in batch, where v are the spatial positions belonging to the target datapoints y
   cudaMemcpyAsync( d_v.data, v, d_v.size * sizeof(WTYPE), cudaMemcpyHostToDevice, stream );
@@ -32,7 +32,7 @@ inline void partial_superposition_per_block(const WTYPE *d_x, const STYPE *d_u, 
 }
 
 inline void agg_batch_blocks(cudaStream_t stream,
-                             Array<double> d_y_batch,
+                             DeviceVector<double> d_y_batch,
                              double *d_y_block) {
   auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
   auto y2 = thrust::device_ptr<double>(&d_y_batch.data[d_y_batch.size / 2]);
@@ -82,6 +82,11 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
 
+  const size_t
+    n = v.size() / DIMS,
+    n_batches = n / STREAM_BATCH_SIZE;
+  assert(n_batches == N_BATCHES);
+
   auto y = std::vector<WTYPE>(v.size() / DIMS);
 
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
@@ -90,7 +95,6 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   // cast to pointers to allow usage in non-thrust kernels
   const auto d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
   const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
-
 
   cudaStream_t streams[N_STREAMS];
   // malloc data using pinned memory for all batches before starting streams
@@ -107,15 +111,15 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
     cudaStreamCreate(&stream);
 
   printf("streams post\n");
-  // assume N_BATCHES is divisible by N_STREAMS
-  for (size_t i = 0; i < N_BATCHES; i+=N_STREAMS) {
+  // assume n_batches is divisible by N_STREAMS
+  for (size_t i = 0; i < n_batches; i+=N_STREAMS) {
     // start each distinct kernel in batches
     // TODO don't do this in case of non-uniform workloads
 
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
       const auto i_batch = i + i_stream;
-      if (N_BATCHES > 10 && i_batch % (int) (N_BATCHES / 10) == 0)
-        printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, N_BATCHES * 1e-3);
+      if (n_batches > 10 && i_batch % (int) (n_batches / 10) == 0)
+        printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, n_batches * 1e-3);
 
       /* printf("batch %3i stream %3i\n", i_batch, i_stream); */
       cp_batch_data_to_device(&v[i_batch * STREAM_BATCH_SIZE * DIMS], d_v[i_stream],
@@ -123,7 +127,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 
       partial_superposition_per_block<direction>(d_x_ptr, d_u_ptr,
                                                  d_v[i_stream].data,
-                                 streams[i_stream], d_y_block[i_stream]);
+                                                 streams[i_stream], d_y_block[i_stream]);
     }
 
     // do aggregations in separate stream-loops; yielding a ~2.5x speedup

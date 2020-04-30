@@ -10,8 +10,11 @@
 
 #define cu(result) { cudaCheck((result), __FILE__, __LINE__); }
 
+
+/** GPU version of std::vector
+ */
 template<typename T>
-struct Array {
+struct DeviceVector {
   T *data;
   size_t size;
 };
@@ -100,13 +103,13 @@ std::vector<T*> pinnedMallocVector(T **d_ptr, size_t dim1, size_t dim2) {
 }
 
 template<typename T>
-std::vector<Array<T>> pinnedMallocMatrix(T **d_ptr, size_t dim1, size_t dim2) {
+std::vector<DeviceVector<T>> pinnedMallocMatrix(T **d_ptr, size_t dim1, size_t dim2) {
   cu( cudaMallocHost( (void **) d_ptr, dim1 * dim2 * sizeof(T) ) );
-  auto matrix = std::vector<Array<T>>(dim1);
+  auto matrix = std::vector<DeviceVector<T>>(dim1);
   // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
   // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read
   for (size_t i = 0; i < dim1; ++i)
-    matrix[i] = Array<T>{.data = *d_ptr + i * dim2, .size = dim2};
+    matrix[i] = DeviceVector<T>{.data = *d_ptr + i * dim2, .size = dim2};
   return matrix;
 }
 
