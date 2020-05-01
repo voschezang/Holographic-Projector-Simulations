@@ -1,7 +1,8 @@
 #ifndef MACROS
 #define MACROS
 
-#define DIV(x,y) ((x + y - 1) / y) // ceil(int, int)
+/* #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int) */
+#define CEIL(x,y) ((x + y - 1) / y) // ceil(int, int)
 
 /* #define DEBUG */
 #define Y_TRANSFORM // compute y transform
@@ -11,13 +12,13 @@
 #define CACHE_BATCH // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 /* #define PINNED_MEM // use cudaMallocHost over cudaMalloc // disable if in case of host memory issues // TODO speedup > 1 in absense of kernal invocation and otherwise < 1 */
 #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
-#define PARALLEL_INTRA_WARP_AGG
+#define PARALLEL_INTRA_WARP_AGG true
 
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
-#define N_sqrt 32
-/* #define N_sqrt 64 */
+/* #define N_sqrt 32 */
+#define N_sqrt 64
 /* #define N_sqrt 128 */
 /* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
@@ -31,11 +32,13 @@
 #define N_STREAMS 4 // TODO single stream results in incorrect output
 #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream
 /* #define N_BATCHES ((N + BATCH_SIZE - 1) / BATCH_SIZE) */
-#define BATCHES_PER_STREAM DIV(STREAM_SIZE, STREAM_BATCH_SIZE)
+#define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE)
 #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM)
 /* #define BATCHES_PER_STREAM (N_BATCHES / N_STREAMS) */
 
 #define MAX_INPUT_SIZE 0 // TODO, specific for GPU
+
+#define ArbitraryPhase 0.4912 // used in superposition::per_thread
 
 #define WARP_SIZE 32
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU

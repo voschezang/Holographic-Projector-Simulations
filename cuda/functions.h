@@ -26,7 +26,7 @@ inline void partial_superposition_per_block(const WTYPE *d_x, const STYPE *d_u, 
   for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
     const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
     const unsigned int k = i * KERNEL_BATCH_SIZE;
-    superposition::per_block<direction><<< GRIDDIM, BLOCKDIM, 0, stream >>>
+    superposition::per_block<direction, BLOCKDIM><<< GRIDDIM, BLOCKDIM, 0, stream >>>
       (d_x, N, d_u, &d_y_block[j], &d_v[k * DIMS] );
   }
 }
@@ -81,6 +81,8 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   // `auto` gives simpler python-like syntax, with variable names on the right and constructors on the left */
 
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
+  if (x.size() < GRIDDIM * BLOCKDIM)
+    print("Warning, suboptimal input size");
 
   const size_t
     n = v.size() / DIMS,
@@ -111,7 +113,6 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   for (auto& stream : streams)
     cudaStreamCreate(&stream);
 
-  printf("streams post\n");
   // assume n_batches is divisible by N_STREAMS
   for (size_t i = 0; i < n_batches; i+=N_STREAMS) {
     // start each distinct kernel in batches
@@ -131,7 +132,8 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
                                                  streams[i_stream], d_y_block[i_stream]);
     }
 
-    // do aggregations in separate stream-loops; yielding a ~2.5x speedup
+    // do aggregations in separate stream-loops because of imperfect async functions calls on host
+    // this may yield a ~2.5x speedup
     for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
       agg_batch_blocks(streams[i_stream],
                        d_y_batch[i_stream],

@@ -17,6 +17,12 @@
 // a transformation from projector to projection is forwards, vice versa is backwards
 enum class Direction {Forward, Backward};
 
+// TODO const template params
+// struct Params {
+//   unsigned int blockSize;
+//   unsigned int REDUCE_SHARED_MEMORY;
+// };
+
 template<Direction dir>
 inline __device__ double value() {
   // manual conversion because <type_traits> lib is not yet supported
@@ -57,14 +63,13 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
                                   const  STYPE *__restrict__ u,
                                   WTYPE *__restrict__ y_local,
                                   STYPE *__restrict__ v) {
-  // type WTYPE __restrict__ y_local[SHARED_MEMORY_SIZE]
 #ifdef CACHE_BATCH
   // TODO don't fill array in case N_x < tid
   // cache v[batch] because it is read by every thread
   // v_cached is constant and equal for each block
   __shared__ STYPE v_cached[KERNEL_BATCH_SIZE * DIMS];
   // use strides when BLOCKDIM < BATCH_SIZE * DIMS
-  for (unsigned int i = threadIdx.x; i < KERNEL_BATCH_SIZE * DIMS; i+=BLOCKDIM)
+  for (unsigned int i = threadIdx.x; i < KERNEL_BATCH_SIZE * DIMS; i+=blockDim.x)
     v_cached[i] = v[i];
 
   __syncthreads();
@@ -76,110 +81,106 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
   const size_t stride = blockDim.x * gridDim.x;
   // add single far away light source, with arbitrary (but constant) phase
   // assume threadIdx.x is a runtime constant
-  if (BLOCKDIM >= KERNEL_BATCH_SIZE)
+  if (blockDim.x >= KERNEL_BATCH_SIZE)
     if (idx < KERNEL_BATCH_SIZE)
-      y_local[idx] = polar(1, 0.4912);
+      y_local[idx] = polar(1, ArbitraryPhase);
 
   // for each y-datapoint in current batch
   // outer loop for batch, inner loop for index is faster than vice versa
-  for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+  for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
     for (size_t i = idx; i < N_x; i += stride)
       y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_cached));
-
-#ifdef DEBUG
-    cuCheck(y_local[m]);
-#endif
-  }
 }
 
-inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict__ tmp) {
-  // TODO rename tmp => shared
+inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict__ y_shared) {
   const unsigned int tid = threadIdx.x;
 
-#if (BLOCKDIM == 1 || REDUCE_SHARED_MEMORY == 1)
-  for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-    tmp[threadIdx.x + m * BLOCKDIM] = local[m];
-    // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = local[m];
-#else
-  // write before first sync. note that integer division is used
-
-  if (KERNEL_BATCH_SIZE < 2) {
-    // use 1/2 a much shared memory
-
-    const unsigned int halfBlockSize = BLOCKDIM / 2;
-    // simple reduction, first half writes first, then second half add their result
-    if (threadIdx.x >= halfBlockSize)
-      for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-        tmp[threadIdx.x - halfBlockSize + m * BLOCKDIM] = local[m];
-        // tmp[m + (threadIdx.x - halfBlockSize ) * KERNEL_BATCH_SIZE] = local[m];
-
-    __syncthreads();
-    if (threadIdx.x < halfBlockSize)
-      for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-        tmp[threadIdx.x + m * KERNEL_BATCH_SIZE] = \
-          cuCadd(local[m], tmp[threadIdx.x + m * KERNEL_BATCH_SIZE]);
-        // tmp[m + threadIdx.x * KERNEL_BATCH_SIZE] = \
-        //   cuCadd(local[m], tmp[m + threadIdx.x * KERNEL_BATCH_SIZE]);
+  if (BLOCKDIM == 1 || REDUCE_SHARED_MEMORY == 1) {
+    // #if (BLOCKDIM == 1 || REDUCE_SHARED_MEMORY == 1)
+    for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+      y_shared[threadIdx.x + m * blockDim.x] = local[m];
+    // y_shared[m + threadIdx.x * KERNEL_BATCH_SIZE] = local[m];
+    // #else
   }
-  else if (REDUCE_SHARED_MEMORY == 2) {
-    // still use 1/2 of shared memory, but without idle threads
-    // TODO consider another step, resulting in 1/4
-    // dm  = threadIdx.x < halfBlockSize ? 0 : BLOCKSIZE * KERNEL_BATCH_SIZE / 2,
+  else {
+    // write before first sync. note that integer division is used
 
-    const unsigned int size = BLOCKDIM / REDUCE_SHARED_MEMORY;
-    // const unsigned int halfBlockSize = BLOCKDIM / 2;
-    const unsigned int idx = tid < size ? tid : tid - size;
-    {
-      const unsigned int
-        dm  = threadIdx.x < size ? 0 : KERNEL_BATCH_SIZE / 2;
-      for (unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
-        // first half writes first half of batch, idem for second half
-        // tmp[(m + dm) + idx * KERNEL_BATCH_SIZE] = local[m + dm];
-        tmp[idx + (m + dm) * size] = local[m + dm];
+    if (KERNEL_BATCH_SIZE < 2) {
+      // use 1/2 a much shared memory
+
+      const unsigned int halfBlockSize = blockDim.x / 2;
+      // simple reduction, first half writes first, then second half add their result
+      if (threadIdx.x >= halfBlockSize)
+        for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+          y_shared[threadIdx.x - halfBlockSize + m * blockDim.x] = local[m];
+      // y_shared[m + (threadIdx.x - halfBlockSize ) * KERNEL_BATCH_SIZE] = local[m];
+
+      __syncthreads();
+      if (threadIdx.x < halfBlockSize)
+        for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+          y_shared[threadIdx.x + m * KERNEL_BATCH_SIZE] = \
+            cuCadd(local[m], y_shared[threadIdx.x + m * KERNEL_BATCH_SIZE]);
+      // y_shared[m + threadIdx.x * KERNEL_BATCH_SIZE] = \
+      //   cuCadd(local[m], y_shared[m + threadIdx.x * KERNEL_BATCH_SIZE]);
+    }
+    else if (REDUCE_SHARED_MEMORY == 2) {
+      // still use 1/2 of shared memory, but without idle threads
+      // TODO consider another step, resulting in 1/4
+      // dm  = threadIdx.x < halfBlockSize ? 0 : BLOCKSIZE * KERNEL_BATCH_SIZE / 2,
+
+      const unsigned int size = blockDim.x / REDUCE_SHARED_MEMORY;
+      // const unsigned int halfBlockSize = BLOCKDIM / 2;
+      const unsigned int idx = tid < size ? tid : tid - size;
+      {
+        const unsigned int
+          dm  = threadIdx.x < size ? 0 : KERNEL_BATCH_SIZE / 2;
+        for (unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
+          // first half writes first half of batch, idem for second half
+          // y_shared[(m + dm) + idx * KERNEL_BATCH_SIZE] = local[m + dm];
+          y_shared[idx + (m + dm) * size] = local[m + dm];
+        }
+      }
+
+      __syncthreads();
+      const unsigned int dm = threadIdx.x < size ? KERNEL_BATCH_SIZE / 2 : 0;
+      for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
+        // first half adds+writes first half of batch, idem for second half
+        const unsigned int i = idx + (m + dm) * size;
+        // const unsigned int i = (m + dm) + idx * KERNEL_BATCH_SIZE;
+        y_shared[i] = cuCadd(y_shared[i], local[m + dm]);
       }
     }
+    else if (REDUCE_SHARED_MEMORY > 2) {
+      const unsigned int size = blockDim.x / REDUCE_SHARED_MEMORY;
+      for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
+        if (tid < size)
+          y_shared[m * size + tid] = local[m];
 
-    __syncthreads();
-    const unsigned int
-      dm = threadIdx.x < size ? KERNEL_BATCH_SIZE / 2 : 0;
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE / 2; ++m) {
-      // first half adds+writes first half of batch, idem for second half
-      const unsigned int i = idx + (m + dm) * size;
-      // const unsigned int i = (m + dm) + idx * KERNEL_BATCH_SIZE;
-      tmp[i] = cuCadd(tmp[i], local[m + dm]);
-    }
-  }
-  else if (REDUCE_SHARED_MEMORY > 2) {
-    const unsigned int size = BLOCKDIM / REDUCE_SHARED_MEMORY;
-    for (unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
-      if (tid < size)
-        tmp[m * size + tid] = local[m];
-
-      const unsigned int relative_tid = tid % size;
-      for (unsigned int n = 1; n < REDUCE_SHARED_MEMORY; ++n) {
-        if (n * size < tid && tid < (n+1) * size) {
-          const unsigned int i = m * size + relative_tid;
-          // const unsigned int i = (m + dm) + idx * KERNEL_BATCH_SIZE;
-          tmp[i] = cuCadd(tmp[i], local[m]);
+        const unsigned int relative_tid = tid % size;
+        for (unsigned int n = 1; n < REDUCE_SHARED_MEMORY; ++n) {
+          if (n * size < tid && tid < (n+1) * size) {
+            const unsigned int i = m * size + relative_tid;
+            // const unsigned int i = (m + dm) + idx * KERNEL_BATCH_SIZE;
+            y_shared[i] = cuCadd(y_shared[i], local[m]);
+          }
         }
       }
     }
-  }
 
-#endif
+  } // end if (BLOCKDIM == 1 || REDUCE_SHARED_MEMORY == 1) {
   __syncthreads();
 }
 
-inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restrict__ y) {
+template <unsigned int blockSize>
+inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__restrict__ y_global) {
   const unsigned int tid = threadIdx.x;
-  const unsigned int size = BLOCKDIM / REDUCE_SHARED_MEMORY;
-  // TODO rename tmp
+  const unsigned int size = blockSize / REDUCE_SHARED_MEMORY;
 
   // inter warp
   // TODO do this in parallel for the next warp in case of next batch
   for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m) {
     // TOOD check for memory bank conflicts
-    WTYPE *x = &tmp[m * size];
+    WTYPE *x = &y_shared[m * size];
 #pragma unroll
     for (unsigned int s = size / 2; s >= 2 * WARP_SIZE; s/=2) {
       if(tid < s)
@@ -195,49 +196,50 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ tmp, double *__restr
 
 
   // final intra warp aggregation
-#ifdef PARALLEL_INTRA_WARP_AGG
-  // let each warp aggregate a different batch
-  const unsigned int n_warps = DIV(BLOCKDIM, WARP_SIZE);
-  const unsigned int wid = tid / WARP_SIZE;
-  const unsigned int lane = tid % 32;
-  static_assert(n_warps != 0, "n_warps must be > 0");
-  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; m+=n_warps)
-    for(unsigned int w = 0; w < n_warps; ++w)
-      if (wid == w
-          && (m+w) < KERNEL_BATCH_SIZE
-          && lane < size / 2)
-        warp_reduce_c<size, WTYPE>(&tmp[(m+w) * size], lane);
-#else
-  for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-    if (tid < WARP_SIZE && tid < size / 2)
-      warp_reduce_c<size, WTYPE>(&tmp[m * size], tid);
-#endif
+  if (PARALLEL_INTRA_WARP_AGG) {
+    // different threads agg different y-values in batch
+    // let each warp aggregate a different batch
+    const unsigned int n_warps = CEIL(blockSize, WARP_SIZE);
+    const unsigned int wid = tid / WARP_SIZE;
+    const unsigned int lane = tid % 32;
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; m+=n_warps)
+      for(unsigned int w = 0; w < n_warps; ++w)
+        if (wid == w
+            && (m+w) < KERNEL_BATCH_SIZE
+            && lane < size / 2)
+          warp_reduce_c<size, WTYPE>(&y_shared[(m+w) * size], lane);
+  }
+  else {
+    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+      if (tid < WARP_SIZE && tid < size / 2)
+        warp_reduce_c<size, WTYPE>(&y_shared[m * size], tid);
+  }
 
   // TODO check case of small Blockdim
-  for(unsigned int m = tid; m < KERNEL_BATCH_SIZE; m+=BLOCKDIM) {
-    const unsigned int i = blockIdx.x + m * GRIDDIM;
-    const auto sum = tmp[m * size];
-    y[i] = sum.x;
-    y[i + GRIDDIM * STREAM_BATCH_SIZE] = sum.y; // note the use of stream batch size
+  for(unsigned int m = tid; m < KERNEL_BATCH_SIZE; m+=blockDim.x) {
+    const auto i = blockIdx.x + m * GRIDDIM;
+    const auto sum = y_shared[m * size];
+    y_global[i] = sum.x;
+    y_global[i + GRIDDIM * STREAM_BATCH_SIZE] = sum.y; // note the use of stream batch size
   }
 
   // do not sync blocks, exit kernel and agg block results locally or in different kernel
 }
 
-  // TODO template <direction>? icm kernel <<< >>> syntax?
-template<Direction direction>
-  __global__ void per_block(const WTYPE *__restrict__ x, const size_t N_x,
-                            const STYPE *__restrict__ u,
-                            double *__restrict__ y,
-                            STYPE *__restrict__ v) {
-  __shared__ WTYPE tmp[SHARED_MEMORY_SIZE];
-  // TODO transpose tmp array? - memory bank conflicts
+template<Direction direction, unsigned int blockSize>
+__global__ void per_block(const WTYPE *__restrict__ x, const size_t N_x,
+                          const STYPE *__restrict__ u,
+                          double *__restrict__ y_global,
+                          STYPE *__restrict__ v) {
+  __shared__ WTYPE y_shared[SHARED_MEMORY_SIZE];
+  // TODO transpose y_shared? - memory bank conflicts, but first simplify copy_result()
+  // but, this would make warp redcuce more complex
   {
     WTYPE y_local[KERNEL_BATCH_SIZE] = {}; // init to zero
     superposition::per_thread<direction>(x, N_x, u, y_local, v);
-    superposition::copy_result(y_local, tmp);
+    superposition::copy_result(y_local, y_shared);
   }
-  superposition::aggregate_blocks(tmp, y);
+  superposition::aggregate_blocks<blockSize>(y_shared, y_global);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

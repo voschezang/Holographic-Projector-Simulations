@@ -101,6 +101,7 @@ int main() {
   printf("runtime init: \t%0.3f\n", time);
 
 #ifdef Z_TRANSFORM
+  // TODO allow smaller datasize for N in flops computation
   printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
          flops(time), FLOP_PER_POINT);
   printf("Bandwidth: \t%0.5f MB/s (excl. shared memory)\n", bandwidth(time, 2, 0));
