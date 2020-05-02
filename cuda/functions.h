@@ -9,9 +9,11 @@
 
 #include "macros.h"
 #include "util.h"
+#include "init.h"
 #include "kernel.cu"
 #include "superposition.cu"
 
+// host superposition functions
 
 inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
                                     cudaStream_t stream) {
@@ -19,15 +21,38 @@ inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
   cudaMemcpyAsync( d_v.data, v, d_v.size * sizeof(WTYPE), cudaMemcpyHostToDevice, stream );
 }
 
+#define SuperpositionPerBlock(size)                                     \
+  superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
+    (d_x, N, d_u, &d_y_block[j], &d_v[k * DIMS] );
+
 template<const Direction direction>
-inline void partial_superposition_per_block(const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
+inline void partial_superposition_per_block(const Geometry p, const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
                                             cudaStream_t stream, double *d_y_block)
 {
-  for (unsigned int i = 0; i < KERNELS_PER_BATCH; ++i) {
-    const unsigned int j = i * GRIDDIM * KERNEL_BATCH_SIZE; // * 2
-    const unsigned int k = i * KERNEL_BATCH_SIZE;
-    superposition::per_block<direction, BLOCKDIM><<< GRIDDIM, BLOCKDIM, 0, stream >>>
-      (d_x, N, d_u, &d_y_block[j], &d_v[k * DIMS] );
+  for (unsigned int i = 0; i < p.batch_size; ++i) {
+    const unsigned int j = i * p.gridSize * p.kernel_size; // * 2
+    const unsigned int k = i * p.kernel_size;
+    assert(p.blockSize > 2); // TODO
+    switch (p.blockSize) {
+      // TODO uncomment & prevent warnings
+      /* case 1: SuperpositionPerBlock(1); break; */
+      /* case 2: SuperpositionPerBlock(2); break; */
+    case   4: SuperpositionPerBlock(  4); break;
+    case   8: SuperpositionPerBlock(  8); break;
+    case  16: SuperpositionPerBlock( 16); break;
+    case  32: SuperpositionPerBlock( 32); break;
+    case  64: SuperpositionPerBlock( 64); break;
+    case 128: SuperpositionPerBlock(128); break;
+    case 256: SuperpositionPerBlock(256); break;
+    case 512: SuperpositionPerBlock(512); break;
+    default: SuperpositionPerBlock(16);
+    }
+/* #pragma unroll */
+/*     for (unsigned int size = 1; size < 2048; size*=2) */
+/*       if (size == p.blockSize) */
+/*         { */
+          /* const int s = size; */
+        /* } */
   }
 }
 
@@ -81,15 +106,13 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   // `auto` gives simpler python-like syntax, with variable names on the right and constructors on the left */
 
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
-  if (x.size() < GRIDDIM * BLOCKDIM)
+  const size_t n = v.size() / DIMS;
+  const Geometry p = init::params(n); // TODO for both y,z
+  assert(p.n_per_batch == STREAM_BATCH_SIZE); // TODO rm old macro
+  if (x.size() < p.gridSize * p.blockSize)
     print("Warning, suboptimal input size");
 
-  const size_t
-    n = v.size() / DIMS,
-    n_batches = n / STREAM_BATCH_SIZE;
-  assert(n_batches == N_BATCHES);
-
-  auto y = std::vector<WTYPE>(v.size() / DIMS);
+  auto y = std::vector<WTYPE>(n);
 
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   const thrust::device_vector<WTYPE> d_x = x;
@@ -99,50 +122,50 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
 
   // Note that in case x.size < GRIDDIM the remaining entries in the agg array are zero
-  cudaStream_t streams[N_STREAMS];
+  cudaStream_t streams[p.n_streams];
   // malloc data using pinned memory for all batches before starting streams
   WTYPE *d_y_stream_ptr;
   double *d_y_block_ptr;
   double *d_y_batch_ptr;
   STYPE *d_v_ptr;
-  auto d_y_stream = pinnedMallocVector<WTYPE>(&d_y_stream_ptr, N_STREAMS, STREAM_BATCH_SIZE);
-  auto d_y_block = pinnedMallocVector<double>(&d_y_block_ptr, N_STREAMS, 2 * STREAM_BATCH_SIZE * GRIDDIM);
-  auto d_y_batch = pinnedMallocMatrix<double>(&d_y_batch_ptr, N_STREAMS, 2 * STREAM_BATCH_SIZE);
-  auto d_v = pinnedMallocMatrix<STYPE>(&d_v_ptr, N_STREAMS, STREAM_BATCH_SIZE * DIMS);
+  auto d_y_stream = init::pinned_malloc_vector<WTYPE>(&d_y_stream_ptr, p.n_streams, p.n_per_batch);
+  auto d_y_block  = init::pinned_malloc_vector<double>(&d_y_block_ptr, p.n_streams, 2 * p.n_per_batch * p.gridSize);
+  auto d_y_batch  = init::pinned_malloc_matrix<double>(&d_y_batch_ptr, p.n_streams, 2 * p.n_per_batch);
+  auto d_v        = init::pinned_malloc_matrix<STYPE>(&d_v_ptr, p.n_streams, p.n_per_batch * DIMS);
 
   for (auto& stream : streams)
     cudaStreamCreate(&stream);
 
-  // assume n_batches is divisible by N_STREAMS
-  for (size_t i = 0; i < n_batches; i+=N_STREAMS) {
+  // assume n_batches is divisible by n_streams
+  for (size_t i = 0; i < p.n_batches; i+=p.n_streams) {
     // start each distinct kernel in batches
     // TODO don't do this in case of non-uniform workloads
 
-    for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
+    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
-      if (n_batches > 10 && i_batch % (int) (n_batches / 10) == 0)
-        printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, n_batches * 1e-3);
+      if (p.n_batches > 10 && i_batch % (int) (p.n_batches / 10) == 0)
+        printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, p.n_batches * 1e-3);
 
       /* printf("batch %3i stream %3i\n", i_batch, i_stream); */
-      cp_batch_data_to_device(&v[i_batch * STREAM_BATCH_SIZE * DIMS], d_v[i_stream],
+      cp_batch_data_to_device(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
                               streams[i_stream]);
 
-      partial_superposition_per_block<direction>(d_x_ptr, d_u_ptr,
+      partial_superposition_per_block<direction>(p, d_x_ptr, d_u_ptr,
                                                  d_v[i_stream].data,
                                                  streams[i_stream], d_y_block[i_stream]);
     }
 
     // do aggregations in separate stream-loops because of imperfect async functions calls on host
     // this may yield a ~2.5x speedup
-    for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
+    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       agg_batch_blocks(streams[i_stream],
                        d_y_batch[i_stream],
                        d_y_block[i_stream]);
     }
 
-    for (unsigned int i_stream = 0; i_stream < N_STREAMS; ++i_stream) {
+    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
-      agg_batch(&y[i_batch * STREAM_BATCH_SIZE],
+      agg_batch(&y[i_batch * p.n_per_batch],
                 streams[i_stream],
                 d_y_stream[i_stream],
                 d_y_batch[i_stream].data);
@@ -156,7 +179,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   printf("done, destroy streams\n");
 #endif
 
-  for (unsigned int i = 0; i < N_STREAMS; ++i)
+  for (unsigned int i = 0; i < p.n_streams; ++i)
     cudaStreamDestroy(streams[i]);
 
 #ifdef DEBUG

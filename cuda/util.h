@@ -11,6 +11,88 @@
 
 enum class FileType {TXT, DAT, GRID};
 
+// Params.stream.N
+// Params.stream.batch_size
+// Params.kernel.batch_size
+// Params.kernels_per_stream
+
+/* struct Collection { */
+/*   size_t size; // total n datapoints */
+/*   size_t batch_size; // n batches per "instance" */
+/* }; */
+
+struct Geometry {
+  // Hierarchy
+  // block < grid < kernel < stream batch < stream
+  size_t blockSize; // blockDim.x, i.e. threads per block
+  size_t gridSize; // gridDim.x, i.e. n blocks
+  size_t kernel_size; // n output datapoints per kernel
+  size_t batch_size; // n kernels per batch
+  size_t stream_size; // n batches per stream
+  size_t n_streams;
+
+  // secondary
+  // "getters"
+  // TODO use class with lazy methods
+
+  // total number of ..
+  size_t n_batches; // total n stream batches
+  size_t n_kernels; // total n kernel calls (excl. agg)
+
+  // n datapoints per ..
+  size_t n_per_stream;
+  size_t n_per_batch;
+  size_t n_per_kernel; // i.e. per grid
+  double n_per_block;
+  double n_per_thread;
+
+  // TODO differentiate between input and output datapoints
+  /* double n_per_block; // can be < 1, i.e. not all blocks are used */
+  /* double n_per_thread; // can be < 1, i.e. not all threads are used */
+
+  size_t kernels_per_stream;
+};
+
+struct Params {
+  Geometry g;
+  // TODO
+
+  // CACHE_BATCH;
+  // REDUCE_SHARED_MEMORY;
+  // PARALLEL_INTRA_WARP_AGG;
+  // Direction?
+};
+
+// TODO
+/* class Params { */
+/*  private: */
+/*   // hierarchy */
+/*   size_t */
+/*     n_streams; */
+/*     /\* _stream_size, *\/ */
+/*     /\* _stream_batch_size, *\/ */
+/*     /\* _batches_per_stream, *\/ */
+/*     /\* _kernel_batch_size, *\/ */
+/*     /\* _kernels_per_stream_batch; *\/ */
+
+/*   // kernel */
+/*   size_t blockSize; */
+/*   size_t gridSize; */
+
+/*  public: */
+/*   size_t N; // number of "output" datapoints */
+/*   Params(size_t N); */
+/* } */
+
+/* Params::Params(size_t n) { */
+/*   n_streams = N_STREAMS; */
+/* } */
+
+/* Params::n_streams(size_t n) { */
+/*   n_streams = n; */
+/* } */
+
+
 double flops(double runtime) {
   // Tera or Giga FLOP/s
   // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache
@@ -42,35 +124,6 @@ void check(WTYPE  z) {
   if (isnan(z.y)) printf("found nan I\n");
   if (isinf(z.y)) printf("found inf I\n");
   if (isinf(z.x)) exit(1);
-}
-
-void check_params() {
-#if (N_STREAMS < 1)
-  printf("Invalid param: N_STREAMS < 1\n"); assert(0);
-#elif (BATCHES_PER_STREAM < 1)
-  printf("Invalid param: BATCHES_PER_STREAM < 1\n"); assert(0);
-#elif (N_STREAMS * BATCHES_PER_STREAM != N_BATCHES)
-  printf("Invalid param: incompatible N_STREAMS and N\n"); assert(0);
-#endif
-
-  assert(N > 0); assert(N_BATCHES > 0); assert(N_STREAMS > 0);
-  assert(STREAM_BATCH_SIZE > 0); assert(KERNEL_BATCH_SIZE > 0);
-  assert(STREAM_SIZE > 0);
-  assert(KERNELS_PER_BATCH > 0);
-  assert(BATCHES_PER_STREAM > 0);
-
-  assert(N >= STREAM_BATCH_SIZE); // otherwise too much data would be copied back
-  assert(N >= KERNEL_BATCH_SIZE);
-
-  assert(KERNEL_BATCH_SIZE <= STREAM_BATCH_SIZE);
-  assert(KERNEL_BATCH_SIZE * KERNELS_PER_BATCH == STREAM_BATCH_SIZE);
-  assert(N == STREAM_BATCH_SIZE * BATCHES_PER_STREAM * N_STREAMS);
-
-  assert(REDUCE_SHARED_MEMORY <= BLOCKDIM);
-  assert(BLOCKDIM / REDUCE_SHARED_MEMORY);
-  assert(N_PER_THREAD > 0);
-  assert(N == N_STREAMS * STREAM_SIZE);
-  assert(N_PER_THREAD * BLOCKDIM * GRIDDIM == N);
 }
 
 void check_cvector(std::vector<WTYPE> x) {

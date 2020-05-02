@@ -54,8 +54,8 @@ inline __device__ void warp_reduce(volatile T *s, unsigned int i) {
 
 // volatile WTYPE& operator=(volatile WTYPE&) volatile;
 
-template <unsigned int blockSize, typename T>
-inline __device__ void warp_reduce_c(T *s, const unsigned int i) {
+template <unsigned int blockSize>
+inline __device__ void warp_reduce_complex(WTYPE *s, const unsigned int i) {
   // TODO assert size <= 2*WARP_SIZE
   // TODO if (1 < size <= 64) for (n = size / 2;;)
 #pragma unroll
@@ -64,7 +64,6 @@ inline __device__ void warp_reduce_c(T *s, const unsigned int i) {
       s[i] = cuCadd(s[i], s[i + n]);
 
     __threadfence(); // TODO can this be moved inside the prev if
-    // TODO check if fence is required for shared memory and not just for global memory
   }
 
   // // example code from Nvidia
@@ -94,28 +93,6 @@ inline __device__ cuDoubleComplex polar(double a, double phi) {
   // return cuCmul(make_cuDoubleComplex(a, 0), res);
   return make_cuDoubleComplex(a * res.x, a * res.y);
 }
-
-template<typename T>
-std::vector<T*> pinnedMallocVector(T **d_ptr, size_t dim1, size_t dim2) {
-  cu( cudaMallocHost( d_ptr, dim1 * dim2 * sizeof(T) ) );
-  auto vec = std::vector<T*>(dim1);
-  // for (auto&& row : matrix)
-  for (size_t i = 0; i < dim1; ++i)
-    vec[i] = *d_ptr + i * dim2;
-  return vec;
-}
-
-template<typename T>
-std::vector<DeviceVector<T>> pinnedMallocMatrix(T **d_ptr, size_t dim1, size_t dim2) {
-  cu( cudaMallocHost( d_ptr, dim1 * dim2 * sizeof(T) ) );
-  auto matrix = std::vector<DeviceVector<T>>(dim1);
-  // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
-  // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read
-  for (size_t i = 0; i < dim1; ++i)
-    matrix[i] = DeviceVector<T>{.data = *d_ptr + i * dim2, .size = dim2};
-  return matrix;
-}
-
 
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////

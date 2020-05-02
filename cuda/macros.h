@@ -26,15 +26,13 @@
 #define N2 (N_sqrt * N_sqrt)
 #define STREAM_BATCH_SIZE 8 // n datapoints per stream // stream batch size // TODO rename to STREAM_BATCH_SIZE?
 #define KERNEL_BATCH_SIZE 8 // n datapoints per kernel, must be <= STREAM_BATCH_SIZE
-#define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch
+/* #define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch */
 // TODO compute optimal batch size as function of N
 
 #define N_STREAMS 4 // TODO single stream results in incorrect output
 #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream
-/* #define N_BATCHES ((N + BATCH_SIZE - 1) / BATCH_SIZE) */
-#define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE)
-#define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM)
-/* #define BATCHES_PER_STREAM (N_BATCHES / N_STREAMS) */
+/* #define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE) */
+/* #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM) */
 
 #define MAX_INPUT_SIZE 0 // TODO, specific for GPU
 

@@ -23,6 +23,7 @@ enum class Direction {Forward, Backward};
 //   unsigned int REDUCE_SHARED_MEMORY;
 // };
 
+
 template<Direction dir>
 inline __device__ double value() {
   // manual conversion because <type_traits> lib is not yet supported
@@ -197,7 +198,6 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__
 
   // final intra warp aggregation
   if (PARALLEL_INTRA_WARP_AGG) {
-    // different threads agg different y-values in batch
     // let each warp aggregate a different batch
     const unsigned int n_warps = CEIL(blockSize, WARP_SIZE);
     const unsigned int wid = tid / WARP_SIZE;
@@ -207,12 +207,12 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__
         if (wid == w
             && (m+w) < KERNEL_BATCH_SIZE
             && lane < size / 2)
-          warp_reduce_c<size, WTYPE>(&y_shared[(m+w) * size], lane);
+          warp_reduce_complex<size>(&y_shared[(m+w) * size], lane);
   }
   else {
     for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
       if (tid < WARP_SIZE && tid < size / 2)
-        warp_reduce_c<size, WTYPE>(&y_shared[m * size], tid);
+        warp_reduce_complex<size>(&y_shared[m * size], tid);
   }
 
   // TODO check case of small Blockdim
