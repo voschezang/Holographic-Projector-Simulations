@@ -175,7 +175,7 @@ inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict_
 template <unsigned int blockSize>
 inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__restrict__ y_global) {
   const unsigned int tid = threadIdx.x;
-  const unsigned int size = blockSize / REDUCE_SHARED_MEMORY;
+  const unsigned int size = CEIL(blockSize, REDUCE_SHARED_MEMORY);
 
   // inter warp
   // TODO do this in parallel for the next warp in case of next batch
@@ -190,29 +190,34 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__
       __syncthreads();
     }
 
+    // alt
     // if(size == 512){ if(tid < 256){ x[tid] = cuCadd(x[tid], x[tid + 256]);} __syncthreads();}
     // if(size >= 256){ if(tid < 128){ x[tid] = cuCadd(x[tid], x[tid + 128]);} __syncthreads();}
     // if(size >= 128){ if(tid <  64){ x[tid] = cuCadd(x[tid], x[tid +  64]);} __syncthreads();}
   }
 
-
-  // final intra warp aggregation
-  if (PARALLEL_INTRA_WARP_AGG) {
-    // let each warp aggregate a different batch
-    const unsigned int n_warps = CEIL(blockSize, WARP_SIZE);
-    const unsigned int wid = tid / WARP_SIZE;
-    const unsigned int lane = tid % 32;
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; m+=n_warps)
-      for(unsigned int w = 0; w < n_warps; ++w)
-        if (wid == w
-            && (m+w) < KERNEL_BATCH_SIZE
-            && lane < size / 2)
-          warp_reduce_complex<size>(&y_shared[(m+w) * size], lane);
-  }
-  else {
-    for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
-      if (tid < WARP_SIZE && tid < size / 2)
-        warp_reduce_complex<size>(&y_shared[m * size], tid);
+  if (size >= 2) {
+    // final intra warp aggregation
+    if (PARALLEL_INTRA_WARP_AGG && blockSize >= 2 * WARP_SIZE) {
+      // let each warp aggregate a different batch
+      const unsigned int n_warps = CEIL(blockSize, WARP_SIZE);
+      const unsigned int wid = tid / WARP_SIZE;
+      const unsigned int lane = tid % 32;
+      static_assert(size < 2 || size / 2 != 0, "");
+      // use 1 + lane < 1 + size / 2 to suppress warning
+      for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; m+=n_warps)
+        for(unsigned int w = 0; w < n_warps; ++w)
+          if (wid == w
+              && (m+w) < KERNEL_BATCH_SIZE
+              && 1 + lane < 1 + size / 2)
+            warp_reduce_complex<size>(&y_shared[(m+w) * size], lane);
+    }
+    else {
+      // use 1 + tid < 1 + size / 2 to suppress warning
+      for(unsigned int m = 0; m < KERNEL_BATCH_SIZE; ++m)
+        if (tid < WARP_SIZE && 1+ tid < 1 + size / 2)
+          warp_reduce_complex<size>(&y_shared[m * size], tid);
+    }
   }
 
   // TODO check case of small Blockdim

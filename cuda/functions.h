@@ -29,14 +29,13 @@ template<const Direction direction>
 inline void partial_superposition_per_block(const Geometry p, const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
                                             cudaStream_t stream, double *d_y_block)
 {
+  assert(p.blockSize <= 512); // not implemented
   for (unsigned int i = 0; i < p.batch_size; ++i) {
     const unsigned int j = i * p.gridSize * p.kernel_size; // * 2
     const unsigned int k = i * p.kernel_size;
-    assert(p.blockSize > 2); // TODO
     switch (p.blockSize) {
-      // TODO uncomment & prevent warnings
-      /* case 1: SuperpositionPerBlock(1); break; */
-      /* case 2: SuperpositionPerBlock(2); break; */
+    case   1: SuperpositionPerBlock(  1); break;
+    case   2: SuperpositionPerBlock(  2); break;
     case   4: SuperpositionPerBlock(  4); break;
     case   8: SuperpositionPerBlock(  8); break;
     case  16: SuperpositionPerBlock( 16); break;
@@ -56,30 +55,32 @@ inline void partial_superposition_per_block(const Geometry p, const WTYPE *d_x, 
   }
 }
 
-inline void agg_batch_blocks(cudaStream_t stream,
+inline void agg_batch_blocks(const Geometry p, cudaStream_t stream,
                              DeviceVector<double> d_y_batch,
                              double *d_y_block) {
   auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
   auto y2 = thrust::device_ptr<double>(&d_y_batch.data[d_y_batch.size / 2]);
   // TODO is a reduction call for each datapoint really necessary?
-  for (unsigned int m = 0; m < STREAM_BATCH_SIZE; ++m) {
+  assert(p.n_per_batch == STREAM_BATCH_SIZE); // TODO rm old macro
+  for (unsigned int m = 0; m < p.n_per_batch; ++m) {
     // Assume two independent reductions are at least as fast as a large reduction.
     // I.e. no kernel overhead and better work distribution
-    thrust::device_ptr<double> ptr(d_y_block + m * GRIDDIM);
+    thrust::device_ptr<double> ptr(d_y_block + m * p.gridSize);
 
     // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
     // TODO (syntax) why is here no template?
-    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &y1[m]);
-    ptr += GRIDDIM * STREAM_BATCH_SIZE;
-    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + GRIDDIM, 0.0, thrust::plus<double>(), &y2[m]);
+    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + p.gridSize, 0.0, thrust::plus<double>(), &y1[m]);
+    ptr += p.gridSize * p.n_per_batch;
+    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + p.gridSize, 0.0, thrust::plus<double>(), &y2[m]);
   }
 }
 
-inline void agg_batch(WTYPE *y, cudaStream_t stream,
+inline void agg_batch(const Geometry p, WTYPE *y, cudaStream_t stream,
                       WTYPE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
-  kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[STREAM_BATCH_SIZE], STREAM_BATCH_SIZE, d_y_stream);
-	cu( cudaMemcpyAsync(y, d_y_stream, STREAM_BATCH_SIZE * sizeof(WTYPE),
+  assert(p.n_per_batch == STREAM_BATCH_SIZE); // TODO rm old macro
+  kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[p.n_per_batch], p.n_per_batch, d_y_stream);
+	cu( cudaMemcpyAsync(y, d_y_stream, p.n_per_batch * sizeof(WTYPE),
                       cudaMemcpyDeviceToHost, stream ) );
 }
 
@@ -158,14 +159,14 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
     // do aggregations in separate stream-loops because of imperfect async functions calls on host
     // this may yield a ~2.5x speedup
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-      agg_batch_blocks(streams[i_stream],
+      agg_batch_blocks(p, streams[i_stream],
                        d_y_batch[i_stream],
                        d_y_block[i_stream]);
     }
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
-      agg_batch(&y[i_batch * p.n_per_batch],
+      agg_batch(p, &y[i_batch * p.n_per_batch],
                 streams[i_stream],
                 d_y_stream[i_stream],
                 d_y_batch[i_stream].data);
