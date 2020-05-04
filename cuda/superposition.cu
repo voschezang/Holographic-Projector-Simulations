@@ -222,10 +222,11 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__
 
   // TODO check case of small Blockdim
   for(unsigned int m = tid; m < KERNEL_SIZE; m+=blockDim.x) {
-    const auto i = blockIdx.x + m * GRIDDIM;
+    // Note that y_global[0] is relative to current batch and kernel
+    const auto i = blockIdx.x + m * gridDim.x;
     const auto sum = y_shared[m * size];
     y_global[i] = sum.x;
-    y_global[i + gridDim.x * BATCH_SIZE] = sum.y; // note the use of stream batch size
+    y_global[i + gridDim.x * BATCH_SIZE * KERNEL_SIZE] = sum.y; // note the use of stream batch size
   }
 
   // do not sync blocks, exit kernel and agg block results locally or in different kernel

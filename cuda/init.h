@@ -32,10 +32,10 @@ Geometry params(const size_t n) {
   Geometry p;
   p.blockSize = BLOCKDIM;
   p.gridSize = GRIDDIM;
-  p.kernel_size = KERNEL_BATCH_SIZE;
-  p.batch_size = STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE;
-  p.stream_size = n / (N_STREAMS * p.batch_size * p.kernel_size);
+  p.kernel_size = KERNEL_SIZE;
+  p.batch_size = BATCH_SIZE;
   p.n_streams = N_STREAMS;
+  p.stream_size = n / (p.n_streams * p.batch_size * p.kernel_size);
 
   assert(p.blockSize   > 0); assert(p.gridSize   > 0);
   assert(p.kernel_size > 0); assert(p.batch_size > 0);

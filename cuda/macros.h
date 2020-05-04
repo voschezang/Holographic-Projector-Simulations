@@ -27,18 +27,19 @@
 #define STREAM_BATCH_SIZE 8 // n datapoints per stream // stream batch size // TODO rename to STREAM_BATCH_SIZE?
 #define KERNEL_BATCH_SIZE 8 // n datapoints per kernel, must be <= STREAM_BATCH_SIZE
 
-#ifndef BATCH_SIZE
-#define BATCH_SIZE STREAM_BATCH_SIZE
-#endif
 #ifndef KERNEL_SIZE
-#define KERNEL_SIZE KERNEL_BATCH_SIZE
+#define KERNEL_SIZE 8 // n datapoints per kernel, must be <= STREAM_BATCH_SIZE
+#endif
+#ifndef BATCH_SIZE
+#define BATCH_SIZE 1
+//(STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE);
 #endif
 
 /* #define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch */
 // TODO compute optimal batch size as function of N
 
 #define N_STREAMS 4 // TODO single stream results in incorrect output
-#define STREAM_SIZE (N / N_STREAMS) // datapoints per stream
+/* #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream */
 /* #define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE) */
 /* #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM) */
 
@@ -75,7 +76,7 @@
 #endif
 
 
-#define N_PER_THREAD (N / GRIDDIM / BLOCKDIM) // for input (x), thus independent of batches
+/* #define N_PER_THREAD (N / GRIDDIM / BLOCKDIM) // for input (x), thus independent of batches */
 // the value N_PER_THREAD is used implicitly in gridDim.x
 
 #define LAMBDA (1 * 0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser)

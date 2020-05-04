@@ -35,22 +35,22 @@
 
 
 int main() {
+  size_t Nx = 1, Ny = N, Nz = N;
+  Geometry p = init::params(N); // TODO for both y,z
   printf("\nHyperparams:");
-  printf("\n"); printf(" N: %4i^2 =%6i", N_sqrt, N);
-  printf("\t"); printf("STREAM_BATCH_SIZE: \t%8i", STREAM_BATCH_SIZE);
-  // printf("\t"); printf("N_BATCHES: %8i", N_BATCHES);
+  printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
+  printf("\t(%ik threads)", p.gridSize * p.blockSize * 1e-3);
 
-  printf("\n"); printf(" GRIDDIM: %8i", GRIDDIM);
-  printf("\t"); printf("BLOCKDIM: \t\t%8i", BLOCKDIM);
-  printf("\t"); printf("E[tasks] = %0.3fk", GRIDDIM * BLOCKDIM * 1e-3);
-  printf("\t"); printf("\tN/thread: %i", N_PER_THREAD);
-  printf("\n"); printf(" N_STREAMS %3i \t\tSTREAM SIZE: %i (x3)", N_STREAMS, STREAM_SIZE);
-  // printf("\n"); printf("BATCHES_PER_STREAM (x STREAM_BATCH_SIZE = N): %i (x %i = %i)\n", BATCHES_PER_STREAM, STREAM_BATCH_SIZE, BATCHES_PER_STREAM * STREAM_BATCH_SIZE);
-  // printf("KERNELS_PER_BATCH %3i \t\tKERNEL BATCH SIZE: %i\n", KERNELS_PER_BATCH, KERNEL_BATCH_SIZE);
-  // if (BATCHES_PER_STREAM < BATCH_SIZE)
-  //   printf("BATCHES_PER_STREAM (%i) < BATCH_SIZE (%i)\n", BATCHES_PER_STREAM, BATCH_SIZE);
+  printf("\n Input size (datapoints): x: %i, y: %i, z: %i", Nx, Ny, Nz);
+  printf("\n E[N_x / thread]: %6fk", Nx / (double) p.gridSize * p.blockSize * 1e-3);
+  printf("\tE[N_y / thread]: %6fk", Ny / (double) p.gridSize * p.blockSize * 1e-3);
+
+  printf("\n n streams: %4i", p.n_streams);
+  printf("\tbatch size: \t%6i", p.stream_size);
+  printf("\tkernel size: \t%4i", p.kernel_size);
 
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
+
   {
     // auto n = double{BLOCKDIM * BATCH_SIZE};
     // auto m = double{n * sizeof(WTYPE) * 1e-3};
@@ -58,18 +58,17 @@ int main() {
     double m = n * sizeof(WTYPE) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
-  Geometry p = init::params(N); // TODO for both y,z
   struct timespec t0, t1, t2;
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // TODO use cmd arg for x length
   auto
-    X = std::vector<WTYPE>(1, {1.0});
+    X = std::vector<WTYPE>(Nx, {1.0});
 
   auto
     U = std::vector<STYPE>(X.size() * DIMS),
-    V = std::vector<STYPE>(N * DIMS),
-    W = std::vector<STYPE>(N * DIMS);
+    V = std::vector<STYPE>(Ny * DIMS),
+    W = std::vector<STYPE>(Nz * DIMS);
 
   init::planes(U, V, W);
   summarize_double('u', U);

@@ -12,14 +12,16 @@
 enum class FileType {TXT, DAT, GRID};
 
 /* Geometry Hierarchy (parameters)
- * block < grid < kernel < stream batch < stream
+ * thread < block < grid < kernel < batch < stream
  * (hyper parameters are defined using macro's, to avoid dynamic memory)
+ *
+ * note that 1 kernel computes 1 or more superpositions w.r.t all input datapoints.
  */
 struct Geometry {
-  size_t blockSize; // blockDim.x, i.e. threads per block
-  size_t gridSize; // gridDim.x, i.e. n blocks
+  size_t blockSize;   // prod(blockDim.x,y,z), i.e. threads per block
+  size_t gridSize;    // prod(gridDim.x,y,z), i.e. n blocks per kernel
   size_t kernel_size; // n output datapoints per kernel
-  size_t batch_size; // n kernels per batch
+  size_t batch_size;  // n kernels per batch
   size_t stream_size; // n batches per stream
   size_t n_streams;
 
