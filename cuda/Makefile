@@ -1,12 +1,14 @@
 C := nvcc # e.g. /usr/local/cuda-10.2/bin/nvcc
 EXE := run
 ZIP := ../tmp/out.zip
+HyperParams = EXAMPLE='"text"'
+# TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE)
 
 build:
 	# -ftz=true // flush dernormal to zero
 	#  -ftz=true -prec-div=false -prec-sqrt=false
-	$(C) -o $(EXE) main.cu -l curand -std=c++11
+	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams)
 
 build-run:
 	make build && make run

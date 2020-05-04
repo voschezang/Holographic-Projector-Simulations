@@ -11,19 +11,11 @@
 
 enum class FileType {TXT, DAT, GRID};
 
-// Params.stream.N
-// Params.stream.batch_size
-// Params.kernel.batch_size
-// Params.kernels_per_stream
-
-/* struct Collection { */
-/*   size_t size; // total n datapoints */
-/*   size_t batch_size; // n batches per "instance" */
-/* }; */
-
+/* Geometry Hierarchy (parameters)
+ * block < grid < kernel < stream batch < stream
+ * (hyper parameters are defined using macro's, to avoid dynamic memory)
+ */
 struct Geometry {
-  // Hierarchy
-  // block < grid < kernel < stream batch < stream
   size_t blockSize; // blockDim.x, i.e. threads per block
   size_t gridSize; // gridDim.x, i.e. n blocks
   size_t kernel_size; // n output datapoints per kernel
@@ -113,7 +105,7 @@ double bandwidth(double runtime, const int n_planes, const char include_tmp) {
   if (!include_tmp)
     return unit * (input + output) / runtime;
 
-  double tmp = GRIDDIM * SHARED_MEMORY_SIZE * sizeof(WTYPE);
+  double tmp = GRIDDIM * SHARED_MEMORY_SIZE(BLOCKDIM) * sizeof(WTYPE);
   return unit * (input + output + tmp) / runtime;
 }
 

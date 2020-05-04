@@ -21,9 +21,12 @@ inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
   cudaMemcpyAsync( d_v.data, v, d_v.size * sizeof(WTYPE), cudaMemcpyHostToDevice, stream );
 }
 
-#define SuperpositionPerBlock(size)                                     \
-  superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
-    (d_x, N, d_u, &d_y_block[j], &d_v[k * DIMS] );
+#define SuperpositionPerBlock(size) {                                   \
+    /* const size_t local_memory_size = p.kernel_size * sizeof(WTYPE);  */ \
+    /* TODO add SHARED_MEMORY_SIZE * sizeof(WTYPE) */                   \
+    superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
+      (p, d_x, N, d_u, &d_y_block[j], &d_v[k * DIMS] );                 \
+  }
 
 template<const Direction direction>
 inline void partial_superposition_per_block(const Geometry p, const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
@@ -34,16 +37,16 @@ inline void partial_superposition_per_block(const Geometry p, const WTYPE *d_x, 
     const unsigned int j = i * p.gridSize * p.kernel_size; // * 2
     const unsigned int k = i * p.kernel_size;
     switch (p.blockSize) {
-    case   1: SuperpositionPerBlock(  1); break;
-    case   2: SuperpositionPerBlock(  2); break;
-    case   4: SuperpositionPerBlock(  4); break;
-    case   8: SuperpositionPerBlock(  8); break;
-    case  16: SuperpositionPerBlock( 16); break;
-    case  32: SuperpositionPerBlock( 32); break;
-    case  64: SuperpositionPerBlock( 64); break;
-    case 128: SuperpositionPerBlock(128); break;
-    case 256: SuperpositionPerBlock(256); break;
-    case 512: SuperpositionPerBlock(512); break;
+    case   1: SuperpositionPerBlock(  1) break;
+    case   2: SuperpositionPerBlock(  2) break;
+    case   4: SuperpositionPerBlock(  4) break;
+    case   8: SuperpositionPerBlock(  8) break;
+    case  16: SuperpositionPerBlock( 16) break;
+    case  32: SuperpositionPerBlock( 32) break;
+    case  64: SuperpositionPerBlock( 64) break;
+    case 128: SuperpositionPerBlock(128) break;
+    case 256: SuperpositionPerBlock(256) break;
+    case 512: SuperpositionPerBlock(512) break;
     default: SuperpositionPerBlock(16);
     }
 /* #pragma unroll */

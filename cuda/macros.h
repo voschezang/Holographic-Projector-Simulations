@@ -26,6 +26,14 @@
 #define N2 (N_sqrt * N_sqrt)
 #define STREAM_BATCH_SIZE 8 // n datapoints per stream // stream batch size // TODO rename to STREAM_BATCH_SIZE?
 #define KERNEL_BATCH_SIZE 8 // n datapoints per kernel, must be <= STREAM_BATCH_SIZE
+
+#ifndef BATCH_SIZE
+#define BATCH_SIZE STREAM_BATCH_SIZE
+#endif
+#ifndef KERNEL_SIZE
+#define KERNEL_SIZE KERNEL_BATCH_SIZE
+#endif
+
 /* #define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch */
 // TODO compute optimal batch size as function of N
 
@@ -36,7 +44,7 @@
 
 #define MAX_INPUT_SIZE 0 // TODO, specific for GPU
 
-#define ArbitraryPhase 0.4912 // used in superposition::per_thread
+#define ARBITRARY_PHASE 0.4912 // used in superposition::per_thread
 
 #define WARP_SIZE 32
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
@@ -61,9 +69,9 @@
 
 /* #define SHARED_MEMORY_SIZE ((BLOCKDIM * KERNEL_BATCH_SIZE) / REDUCE_SHARED_MEMORY) */
 #if (REDUCE_SHARED_MEMORY > 1 && KERNEL_BATCH_SIZE >= REDUCE_SHARED_MEMORY)
-#define SHARED_MEMORY_SIZE (KERNEL_BATCH_SIZE * BLOCKDIM / REDUCE_SHARED_MEMORY)
+#define SHARED_MEMORY_SIZE(blockSize) ((KERNEL_BATCH_SIZE * blockSize) / REDUCE_SHARED_MEMORY)
 #else
-#define SHARED_MEMORY_SIZE (KERNEL_BATCH_SIZE * BLOCKDIM)
+#define SHARED_MEMORY_SIZE(blockSize) (KERNEL_BATCH_SIZE * blockSize)
 #endif
 
 
