@@ -77,7 +77,8 @@ Geometry params(const size_t n) {
 }
 
 template<bool randomize>
-void plane(std::vector<STYPE> &v, const double width, const STYPE z_offset) {
+ std::vector<STYPE> plane(size_t n, const double width, const STYPE z_offset) {
+  auto v = std::vector<STYPE>(n * DIMS);
   const size_t n_sqrt = round(sqrt(v.size() / DIMS));
   const double dS = width * SCALE / (double) n_sqrt; // actually dS^(1/DIMS)
   const double offset = 0.5 * width;
@@ -112,25 +113,24 @@ void plane(std::vector<STYPE> &v, const double width, const STYPE z_offset) {
     curandDestroyGenerator(generator);
     cu( cudaFree( d_random ) );
   }
+  return v;
 }
 
-void planes(std::vector<STYPE> &u, std::vector<STYPE> &v, std::vector<STYPE> &w) {
+std::vector<STYPE> sparse_plane(size_t n, const double width) {
   // each plane x,u y,v z,w is a set of points in 3d space
-  const double width = 0.0005; // m
   /* const double dS = width * SCALE / (double) N_sqrt; // actually dS^(1/DIMS) */
   /* const double offset = 0.5 * width; */
+  auto u = std::vector<STYPE>(n * DIMS);
+  if (n > 1) {
+    const double
+      du = width / (double) n, // TODO use SCALE?
+      half_width = width / 2.0;
 
-  const auto
-    du = 1.0 / (double) u.size(), // TODO use SCALE?
-    half_width = width / 2.0;
-  for (unsigned int i = 0; i < u.size(); i+=DIMS) {
-    u[i] = i * du - half_width;
-    u[i+1] = 0;
-    u[i+2] = 0;
+    for (unsigned int i = 0; i < u.size(); i+=DIMS)
+      u[i] = i * du - half_width;
+
   }
-
-  init::plane<RANDOM_Y_SPACE>(v, width, -0.02);
-  init::plane<RANDOM_Z_SPACE>(w, width, 0.0);
+  return u;
 }
 
 template<typename T>

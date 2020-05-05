@@ -58,19 +58,19 @@ int main() {
   struct timespec t0, t1, t2;
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
+  const double width = 0.0005;
   // TODO use cmd arg for x length
+  // TODO rm old lowercase vars and replace them by current uppercase vars
   auto
     X = std::vector<WTYPE>(Nx, {1.0});
 
   auto
-    U = std::vector<STYPE>(X.size() * DIMS),
-    V = std::vector<STYPE>(Ny * DIMS),
-    W = std::vector<STYPE>(Nz * DIMS);
+    U = init::sparse_plane(X.size(), width),
+    V = init::plane<RANDOM_Y_SPACE>(Ny, width, -0.02),
+    W = init::plane<RANDOM_Z_SPACE>(Nz, width, 0.0);
 
-  init::planes(U, V, W);
   summarize_double('u', U);
   summarize_double('v', V);
-
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("runtime init: \t%0.3f\n", dt(t0, t1));
   printf("loop\n");
