@@ -64,7 +64,6 @@ inline void agg_batch_blocks(const Geometry p, cudaStream_t stream,
   auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
   auto y2 = thrust::device_ptr<double>(&d_y_batch.data[d_y_batch.size / 2]);
   // TODO is a reduction call for each datapoint really necessary?
-  assert(p.n_per_batch == STREAM_BATCH_SIZE); // TODO rm old macro
   for (unsigned int m = 0; m < p.n_per_batch; ++m) {
     // Assume two independent reductions are at least as fast as a large reduction.
     // I.e. no kernel overhead and better work distribution
@@ -81,7 +80,6 @@ inline void agg_batch_blocks(const Geometry p, cudaStream_t stream,
 inline void agg_batch(const Geometry p, WTYPE *y, cudaStream_t stream,
                       WTYPE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
-  assert(p.n_per_batch == STREAM_BATCH_SIZE); // TODO rm old macro
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[p.n_per_batch], p.n_per_batch, d_y_stream);
 	cu( cudaMemcpyAsync(y, d_y_stream, p.n_per_batch * sizeof(WTYPE),
                       cudaMemcpyDeviceToHost, stream ) );
@@ -112,7 +110,6 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
   const size_t n = v.size() / DIMS;
   const Geometry p = init::params(n); // TODO for both y,z
-  assert(p.n_per_batch == STREAM_BATCH_SIZE); // TODO rm old macro
   if (x.size() < p.gridSize * p.blockSize)
     print("Warning, suboptimal input size");
 

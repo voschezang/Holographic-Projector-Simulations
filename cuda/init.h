@@ -72,6 +72,7 @@ Geometry params(const size_t n) {
     print("Warning, not all _threads_ are used");
 
   assert(DIMS == 3);
+  assert(SHARED_MEMORY_SIZE(p.blockSize) > 0);
   return p; // copy on return is permissible
 }
 

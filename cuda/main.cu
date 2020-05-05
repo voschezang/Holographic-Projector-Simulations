@@ -39,7 +39,7 @@ int main() {
   Geometry p = init::params(N); // TODO for both y,z
   printf("\nHyperparams:");
   printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
-  printf("\t(%ik threads)", p.gridSize * p.blockSize * 1e-3);
+  printf("\t(%fk threads)", p.gridSize * p.blockSize * 1e-3);
 
   printf("\n Input size (datapoints): x: %i, y: %i, z: %i", Nx, Ny, Nz);
   printf("\n E[N_x / thread]: %6fk", Nx / (double) p.gridSize * p.blockSize * 1e-3);
@@ -50,11 +50,8 @@ int main() {
   printf("\tkernel size: \t%4i", p.kernel_size);
 
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
-
   {
-    // auto n = double{BLOCKDIM * BATCH_SIZE};
-    // auto m = double{n * sizeof(WTYPE) * 1e-3};
-    double n = BLOCKDIM * STREAM_BATCH_SIZE;
+    size_t n = SHARED_MEMORY_SIZE(p.blockSize);
     double m = n * sizeof(WTYPE) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
