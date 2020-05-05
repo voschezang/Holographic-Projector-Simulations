@@ -7,6 +7,7 @@
 #include <math.h>
 
 #include "macros.h"
+#include "hyper_params.h"
 #include "util.h"
 
 void init_random(curandGenerator_t *gen, unsigned int seed) {
@@ -28,7 +29,25 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-Geometry params(const size_t n) {
+/* Plane plane_params(bool randomize, double width, double z_offset) { */
+/*   Plane p; */
+/*   p.width = width; */
+/*   p.randomize = randomize; */
+/*   p.z_offset = z_offset; */
+/*   return p; */
+/* } */
+
+Params params() {
+  double width = 0.0005;
+  bool randomize = true;
+  Params p =
+    {input      : {width: width, z_offset : 0,     randomize : randomize},
+     projector  : {width: width, z_offset : -0.02, randomize : randomize},
+     projection : {width: width, z_offset : 0,     randomize : randomize}};
+  return p;
+}
+
+Geometry geometry (const size_t n) {
   Geometry p;
   p.blockSize = BLOCKDIM;
   p.gridSize = GRIDDIM;
@@ -76,40 +95,39 @@ Geometry params(const size_t n) {
   return p; // copy on return is permissible
 }
 
-template<bool randomize>
- std::vector<STYPE> plane(size_t n, const double width, const STYPE z_offset) {
+std::vector<STYPE> plane(size_t n, Plane p) {
   auto v = std::vector<STYPE>(n * DIMS);
   const size_t n_sqrt = round(sqrt(v.size() / DIMS));
-  const double dS = width * SCALE / (double) n_sqrt; // actually dS^(1/DIMS)
-  const double offset = 0.5 * width;
+  const double dS = p.width * SCALE / (double) n_sqrt; // actually dS^(1/DIMS)
+  const double offset = 0.5 * p.width;
   const size_t n_random = 2 * n_sqrt;
   const double margin = 0.;
   const double random_range = dS - 0.5 * margin;
   curandGenerator_t generator;
   float *d_random, random[n_random];
 
-  if (randomize) {
+  if (p.randomize) {
     init_random(&generator, 11235);
     cu( cudaMalloc( (void **) &d_random, n_random * sizeof(float) ) );
   }
 
   for (unsigned int i = 0; i < n_sqrt; ++i) {
-    if (randomize)
+    if (p.randomize)
       gen_random(random, d_random, n_random, generator);
 
     for (unsigned int j = 0; j < n_sqrt; ++j) {
       v[Ix(i,j,0)] = i * dS - offset;
       v[Ix(i,j,1)] = j * dS - offset;
-      v[Ix(i,j,2)] = z_offset;
+      v[Ix(i,j,2)] = p.z_offset;
 
-      if (randomize) {
+      if (p.randomize) {
         v[Ix(i,j,0)] += random_range * (random[j*2] - 0.5);
         v[Ix(i,j,1)] += random_range * (random[j*2+1] - 0.5);
       }
     }
   }
 
-  if (randomize) {
+  if (p.randomize) {
     curandDestroyGenerator(generator);
     cu( cudaFree( d_random ) );
   }

@@ -13,6 +13,7 @@
 #include <iostream>
 
 #include "macros.h"
+#include "hyper_params.h"
 #include "kernel.cu"
 #include "init.h"
 #include "util.h"
@@ -35,8 +36,9 @@
 
 
 int main() {
-  size_t Nx = 1, Ny = N, Nz = N;
-  Geometry p = init::params(N); // TODO for both y,z
+  const size_t Nx = 1, Ny = N, Nz = N;
+  const Geometry p = init::geometry(N); // TODO for both y,z
+  const Params params = init::params();
   printf("\nHyperparams:");
   printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
   printf("\t(%fk threads)", p.gridSize * p.blockSize * 1e-3);
@@ -58,34 +60,31 @@ int main() {
   struct timespec t0, t1, t2;
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
-  const double width = 0.0005;
   // TODO use cmd arg for x length
   // TODO rm old lowercase vars and replace them by current uppercase vars
   auto
-    X = std::vector<WTYPE>(Nx, {1.0});
+    x = std::vector<WTYPE>(Nx, {1.0});
 
   auto
-    U = init::sparse_plane(X.size(), width),
-    V = init::plane<RANDOM_Y_SPACE>(Ny, width, -0.02),
-    W = init::plane<RANDOM_Z_SPACE>(Nz, width, 0.0);
+    u = init::sparse_plane(x.size(), params.input.width),
+    v = init::plane(Ny, params.projector),
+    w = init::plane(Nz, params.projection);
 
-  summarize_double('u', U);
-  summarize_double('v', V);
+  summarize_double('u', u);
+  summarize_double('v', v);
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("runtime init: \t%0.3f\n", dt(t0, t1));
   printf("loop\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   cudaProfilerStart();
-#ifdef Y_TRANSFORM
-  // if X does not fit on GPU then do y += transform(x') for each subset x' in X
-  auto Y = transform<Direction::Backward>(X, U, V);
-#endif
+  // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
+  auto y = transform<Direction::Backward>(x, u, v, p);
 
 #ifdef Z_TRANSFORM
   printf("\nSecond transform:\n");
-  auto Z = transform<Direction::Forward>(Y, V, W);
+  auto z = transform<Direction::Forward>(y, v, w, init::geometry(Nz));
 #else
-  auto Z = std::vector<WTYPE>(1);
+  auto z = std::vector<WTYPE>(1);
 #endif
 
   // end loop
@@ -109,17 +108,14 @@ int main() {
   printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 1, 1));
 #endif
 
-  check_cvector(Y);
-  check_cvector(Z);
+  check_cvector(y);
+  check_cvector(z);
 
-#ifdef Y_TRANSFORM
-  summarize_c('y', Y);
-#endif
+  summarize_c('y', y);
 #ifdef Z_TRANSFORM
-  summarize_c('z', Z);
+  summarize_c('z', z);
 #endif
 
-  // write_arrays<FileType::TXT>(x,y,z, u,v,w, N);
-  write_arrays<FileType::TXT>(X,Y,Z, U,V,W);
+  write_arrays<FileType::TXT>(x,y,z, u,v,w);
 	return 0;
 }

@@ -47,14 +47,19 @@ struct Geometry {
   size_t kernels_per_stream;
 };
 
-struct Params {
-  Geometry g;
-  // TODO
+struct Plane {
+/* Plane() : width(1), z_offset(0), randomize(false) {}; */
+  double width;
+  double z_offset;
+  bool randomize;
+};
 
-  // CACHE_BATCH;
-  // REDUCE_SHARED_MEMORY;
-  // PARALLEL_INTRA_WARP_AGG;
-  // Direction?
+struct Params {
+  // Simulation parameters, used to init plane distributions
+  Plane input; // ground truth
+  Plane projector;
+  Plane projection;
+  /* Geometry g; */
 };
 
 // TODO

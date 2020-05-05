@@ -8,6 +8,7 @@
 #include <thrust/reduce.h>
 
 #include "macros.h"
+#include "hyper_params.h"
 #include "util.h"
 #include "init.h"
 #include "kernel.cu"
@@ -99,7 +100,8 @@ inline void agg_batch(const Geometry p, WTYPE *y, cudaStream_t stream,
 template<const Direction direction>
 inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
                                     const std::vector<STYPE> &u,
-                                    const std::vector<STYPE> &v) {
+                                    const std::vector<STYPE> &v,
+                                    const Geometry p) {
   /* inline void transform(const WTYPE *x, WTYPE *y, */
   /*                       const STYPE *u, const STYPE *v) { */
 
@@ -109,7 +111,6 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
   const size_t n = v.size() / DIMS;
-  const Geometry p = init::params(n); // TODO for both y,z
   if (x.size() < p.gridSize * p.blockSize)
     print("Warning, suboptimal input size");
 
