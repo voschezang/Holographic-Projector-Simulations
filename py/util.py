@@ -1,5 +1,7 @@
 import numpy as np
 import sys
+import os
+import zipfile
 import matplotlib.pyplot as plt
 import scipy.optimize
 import scipy.linalg
@@ -594,3 +596,24 @@ def parse_line(data: dict, k: str, content: str):
                 print(x)
                 # this should crash eventually
                 print(complex(x))
+
+
+def parse_file(dir='../tmp', zipfilename='out.zip', filename='out.txt',
+               unique_keys='xyuv') -> {}:
+    # example file:
+    """
+x:0,2,3,3
+y:2,3,3,4
+    """
+    data = {k: [] for k in 'xyzuvw'}
+    with zipfile.ZipFile(os.path.join(dir, zipfilename)) as z:
+        # with open(fn, 'rb') as f:
+        with z.open(os.path.join(dir, filename), 'r') as f:
+            for line in f:
+                k, content = line.decode().split(':')
+                parse_line(data, k, content)
+
+    for k in unique_keys:
+        data[k] = data[k][0]
+
+    return data
