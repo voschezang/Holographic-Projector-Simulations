@@ -37,8 +37,8 @@
 
 int main() {
   const size_t Nx = 1, Ny = N, Nz = N;
-  const Geometry p = init::geometry(N); // TODO for both y,z
   const Params params = init::params();
+  const Geometry p = init::geometry(N); // TODO for both y,z
   printf("\nHyperparams:");
   printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
   printf("\t(%fk threads)", p.gridSize * p.blockSize * 1e-3);
@@ -87,13 +87,13 @@ int main() {
   // The projection distributions at various locations are obtained using forward transformations
   const int n_planes = 2;
   for (unsigned int i = 1; i < n_planes; ++i) {
-    auto p = init::geometry(Nz);
-    auto w = init::plane(Nz, params.projection);
-    auto z = time_transform<Direction::Forward>(x, u, v, p, &t1, &t2, 1);
-    check_cvector(z);
-    summarize_c('z', z);
-    // TODO do this async
-    write_arrays<FileType::TXT>(z, w, "zw", false);
+    // auto p = init::geometry(Nz);
+    // auto w = init::plane(Nz, params.projection);
+    // auto z = time_transform<Direction::Forward>(x, u, v, p, &t1, &t2, 1);
+    // check_cvector(z);
+    // summarize_c('z', z);
+    // // TODO do this async
+    // write_arrays<FileType::TXT>(z, w, "zw", false);
   }
 
   printf("--- --- ---   --- --- ---  --- --- --- \n");

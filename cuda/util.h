@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 /* #include <type_traits> */
 
@@ -58,7 +59,7 @@ struct Params {
   // Simulation parameters, used to init plane distributions
   Plane input; // ground truth
   Plane projector;
-  Plane projection;
+  std::vector<Plane> projections;
   /* Geometry g; */
 };
 
@@ -249,7 +250,7 @@ void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
   // TODO use csv for i/o, read python generated x
   if (type != FileType::TXT) return;
   if (overwrite) {
-    printf("Save results as txt");
+    print("Save results as txt");
     remove(fn); // fails if file does not exist
   }
   FILE *out = fopen(fn, mode);

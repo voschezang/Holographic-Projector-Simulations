@@ -38,13 +38,19 @@ namespace init {
 /* } */
 
 Params params() {
-  double width = 0.0005;
-  bool randomize = true;
-  Params p =
-    {input      : {width: width, z_offset : 0,     randomize : randomize},
-     projector  : {width: width, z_offset : -0.02, randomize : randomize},
-     projection : {width: width, z_offset : 0,     randomize : randomize}};
-  return p;
+  const double width = 0.0005;
+  const bool randomize = true;
+  auto offsets = std::vector<double>{0, 0.001, 0.01};
+  auto projections = std::vector<Plane>{};
+  std::cout << "size " << projections.size() << '\n';
+
+  for (auto& offset : offsets)
+    projections.push_back({width: width, z_offset: offset, randomize: randomize});
+
+  return
+    {   input       : {width: width, z_offset : 0,     randomize : randomize},
+        projector   : {width: width, z_offset : -0.02, randomize : randomize},
+        projections : projections};
 }
 
 Geometry geometry (const size_t n) {
