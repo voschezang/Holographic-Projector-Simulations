@@ -85,15 +85,14 @@ int main() {
   write_arrays<FileType::TXT>(y, v, "yv", false);
 
   // The projection distributions at various locations are obtained using forward transformations
-  const int n_planes = 2;
-  for (unsigned int i = 1; i < n_planes; ++i) {
-    // auto p = init::geometry(Nz);
-    // auto w = init::plane(Nz, params.projection);
-    // auto z = time_transform<Direction::Forward>(x, u, v, p, &t1, &t2, 1);
-    // check_cvector(z);
-    // summarize_c('z', z);
-    // // TODO do this async
-    // write_arrays<FileType::TXT>(z, w, "zw", false);
+  for (auto& projection : params.projections) {
+    auto p = init::geometry(Nz);
+    auto w = init::plane(Nz, projection);
+    auto z = time_transform<Direction::Forward>(x, u, v, p, &t1, &t2, 1);
+    check_cvector(z);
+    summarize_c('z', z);
+    // TODO do this async
+    write_arrays<FileType::TXT>(z, w, "zw", false);
   }
 
   printf("--- --- ---   --- --- ---  --- --- --- \n");
