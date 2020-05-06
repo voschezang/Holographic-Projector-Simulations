@@ -40,7 +40,7 @@ namespace superposition {
 
 template<const Direction direction>
 inline __device__ WTYPE single(const size_t i, const size_t j,
-                        const WTYPE *x, const STYPE *u, STYPE *v) {
+                        const WTYPE *x, const STYPE *u, const STYPE *v) {
   const size_t
     n = i * DIMS,
     m = j * DIMS;
@@ -64,8 +64,8 @@ template<Direction direction>
 inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
                                   const STYPE *__restrict__ u,
                                   WTYPE *__restrict__ y_local,
-                                  STYPE *__restrict__ v) {
-#ifdef CACHE_BATCH
+                                  const STYPE *__restrict__ v) {
+#if CACHE_BATCH
   // TODO don't fill array in case N_x < tid
   // cache v[batch] because it is read by every thread
   // v_cached is constant and equal for each block
@@ -75,8 +75,9 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
     v_cached[i] = v[i];
 
   __syncthreads();
+  STYPE *v_ = v_cached;
 #else
-  STYPE *v_cached = v;
+  STYPE *v_ = v;
 #endif
 
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -91,7 +92,7 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
   // outer loop for batch, inner loop for index is faster than vice versa
   for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
     for (size_t i = idx; i < N_x; i += stride)
-      y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_cached));
+      y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_));
 }
 
 inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict__ y_shared) {

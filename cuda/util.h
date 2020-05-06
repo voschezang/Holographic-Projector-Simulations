@@ -92,7 +92,7 @@ struct Params {
 /* } */
 
 
-double flops(double runtime) {
+double flops(double runtime, size_t n, size_t m) {
   // Tera or Giga FLOP/s
   // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache
   // Quadro GV100: peak 7.4 TFLOPS (dp), 14.8 (sp), 59.3 (int)
@@ -101,7 +101,7 @@ double flops(double runtime) {
   // generation Volta, compute capability 7.0
   // max size: 49 152
   // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOP_PER_POINT, t, N*N * 1e-9);
-  return 1e-12 * N * N * (double) FLOP_PER_POINT / runtime;
+  return 1e-12 * n * m * (double) FLOP_PER_POINT / runtime;
 }
 
 double bandwidth(double runtime, const int n_planes, const char include_tmp) {
@@ -123,6 +123,13 @@ void check(WTYPE  z) {
   if (isnan(z.y)) printf("found nan I\n");
   if (isinf(z.y)) printf("found inf I\n");
   if (isinf(z.x)) exit(1);
+}
+
+void check_hyper_params(Geometry p) {
+  assert(DIMS == 3);
+  assert(SHARED_MEMORY_SIZE(p.blockSize) > 0);
+  assert(REDUCE_SHARED_MEMORY >= 1);
+  assert(REDUCE_SHARED_MEMORY <= CEIL(p.blockSize, 2));
 }
 
 void check_cvector(std::vector<WTYPE> x) {
@@ -199,6 +206,7 @@ void write_array(char c, std::vector<STYPE> &x, FILE *out) {
   // first value
   fprintf(out, "%e", x[0]);
   // other values, prefixed by a comma
+  // start at index 1
   for (size_t i = 1; i < x.size(); ++i)
     fprintf(out, ",%e", x[i]);
 
@@ -212,6 +220,7 @@ void write_complex_array(char c, std::vector<WTYPE> &x, FILE *out) {
   // first value
   print_c(x[0], out);
   // other values, prefixed by ','
+  // start at index 1
   for (size_t i = 1; i < x.size(); ++i) {
     fprintf(out, ",");
     print_c(x[i], out);
@@ -233,17 +242,19 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
 }
 
 template <FileType type>
-void write_arrays(std::vector<WTYPE> &x, std::vector<WTYPE> &y, std::vector<WTYPE> &z,
-                  std::vector<STYPE> &u, std::vector<STYPE> &v, std::vector<STYPE> &w) {
-  printf("Save results as ");
+void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
+                  const char keys[3], bool overwrite) {
+  const char fn[] = "../tmp/out.txt";
+  const char *mode = overwrite ? "wb" : "ab";
   // TODO use csv for i/o, read python generated x
   if (type != FileType::TXT) return;
-  char fn[] = "../tmp/out.txt";
-  remove(fn); // fails if file does not exist
-  FILE *out = fopen(fn, "wb");
-  write_complex_array('x', x, out); write_array('u', u, out);
-  write_complex_array('y', y, out); write_array('v', v, out);
-  write_complex_array('z', z, out); write_array('w', w, out);
+  if (overwrite) {
+    printf("Save results as txt");
+    remove(fn); // fails if file does not exist
+  }
+  FILE *out = fopen(fn, mode);
+  write_complex_array(keys[0], x, out);
+  write_array(keys[1], u, out);
   fclose(out);
 }
 

@@ -196,3 +196,24 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   normalize_amp(y, 0);
   return y;
 }
+
+template<const Direction direction>
+std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
+                       const std::vector<STYPE> &u,
+                       const std::vector<STYPE> &v,
+                       const Geometry p,
+                       struct timespec *t1, struct timespec *t2,
+                       unsigned verbose) {
+  clock_gettime(CLOCK_MONOTONIC, t1);
+  auto y = transform<Direction::Backward>(x, u, v, p);
+  clock_gettime(CLOCK_MONOTONIC, t2);
+  const double time = dt(*t1, *t2);
+  if (verbose) {
+    printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
+           flops(time, x.size(), y.size()), FLOP_PER_POINT);
+    // TODO correct bandwidth datasize
+    printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, 1, 0));
+    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 1, 1));
+  }
+  return y;
+}

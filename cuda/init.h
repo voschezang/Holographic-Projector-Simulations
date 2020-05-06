@@ -90,8 +90,7 @@ Geometry geometry (const size_t n) {
   if (p.n_per_thread < 1)
     print("Warning, not all _threads_ are used");
 
-  assert(DIMS == 3);
-  assert(SHARED_MEMORY_SIZE(p.blockSize) > 0);
+  check_hyper_params(p);
   return p; // copy on return is permissible
 }
 

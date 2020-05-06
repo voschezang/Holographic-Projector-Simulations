@@ -67,55 +67,37 @@ int main() {
 
   auto
     u = init::sparse_plane(x.size(), params.input.width),
-    v = init::plane(Ny, params.projector),
-    w = init::plane(Nz, params.projection);
+    v = init::plane(Ny, params.projector);
 
   summarize_double('u', u);
   summarize_double('v', v);
+  write_arrays<FileType::TXT>(x, u, "xu", true);
   clock_gettime(CLOCK_MONOTONIC, &t1);
-  printf("runtime init: \t%0.3f\n", dt(t0, t1));
-  printf("loop\n");
-  printf("--- --- ---   --- --- ---  --- --- --- \n");
+  printf("Runtime init: \t%0.3f\n", dt(t0, t1));
   cudaProfilerStart();
-  // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
-  auto y = transform<Direction::Backward>(x, u, v, p);
-
-#ifdef Z_TRANSFORM
-  printf("\nSecond transform:\n");
-  auto z = transform<Direction::Forward>(y, v, w, init::geometry(Nz));
-#else
-  auto z = std::vector<WTYPE>(1);
-#endif
-
-  // end loop
-  clock_gettime(CLOCK_MONOTONIC, &t2);
-  cudaProfilerStop();
-  printf("done\n");
   printf("--- --- ---   --- --- ---  --- --- --- \n");
-  double time = dt(t1, t2);
-  printf("runtime init: \t%0.3f\n", time);
 
-#ifdef Z_TRANSFORM
-  // TODO allow smaller datasize for N in flops computation
-  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
-         flops(time), FLOP_PER_POINT);
-  printf("Bandwidth: \t%0.5f MB/s (excl. shared memory)\n", bandwidth(time, 2, 0));
-  printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 2, 1));
-#else
-  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
-         2*flops(time), 2*FLOP_PER_POINT);
-  printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, 1, 0));
-  printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 1, 1));
-#endif
-
+  // The projector distribution is obtained by doing a single backwards transformation
+  // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
+  auto y = time_transform<Direction::Backward>(x, u, v, p, &t1, &t2, 1);
   check_cvector(y);
-  check_cvector(z);
-
   summarize_c('y', y);
-#ifdef Z_TRANSFORM
-  summarize_c('z', z);
-#endif
+  write_arrays<FileType::TXT>(y, v, "yv", false);
 
-  write_arrays<FileType::TXT>(x,y,z, u,v,w);
+  // The projection distributions at various locations are obtained using forward transformations
+  const int n_planes = 2;
+  for (unsigned int i = 1; i < n_planes; ++i) {
+    auto p = init::geometry(Nz);
+    auto w = init::plane(Nz, params.projection);
+    auto z = time_transform<Direction::Forward>(x, u, v, p, &t1, &t2, 1);
+    check_cvector(z);
+    summarize_c('z', z);
+    // TODO do this async
+    write_arrays<FileType::TXT>(z, w, "zw", false);
+  }
+
+  printf("--- --- ---   --- --- ---  --- --- --- \n");
+  printf("done\n");
+  cudaProfilerStop();
 	return 0;
 }
