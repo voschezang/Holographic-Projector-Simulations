@@ -10,7 +10,7 @@ from util import DIMS
 
 
 def single(X, U, plot_func, matrix_func, color_func, title='', filename=None,
-           fps=1, repetitions=2,  **matrix_func_args):
+           fps=1, repetitions=1,  **matrix_func_args):
     # sample_rate = number of samples per wave cycle
     # T = 1/f
     dt = 1e3 / fps * 10

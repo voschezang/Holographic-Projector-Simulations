@@ -55,12 +55,13 @@ if __name__ == '__main__':
     print(f'N sqrt: {N_sqrt}')
     # n = int(5e3)
     n = int(5e3)
+    n = int(1e4)
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
     indices = np.random.randint(0, N, n)
-    indices = np.arange(N)
+    # indices = np.arange(N)
     plot.scatter_multiple(data['y'][indices], data['v'][indices],
                           'y', filename='y-scatter-sub', s=1)
-    i = 1
+    i = 0
     plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
                           'z', filename='z-scatter-sub', s=1)
 
