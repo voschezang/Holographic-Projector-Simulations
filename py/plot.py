@@ -9,6 +9,7 @@ plt.rcParams['font.family'] = 'serif'
 
 # cmap = 'rainbow'
 cmap = 'inferno'
+cyclic_cmap = 'twilight'
 
 
 def scatter_multiple(x, u=None, title='', prefix='', filename=None, **kwargs):
@@ -65,7 +66,7 @@ def plot_amp_phase_irradiance(plot_func, x, v, title='', filename=None, **kwargs
     plt.title('Irradiance')
 
     # cyclic cmap: hsv, twilight
-    kwargs['cmap'] = 'twilight'
+    kwargs['cmap'] = cyclic_cmap
     ax = plt.subplot(132)
     plot_func(v[:, 1], v[:, 0], phi, **kwargs)
     scatter_markup(ax)

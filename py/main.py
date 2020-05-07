@@ -5,6 +5,7 @@ import os
 import matplotlib.pyplot as plt
 # local
 import plot
+import animate
 import util
 from util import DIMS
 
@@ -47,40 +48,38 @@ if __name__ == '__main__':
     # n = 100
     # plot.scatter_multiple(data['x'][:n], data['u'][:n],
     #                       'x', filename='x-scatter-sub', s=1)
-    #
-    # #  plot subset
-    # N = data['y'].shape[0]
-    # N_sqrt = np.sqrt(N).astype(int)
-    # print(f'N sqrt: {N_sqrt}')
-    # # n = int(5e3)
+
+    # plot subset
+    N = data['y'].shape[0]
+    N_sqrt = np.sqrt(N).astype(int)
+    print(f'N sqrt: {N_sqrt}')
     # n = int(5e3)
-    # # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
-    # indices = np.random.randint(0, N, n)
-    # indices = np.arange(N)
-    # plot.scatter_multiple(data['y'][indices], data['v'][indices],
-    #                       'y', filename='y-scatter-sub', s=1)
-    # # plot.scatter_multiple(data['z'][indices], data['w'][indices],
-    # #                       'z', filename='z-scatter-sub', s=1)
-    # #
-    # n = indices.size
-    # gridsize = round(max(25, n / 5e2))
+    n = int(5e3)
+    # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
+    indices = np.random.randint(0, N, n)
+    indices = np.arange(N)
+    plot.scatter_multiple(data['y'][indices], data['v'][indices],
+                          'y', filename='y-scatter-sub', s=1)
+    i = 1
+    plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
+                          'z', filename='z-scatter-sub', s=1)
+
+    # gridsize = round(max(25, N / 5e2))
     # bins = int(round(N_sqrt / 2))
     # print(f'hexbin: N^2: {n}, grid: {gridsize}')
     # plot.hexbin_multiple(data['y'], data['v'], 'y',
     #                      filename=f'y-hexbin', bins=bins)
     # # plot.hexbin_multiple(data['z'][indices], data['w'][indices], 'z',
     # #                      filename=f'z-hexbin', gridsize=gridsize)
-    #
-    # # TODO find optimal number of bins for datasize
-    # plot.hist_2d_multiple(data['y'], data['v'],
-    #                       'y', filename='y-hist2d', bins=bins)
 
+    # TODO find optimal number of bins for datasize
     N = data['z'][0].shape[0]
     N_sqrt = np.sqrt(N).astype(int)
     print(f'N sqrt: {N_sqrt}')
-    bins = int(round(N_sqrt / 2))
+    bins = int(round(N_sqrt / 4))
+    plot.hist_2d_multiple(data['y'], data['v'],
+                          'y', filename='y-hist2d', bins=bins)
     plot.hist_2d_multiple(data['z'][0], data['w'][0],
                           'z', filename='z-hist2d', bins=bins)
 
-    # plot.hist_animation(data['z'], data['w'],
-    #                     'y', filename='z-ani', resize=2)
+    animate.multiple(data['z'], data['w'], prefix='z-ani', bins=bins)
