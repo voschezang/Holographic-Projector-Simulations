@@ -14,7 +14,7 @@ def run():
 
 
 if __name__ == '__main__':
-    data = {}
+    data = {k: [] for k in 'xyzuvw'}
     if util.get_flag("-r") or util.get_flag("--rerun"):
         out = run()
 
@@ -31,10 +31,13 @@ y:2,3,3,4
 
     with zipfile.ZipFile(fn) as z:
         # with open(fn, 'rb') as f:
-        with z.open('tmp/out.txt', 'r') as f:
+        with z.open('../tmp/out.txt', 'r') as f:
             for line in f:
                 k, content = line.decode().split(':')
                 util.parse_line(data, k, content)
+
+    for k in 'xyuv':
+        data[k] = data[k][0]
 
     log = util.get_flag("-log")
     if log:
@@ -55,9 +58,14 @@ y:2,3,3,4
     #     if k in data.keys():
     #         plot.matrix_multiple(data[k], k, filename=k)
 
+    n = 100
+    plot.scatter_multiple(data['x'][:n], data['u'][:n],
+                          'x', filename='x-scatter-sub', s=1)
+
     #  plot subset
     N = data['y'].shape[0]
     N_sqrt = np.sqrt(N).astype(int)
+    print(f'N sqrt: {N_sqrt}')
     # n = int(5e3)
     n = int(5e3)
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
@@ -70,10 +78,15 @@ y:2,3,3,4
     #
     n = indices.size
     gridsize = round(max(25, n / 5e2))
+    bins = int(round(N_sqrt / 2))
     print(f'hexbin: N^2: {n}, grid: {gridsize}')
-    plot.hexbin_multiple(data['y'][indices], data['v'][indices], 'y',
-                         filename=f'y-hexbin', bins=gridsize)
+    plot.hexbin_multiple(data['y'], data['v'], 'y',
+                         filename=f'y-hexbin', bins=bins)
     # plot.hexbin_multiple(data['z'][indices], data['w'][indices], 'z',
     #                      filename=f'z-hexbin', gridsize=gridsize)
-    plot.hist_2d_multiple(data['y'][indices], data['v'][indices],
-                          'y', filename='y-hist2d')
+
+    # TODO find optimal number of bins for datasize
+    plot.hist_2d_multiple(data['y'], data['v'],
+                          'y', filename='y-hist2d', bins=bins)
+    # plot.hist_2d_multiple(data['z'][indices], data['w'][indices],
+    #                       'z', filename='z-hist2d')

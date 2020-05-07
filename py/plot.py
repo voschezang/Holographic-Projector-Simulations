@@ -12,31 +12,34 @@ cmap = 'inferno'
 
 
 def scatter_multiple(x, u=None, title='', prefix='', filename=None, **kwargs):
-    plot_multiple(_scatter_wrapper, x, u, title='',
-                  filename=filename, **kwargs)
+    plot_amp_phase_irradiance(_scatter_wrapper, x, u, title='',
+                              filename=filename, **kwargs)
 
 
-def hist_2d_multiple(x, u, title='', filename=None, **kwargs):
-    plot_multiple(_hist2d_wrapper, x, u, title='',
-                  filename=filename, bins=10, **kwargs)
+def hist_2d_multiple(x, u, title='', filename=None, bins=100, **kwargs):
+    plot_amp_phase_irradiance(_hist2d_wrapper, x, u, title='',
+                              filename=filename, bins=bins, **kwargs)
 
 
 def hexbin_multiple(x, u, title='', filename=None,  bins=10, **kwargs):
-    plot_multiple(plt.hexbin, x, u, title=title,
-                  filename=filename, gridsize=bins, **kwargs)
+    plot_amp_phase_irradiance(plt.hexbin, x, u, title=title,
+                              filename=filename, gridsize=bins, **kwargs)
 
 
 def _scatter_wrapper(x, y, z, **kwargs):
     plt.scatter(x, y, c=z, **kwargs)
-    plt.xlim(x.min(), x.max())
-    plt.ylim(y.min(), y.max())
+    if x.shape[0] > 1:
+        plt.xlim(x.min(), x.max())
+
+    if y.shape[0] > 1:
+        plt.ylim(y.min(), y.max())
 
 
 def _hist2d_wrapper(x, y, z, **kwargs):
     plt.hist2d(x, y, weights=z, **kwargs)
 
 
-def plot_multiple(plot_func, x, v, title='', filename=None, **kwargs):
+def plot_amp_phase_irradiance(plot_func, x, v, title='', filename=None, **kwargs):
     """
     x   2d array of amp, phase
     v   3d array of spacial locations of data x
@@ -89,19 +92,6 @@ def scatter_markup(ax):
     plt.xlabel("Space dim1 (m)")
     plt.ylabel("Space dim2 (m)")
     plt.colorbar(fraction=0.052, pad=0.05)
-
-
-def entropy(H, w, title='H',  **kwargs):
-    # TODO for entropy: cmap gnuplot
-    n_subplots = 2
-    fig = plt.figure(figsize=(n_subplots * 5, 4))
-    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
-    ax = plt.subplot(1, n_subplots,  1)
-    scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
-    # scatter_markup(ax)
-    ax = plt.subplot(1, n_subplots,  2)
-    scatter(H[:, 1], w, title='Phase', fig=fig, **kwargs)
-    # scatter_markup(ax)
 
 
 def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
@@ -277,3 +267,16 @@ def scatter(x, w, title='', color_func=lambda a, phi: a, log=False, s=10,
     plt.title(title)
     plt.tight_layout()
     return fig
+
+
+def entropy(H, w, title='H',  **kwargs):
+    # TODO for entropy: cmap gnuplot
+    n_subplots = 2
+    fig = plt.figure(figsize=(n_subplots * 5, 4))
+    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
+    ax = plt.subplot(1, n_subplots,  1)
+    scatter(H[:, 0], w, title='Amplitude', fig=fig, **kwargs)
+    # scatter_markup(ax)
+    ax = plt.subplot(1, n_subplots,  2)
+    scatter(H[:, 1], w, title='Phase', fig=fig, **kwargs)
+    # scatter_markup(ax)

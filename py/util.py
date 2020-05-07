@@ -565,10 +565,14 @@ def get_arg(name: str, default_value=None, flag=False, parse_func=int):
 
 
 def parse_line(data: dict, k: str, content: str):
+    """
+    data : dict of {char: [np.array]}
+    """
     if k in 'uvw':
         try:
-            data[k] = np.array(
+            data[k].append(np.array(
                 [float(x) for x in content.split(',')]).reshape(-1, DIMS)
+            )
         except ValueError as e:
             print('! Exception trig\n ->', e)
             for v in content.split(','):
@@ -577,12 +581,12 @@ def parse_line(data: dict, k: str, content: str):
 
     elif k in 'xyz':
         try:
-            data[k] = np.array(
+            complex_values = np.array(
                 [complex(x) for x in content.split(',')])
             # reshape to (N, 2)
             # x = np.array(util.from_polar(data[k]))
-            data[k] = np.array(from_polar(
-                data[k])).T.reshape((-1, 2))
+            data[k].append(
+                np.array(from_polar(complex_values)).T.reshape((-1, 2)))
 
         except ValueError as e:
             print('! Exception trig\n ->', e)
