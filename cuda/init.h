@@ -5,12 +5,14 @@
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
+/* #include <gsl/gsl_linalg.h> */
 
 #include "macros.h"
 #include "hyper_params.h"
 #include "util.h"
 
 void init_random(curandGenerator_t *gen, unsigned int seed) {
+  // TODO do this on CPU to avoid data copying
   curandCreateGenerator(gen, CURAND_RNG_PSEUDO_XORWOW);
   /* curandCreateGenerator(gen, CURAND_RNG_PSEUDO_MT19937); */
   curandSetPseudoRandomGeneratorSeed(*gen, seed);
@@ -40,9 +42,12 @@ namespace init {
 Params params() {
   const double width = 0.0005;
   const bool randomize = true;
-  auto offsets = std::vector<double>{0, 0.001, 0.01};
+  const int n_offsets = 10;
   auto projections = std::vector<Plane>{};
-  std::cout << "size " << projections.size() << '\n';
+  auto offsets = std::vector<double>(n_offsets, 0.0);
+  // TODO find numpy.linspace equivalent (gsl?)
+  for (int i = 0; i < offsets.size(); ++i)
+    offsets[i] += i * 0.01;
 
   for (auto& offset : offsets)
     projections.push_back({width: width, z_offset: offset, randomize: randomize});
@@ -101,6 +106,7 @@ Geometry geometry (const size_t n) {
 }
 
 std::vector<STYPE> plane(size_t n, Plane p) {
+  static int seed = 1234;
   auto v = std::vector<STYPE>(n * DIMS);
   const size_t n_sqrt = round(sqrt(v.size() / DIMS));
   const double dS = p.width * SCALE / (double) n_sqrt; // actually dS^(1/DIMS)
@@ -112,7 +118,7 @@ std::vector<STYPE> plane(size_t n, Plane p) {
   float *d_random, random[n_random];
 
   if (p.randomize) {
-    init_random(&generator, 11235);
+    init_random(&generator, seed++);
     cu( cudaMalloc( (void **) &d_random, n_random * sizeof(float) ) );
   }
 

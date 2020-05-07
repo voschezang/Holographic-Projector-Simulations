@@ -88,7 +88,7 @@ int main() {
   for (auto& projection : params.projections) {
     auto p = init::geometry(Nz);
     auto w = init::plane(Nz, projection);
-    auto z = time_transform<Direction::Forward>(x, u, v, p, &t1, &t2, 1);
+    auto z = time_transform<Direction::Forward>(y, v, w, p, &t1, &t2, 1);
     check_cvector(z);
     summarize_c('z', z);
     // TODO do this async
