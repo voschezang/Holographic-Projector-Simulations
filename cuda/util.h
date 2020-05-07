@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <numeric>
 #include <time.h>
 /* #include <type_traits> */
 
@@ -11,6 +12,7 @@
 #include "kernel.cu"
 
 enum class FileType {TXT, DAT, GRID};
+enum class Variable {Offset, Width};
 
 /* Geometry Hierarchy (parameters)
  * thread < block < grid < kernel < batch < stream
@@ -146,6 +148,30 @@ double memory_in_MB() {
   // real (double precision) arrays u,v \in C^(DIMS * N)
   unsigned int bytes = 2 * N * sizeof(WTYPE) + 2 * DIMS * N * sizeof(STYPE);
   return bytes * 1e-6;
+}
+
+std::vector<int> range(size_t len) {
+  // similar to numpy.arrange
+  auto values = std::vector<int>(len);
+  /* for (size_t i = 0; i < len; ++i) */
+  /*   values[i] += i; */
+  std::iota(values.begin(), values.end(), 0);
+  return values;
+}
+
+std::vector<double> linspace(size_t len, double min, double max) {
+  // similar to Armadillo linspace
+  assert(len > 0);
+  assert(len > 1 || min == max);
+  assert(max >= min);
+  auto values = std::vector<double>(len, min); // init to `min`
+  const auto range = max - min;
+  const auto delta = range / len;
+  for (size_t i = 1; i < len; ++i)
+    values[i] += delta * i;
+
+  assert(values[len - 1] - max < 0.001);
+  return values;
 }
 
 void summarize_c(char name, std::vector<WTYPE> &x) {

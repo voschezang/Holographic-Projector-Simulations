@@ -37,7 +37,7 @@
 
 int main() {
   const size_t Nx = 1, Ny = N, Nz = N;
-  const Params params = init::params();
+  const Params params = init::params(Variable::Width);
   const Geometry p = init::geometry(N); // TODO for both y,z
   printf("\nHyperparams:");
   printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);

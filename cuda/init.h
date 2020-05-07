@@ -31,26 +31,44 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-/* Plane plane_params(bool randomize, double width, double z_offset) { */
-/*   Plane p; */
-/*   p.width = width; */
-/*   p.randomize = randomize; */
-/*   p.z_offset = z_offset; */
-/*   return p; */
-/* } */
-
-Params params() {
-  const double width = 0.0005;
+Params params(Variable var) {
+  const double width = 5e04;
+  const double z_offset = 0.0;
+  const int n_planes = 20;
   const bool randomize = true;
-  const int n_offsets = 10;
   auto projections = std::vector<Plane>{};
-  auto offsets = std::vector<double>(n_offsets, 0.0);
-  // TODO find numpy.linspace equivalent (gsl?)
-  for (int i = 0; i < offsets.size(); ++i)
-    offsets[i] += i * 0.01;
+  // Note that the projection params slightly differ from the projector params
+  for (auto& i : range(n_planes))
+    projections.push_back({width: 5e-3, z_offset: z_offset, randomize: randomize});
 
-  for (auto& offset : offsets)
-    projections.push_back({width: width, z_offset: offset, randomize: randomize});
+  // Setup the independent variable for the experiment
+  if (n_planes > 1) {
+    if (var == Variable::Offset) {
+      const double delta = 0.01;
+      auto values = linspace(n_planes, 0.0, delta * n_planes);
+      for (auto& i : range(n_planes))
+        projections[i].z_offset = values[i];
+    }
+    else if (var == Variable::Width) {
+      auto values = linspace(n_planes, 0.00001, 0.01);
+      for (auto& i : range(n_planes))
+        projections[i].width = values[i];
+    }
+  }
+  /* switch (var) { */
+  /* case Variable::Offset: */
+  /*   const double delta = 0.01; */
+  /*   auto values = linspace(n_planes, 0.0, delta * n_planes); */
+  /*   for (auto& i : range(n_planes)) */
+  /*     projections[i].z_offset = values[i]; */
+  /*   break; */
+
+  /* case Variable::Width: */
+  /*   auto values = linspace(n_planes, 0.001, 0.1); */
+  /*   for (auto& i : range(n_planes)) */
+  /*     projections[i].width = values[i]; */
+  /*   break; */
+  /* } */
 
   return
     {   input       : {width: width, z_offset : 0,     randomize : randomize},
@@ -106,7 +124,7 @@ Geometry geometry (const size_t n) {
 }
 
 std::vector<STYPE> plane(size_t n, Plane p) {
-  static int seed = 1234;
+  static int seed = 1234; // TODO manage externally from this function
   auto v = std::vector<STYPE>(n * DIMS);
   const size_t n_sqrt = round(sqrt(v.size() / DIMS));
   const double dS = p.width * SCALE / (double) n_sqrt; // actually dS^(1/DIMS)
