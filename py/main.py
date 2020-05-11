@@ -22,7 +22,8 @@ if __name__ == '__main__':
     if log:
         print('log abs y')
 
-    dir, fn = '../tmp', 'out.zip'
+    dir = '../tmp'
+    fn = 'out.zip'
     size = os.path.getsize(os.path.join(dir, fn))
     print(f'Input file size: {size * 1e-3:0.5f} kB')
     if size > 1e6:

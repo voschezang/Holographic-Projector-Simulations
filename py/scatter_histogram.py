@@ -33,8 +33,8 @@ line = fig[0:4, 0:4].plot(data, symbol='o', width=0,
                           face_color=color + (0.02,), edge_color=None,
                           marker_size=4)
 line.set_gl_state(depth_test=False)
-fig[4, 0:4].histogram(data[:, 0], bins=n_bins, color=color, orientation='h')
-fig[0:4, 4].histogram(data[:, 1], bins=n_bins, color=color, orientation='v')
+# fig[4, 0:4].histogram(data[:, 0], bins=n_bins, color=color, orientation='h')
+# fig[0:4, 4].histogram(data[:, 1], bins=n_bins, color=color, orientation='v')
 
 if __name__ == '__main__':
     fig.show(run=True)
