@@ -32,7 +32,7 @@ namespace init {
 //////////////////////////////////////////////////////////////////////////////////
 
 Params params(Variable var) {
-  const double width = 5e04;
+  const double width = 5e-4;
   const double z_offset = 0.0;
   const int n_planes = 20;
   const bool randomize = true;
@@ -71,7 +71,7 @@ Params params(Variable var) {
   /* } */
 
   return
-    {   input       : {width: width, z_offset : 0,     randomize : randomize},
+    {   input       : {width: width, z_offset : 0.0,   randomize : randomize},
         projector   : {width: width, z_offset : -0.02, randomize : randomize},
         projections : projections};
 }
