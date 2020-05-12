@@ -61,16 +61,15 @@ class Canvas(app.Canvas):
     def __init__(self, data, pos, color):
         app.Canvas.__init__(self, keys='interactive', size=(800, 600))
         # mesh = geometry.MeshData(pos, color)
-        # print(mesh)
         # Constrained delaunay triangulation
         # _, self.triangles = geometry.triangulate(pos)
         # self.triangles = self.triangles.astype('int32')
         print(pos.shape)
-        delaunay = Delaunay(pos[:, :2])
-        self.triangles = delaunay.simplices.T.astype(np.uint32)
+        # delaunay = Delaunay(pos[:, :2])
+        # self.triangles = delaunay.simplices.T.astype(np.uint32)
         # tri = matplotlib.tri.Triangulation(v[indices, 0], v[indices, 1]) # Delaunay triangulation
-        print('tri', self.triangles.shape)
-        delaunay.close()
+        # print('tri', self.triangles.shape)
+        # delaunay.close()
         # self.vertices = pos
         vtype = [('a_position', np.float32, 3)
                  # , ('a_color', np.float32, 1)
@@ -81,9 +80,8 @@ class Canvas(app.Canvas):
 
         # Create program
         self.program = gloo.Program(VERT_SHADER, FRAG_SHADER)
-        print(self.vertices)
         self.program.bind(gloo.VertexBuffer(self.vertices))
-        self.triangle_buffer = gloo.IndexBuffer(self.triangles)
+        # self.triangle_buffer = gloo.IndexBuffer(self.triangles)
 
         # self.faces = gloo.IndexBuffer(self.triangles)
         # self.program.bind(self.faces)
@@ -124,7 +122,7 @@ class Canvas(app.Canvas):
         # Draw
         gloo.set_state(blend=False, depth_test=True, polygon_offset_fill=True)
         self.program['u_color'] = 1, 1, 1, 1
-        self.program.draw('triangles', self.triangle_buffer)
+        # self.program.draw('triangles', self.triangle_buffer)
         # self.program['u_time'] = time.time() - self._starttime
         # self.program.draw('points')
         # self.program.draw('triangles', self.faces)
@@ -161,20 +159,9 @@ class Canvas(app.Canvas):
 
 
 if __name__ == '__main__':
-    data = {}
-    fn = 'tmp/out.zip'
-    size = os.path.getsize(fn)
-    print(f'Input file size: {size * 1e-3:0.5f} kB')
-    if size > 1e6:
-        print(f'WARNING, file too large: {size*1e-6:0.4f} MB')
-
-    with zipfile.ZipFile(fn) as z:
-        # with open(fn, 'rb') as f:
-        with z.open('tmp/out.txt', 'r') as f:
-            for line in f:
-                k, content = line.decode().split(':')
-                util.parse_line(data, k, content)
-    # print(data['v'].shape)
+    dir = '../tmp'
+    fn = 'out.zip'
+    data = util.parse_file(dir, fn, 'out.txt')
 
     # # Create a texture
     # radius = 32
@@ -195,6 +182,7 @@ if __name__ == '__main__':
 
     # Set number of particles, you should be able to scale this to 100000
     N = a.size
+    N = 10
     # Create vertex data container
     data = np.zeros(N, [('a_startPosition', np.float32, 3),
                         ('a_color', np.float32)])

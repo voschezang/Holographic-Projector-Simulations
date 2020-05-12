@@ -173,19 +173,9 @@ class Canvas(app.Canvas):
 
 # -----------------------------------------------------------------------------
 if __name__ == '__main__':
-    data = {}
-    fn = 'tmp/out.zip'
-    size = os.path.getsize(fn)
-    print(f'Input file size: {size * 1e-3:0.5f} kB')
-    if size > 1e6:
-        print(f'WARNING, file too large: {size*1e-6:0.4f} MB')
-
-    with zipfile.ZipFile(fn) as z:
-        # with open(fn, 'rb') as f:
-        with z.open('tmp/out.txt', 'r') as f:
-            for line in f:
-                k, content = line.decode().split(':')
-                util.parse_line(data, k, content)
+    dir = '../tmp'
+    fn = 'out.zip'
+    data = util.parse_file(dir, fn, 'out.txt')
 
     # float64 is not allowed for texture
     pos = data['v'].astype('float32')
