@@ -11,6 +11,29 @@
 /* #define VOL(type, x) *((type *) &x) */
 
 
+#define LAMBDA (1 * 0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser)
+#define TWO_PI (2 * M_PI)
+#define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
+/* #define SCALE (1 / LAMBDA) */
+#define SCALE (LAMBDA / 0.6328e-6)
+#define PROJECTOR_DISTANCE
+
+#define DOUBLE_PRECISION
+
+#ifdef DOUBLE_PRECISION
+/* #define WTYPE_cuda cuDoubleComplex // wave type for CUDA device */
+/* #define WTYPE double complex // wave type */
+/* #define ABS(x) (cabs(x)) */
+#define WTYPE cuDoubleComplex // wave type for host
+/* #define ABS(x) (cuCabs(x)) */
+#define STYPE double  // space (coordinate) type
+#else
+/* #define WTYPE_cuda cuFloatComplex // wave type for CUDA device */
+#define WTYPE cuFloatComplex  // wave type
+#define STYPE float // space (coordinate) type
+#endif // DOUBLE_PRECISION
+
+
 // #define Ix(i,j) i + j * N_sqrt
 // #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * N_sqrt
 /* #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * DIMS */

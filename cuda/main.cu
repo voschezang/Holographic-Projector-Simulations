@@ -36,8 +36,12 @@
 
 
 int main() {
-  const size_t Nx = 1, Ny = N, Nz = N;
-  const Params params = init::params(Variable::Width);
+  const size_t
+    Nx = 1, Ny = N, Nz = N,
+    n_planes = 10;;
+  const auto shape = Shape::Line;
+  const Params params = init::params(Variable::Offset, n_planes);
+  // const Params params = init::params(Variable::Offset, n_planes);
   const Geometry p = init::geometry(N); // TODO for both y,z
   printf("\nHyperparams:");
   printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
@@ -66,12 +70,12 @@ int main() {
     x = std::vector<WTYPE>(Nx, {1.0});
 
   auto
-    u = init::sparse_plane(x.size(), params.input.width),
+    u = init::sparse_plane(x.size(), shape, params.input.width),
     v = init::plane(Ny, params.projector);
 
   summarize_double('u', u);
   summarize_double('v', v);
-  write_arrays<FileType::TXT>(x, u, "xu", true);
+  write_arrays<FileType::TXT>(x, u, "xu", true, params.input);
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("Runtime init: \t%0.3f\n", dt(t0, t1));
   cudaProfilerStart();
@@ -82,7 +86,7 @@ int main() {
   auto y = time_transform<Direction::Backward>(x, u, v, p, &t1, &t2, 1);
   check_cvector(y);
   summarize_c('y', y);
-  write_arrays<FileType::TXT>(y, v, "yv", false);
+  write_arrays<FileType::TXT>(y, v, "yv", false, params.projector);
 
   // The projection distributions at various locations are obtained using forward transformations
   for (auto& projection : params.projections) {
@@ -92,7 +96,7 @@ int main() {
     check_cvector(z);
     summarize_c('z', z);
     // TODO do this async
-    write_arrays<FileType::TXT>(z, w, "zw", false);
+    write_arrays<FileType::TXT>(z, w, "zw", false, projection);
   }
 
   printf("--- --- ---   --- --- ---  --- --- --- \n");

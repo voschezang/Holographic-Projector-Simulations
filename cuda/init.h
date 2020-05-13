@@ -11,6 +11,11 @@
 #include "hyper_params.h"
 #include "util.h"
 
+/**
+ * Initialization of params and vectors.
+ * These functions are not (necessarily) optimized for performance.
+ */
+
 void init_random(curandGenerator_t *gen, unsigned int seed) {
   // TODO do this on CPU to avoid data copying
   curandCreateGenerator(gen, CURAND_RNG_PSEUDO_XORWOW);
@@ -31,15 +36,14 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-Params params(Variable var) {
-  const double width = 5e-4;
+  Params params(Variable var, size_t n_planes) {
+  // TODO allow multiple x planes
   const double z_offset = 0.0;
-  const int n_planes = 20;
   const bool randomize = true;
   auto projections = std::vector<Plane>{};
   // Note that the projection params slightly differ from the projector params
   for (auto& i : range(n_planes))
-    projections.push_back({width: 5e-3, z_offset: z_offset, randomize: randomize});
+    projections.push_back({name: 'z', width: 5e-4, z_offset: z_offset, randomize: randomize});
 
   // Setup the independent variable for the experiment
   if (n_planes > 1) {
@@ -50,7 +54,8 @@ Params params(Variable var) {
         projections[i].z_offset = values[i];
     }
     else if (var == Variable::Width) {
-      auto values = linspace(n_planes, 0.00001, 0.01);
+      // TODO logspace/geomspace
+      auto values = linspace(n_planes, 1e-6, 1e-3);
       for (auto& i : range(n_planes))
         projections[i].width = values[i];
     }
@@ -71,8 +76,10 @@ Params params(Variable var) {
   /* } */
 
   return
-    {   input       : {width: width, z_offset : 0.0,   randomize : randomize},
-        projector   : {width: width, z_offset : -0.02, randomize : randomize},
+    {   input       : {name: 'x', width: 1e-4, z_offset : 0.0,
+          randomize : randomize},
+        projector   : {name: 'y', width: 5e-4, z_offset : -0.02,
+          randomize : randomize},
         projections : projections};
 }
 
@@ -163,19 +170,39 @@ std::vector<STYPE> plane(size_t n, Plane p) {
   return v;
 }
 
-std::vector<STYPE> sparse_plane(size_t n, const double width) {
+ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
   // each plane x,u y,v z,w is a set of points in 3d space
   /* const double dS = width * SCALE / (double) N_sqrt; // actually dS^(1/DIMS) */
   /* const double offset = 0.5 * width; */
   auto u = std::vector<STYPE>(n * DIMS);
-  if (n > 1) {
-    const double
+  assert(n != 0);
+  if (n == 1) return u;
+
+  switch (shape) {
+  case Shape::Line: {
+    // Distribute datapoints over a line
+    auto
       du = width / (double) n, // TODO use SCALE?
       half_width = width / 2.0;
 
     for (unsigned int i = 0; i < u.size(); i+=DIMS)
       u[i] = i * du - half_width;
+    break;
+  }
+  case Shape::Circle: {
+    // Distribute datapoints over a circle
+    // (using polar coordinates)
+    auto
+      radius = width / 2.0,
+      /* circumference = TWO_PI * pow(radius, 2), */
+      d_phase = TWO_PI / (double) n;
 
+    for (unsigned int i = 0; i < u.size(); i+=DIMS) {
+      u[i  ] = sin(i * d_phase) * radius;
+      u[i+1] = cos(i * d_phase) * radius;
+    }
+    break;
+  }
   }
   return u;
 }

@@ -6,12 +6,15 @@
 #include <stdlib.h>
 #include <numeric>
 #include <time.h>
+#include <iostream>
+#include <fstream>
 /* #include <type_traits> */
 
 #include "macros.h"
 #include "kernel.cu"
 
 enum class FileType {TXT, DAT, GRID};
+enum class Shape {Line, Circle};
 enum class Variable {Offset, Width};
 
 /* Geometry Hierarchy (parameters)
@@ -52,6 +55,7 @@ struct Geometry {
 
 struct Plane {
 /* Plane() : width(1), z_offset(0), randomize(false) {}; */
+  char name;
   double width;
   double z_offset;
   bool randomize;
@@ -217,43 +221,46 @@ void summarize_double(char name, std::vector<double> &x) {
   printf("%c)  range: [%0.3f , %0.3f]\n", name, min, max);
 }
 
-void print_c(WTYPE x, FILE *out) {
+void print_complex(WTYPE x, std::ofstream& out) {
   // check(x); //TODO uncomment
+  // e.g. print as "1.2+3.4j" or "1.2-3.4j"
   if (x.y >= 0) {
-    fprintf(out, "%f+%fj", x.x, x.y);
+    out << x.x << '+' << x.y << 'j';
   } else {
-    fprintf(out, "%f%fj", x.x, x.y);
+    out << x.x << x.y << 'j';
   }
 }
 
-void write_array(char c, std::vector<STYPE> &x, FILE *out) {
+void write_array(char c, std::vector<STYPE> &x, std::ofstream& out) {
   // key
-  fprintf(out, "%c:", c);
+  /* out << "{name: " << c << ", data: ["; */
+  out << c << ":";
 
   // first value
-  fprintf(out, "%e", x[0]);
+  out << x[0];
+
   // other values, prefixed by a comma
   // start at index 1
   for (size_t i = 1; i < x.size(); ++i)
-    fprintf(out, ",%e", x[i]);
+    out << ',' << x[i];
 
-  // newline / return
-  fprintf(out, "\n");
+  out << '\n';
 }
 
-void write_complex_array(char c, std::vector<WTYPE> &x, FILE *out) {
+void write_complex_array(char c, std::vector<WTYPE> &x, std::ofstream& out) {
   // key
-  fprintf(out, "%c:", c);
+  /* out << "{name: " << c << ", data: ["; */
+  out << c << ":";
   // first value
-  print_c(x[0], out);
+  print_complex(x[0], out);
   // other values, prefixed by ','
   // start at index 1
   for (size_t i = 1; i < x.size(); ++i) {
-    fprintf(out, ",");
-    print_c(x[i], out);
+    out << ',';
+    print_complex(x[i], out);
   }
-  // newline / return
-  fprintf(out, "\n");
+  /* out << "] }\n"; */
+  out << "\n";
 }
 
 void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
@@ -270,19 +277,30 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
 
 template <FileType type>
 void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
-                  const char keys[3], bool overwrite) {
-  const char fn[] = "../tmp/out.txt";
-  const char *mode = overwrite ? "wb" : "ab";
-  // TODO use csv for i/o, read python generated x
+                  const char keys[3], bool overwrite, Plane p) {
+  /* const char fn[] = "../tmp/out.txt"; */
+  /* const char *mode = overwrite ? "wb" : "ab"; */
+  auto fn = "../tmp/out.txt";
+  std::ofstream out;
+  /* // TODO use csv for i/o, read python generated x */
   if (type != FileType::TXT) return;
   if (overwrite) {
     print("Save results as txt");
-    remove(fn); // fails if file does not exist
+    /* remove(fn); // fails if file does not exist */
+    out.open(fn, std::ofstream::binary);
+  } else {
+    out.open(fn, std::ofstream::app);
   }
-  FILE *out = fopen(fn, mode);
+  /* FILE *out = fopen(fn, mode); */
+  /* /\* write_complex_array(std::string(keys[0], 1), x, out); *\/ */
+  /* /\* write_complex_array(keys[0], x, out); *\/ */
+  /* write_array(keys[1], u, out); */
+  /* fclose(out); */
+
+  out << std::scientific;
   write_complex_array(keys[0], x, out);
   write_array(keys[1], u, out);
-  fclose(out);
+  out.close();
 }
 
 double dt(struct timespec t0, struct timespec t1) {

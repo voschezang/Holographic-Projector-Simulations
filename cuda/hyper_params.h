@@ -13,8 +13,8 @@
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
-#define N_sqrt 256
-/* #define N_sqrt 512 */
+/* #define N_sqrt 256 */
+#define N_sqrt 512
 /* #define N_sqrt 1024 */
 #define N (N_sqrt * N_sqrt)
 #define N2 (N_sqrt * N_sqrt)
@@ -22,7 +22,7 @@
 /* #define KERNEL_BATCH_SIZE 8 // n datapoints per kernel, must be <= STREAM_BATCH_SIZE */
 
 #ifndef KERNEL_SIZE
-#define KERNEL_SIZE 8 // n datapoints per kernel
+#define KERNEL_SIZE 2 // n datapoints per kernel
 #endif
 #ifndef BATCH_SIZE
 #define BATCH_SIZE 1 // n kernels per (stream) batch
@@ -66,35 +66,5 @@
 #else
 #define SHARED_MEMORY_SIZE(blockSize) (KERNEL_SIZE * blockSize)
 #endif
-
-
-/* #define N_PER_THREAD (N / GRIDDIM / BLOCKDIM) // for input (x), thus independent of batches */
-// the value N_PER_THREAD is used implicitly in gridDim.x
-
-#define LAMBDA (1 * 0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser)
-#define TWO_PI (2 * M_PI)
-#define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
-/* #define SCALE (1 / LAMBDA) */
-#define SCALE (LAMBDA / 0.6328e-6)
-#define PROJECTOR_DISTANCE
-
-#define DOUBLE_PRECISION
-
-#ifdef DOUBLE_PRECISION
-/* #define WTYPE_cuda cuDoubleComplex // wave type for CUDA device */
-/* #define WTYPE double complex // wave type */
-/* #define ABS(x) (cabs(x)) */
-#define WTYPE cuDoubleComplex // wave type for host
-/* #define ABS(x) (cuCabs(x)) */
-#define STYPE double  // space (coordinate) type
-#else
-/* #define WTYPE_cuda cuFloatComplex // wave type for CUDA device */
-#define WTYPE cuFloatComplex  // wave type
-#define STYPE float // space (coordinate) type
-#endif // DOUBLE_PRECISION
-
-
-
-
 
 #endif
