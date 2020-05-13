@@ -10,7 +10,7 @@ from util import DIMS
 
 
 def single(X, U, plot_func, matrix_func, color_func, title='', filename=None,
-           fps=1, repetitions=1,  **matrix_func_args):
+           fps=20, upsampling=10, repetitions=1,  **matrix_func_args):
     # sample_rate = number of samples per wave cycle
     # T = 1/f
     dt = 1e3 / fps * 10
@@ -25,14 +25,21 @@ def single(X, U, plot_func, matrix_func, color_func, title='', filename=None,
                         cmap=cmap)
 
     # FuncAnimation module requires a subfunction
-    def update(data, im):
-        im.set_array(matrix_func(*data, color_func, **matrix_func_args))
+    def update(frame_idx, data, im):
+        i = frame_idx // upsampling
+        if frame_idx - i * upsampling == 0:
+            im.set_array(matrix_func(
+                X[i], U[i],
+                color_func,
+                **matrix_func_args))
+
         return im,
 
-    # note that zip can only be iterated once
+    # note that the return value of zip() can only be iterated once
     data_per_frame = itertools.chain.from_iterable(
-        (zip(X, U) for _ in range(repetitions)))
-    ani = animation.FuncAnimation(fig, update, data_per_frame, fargs=(im,),
+        itertools.cycle((zip(X, U) for _ in range(repetitions))))
+    ani = animation.FuncAnimation(fig, update, frames=upsampling * len(X),
+                                  fargs=(data_per_frame, im,),
                                   interval=dt, blit=True)
     if filename is not None:
         # Save a copy of the object

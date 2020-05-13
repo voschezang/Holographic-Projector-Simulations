@@ -53,7 +53,9 @@ varying float v_dist;
 // ------------------------------------
 void main()
 {
-    gl_FragColor = vec4(v_dist, 1-v_dist, 0, 1);
+    // gl_FragColor = vec4(v_dist, 1-v_dist, 0, 1);
+    // gl_FragColor = vec4(0, 1, 0, v_dist * v_dist);
+    gl_FragColor = vec4(v_dist, 1-v_dist, 0, v_dist * v_dist);
 }
 """
 
@@ -87,7 +89,7 @@ class MyCanvas(app.Canvas):
         self.colors = itertools.cycle(colors)
         self.pos = itertools.cycle(pos)
 
-        self.point_size = 9
+        self.point_size = 12
         self.program = gloo.Program(VERT_SHADER, FRAG_SHADER)
         self.model = np.eye(4, dtype=np.float32)
         self.projection = np.eye(4, dtype=np.float32)
@@ -181,7 +183,8 @@ class MyCanvas(app.Canvas):
 
 if __name__ == '__main__':
     dir = '../tmp'
-    fn = 'out.zip'
+    # fn = 'out.zip'
+    fn = 'out_offset_line_1.zip'
     data = util.parse_file(dir, fn, 'out.txt')
     viewtype = 2
     if viewtype == 0:

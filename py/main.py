@@ -25,7 +25,7 @@ if __name__ == '__main__':
     dir = '../tmp'
     fn = 'out.zip'
     size = os.path.getsize(os.path.join(dir, fn))
-    print(f'Input file size: {size * 1e-3:0.5f} kB')
+    print(f'Input file size: {size * 1e-6:0.5f} MB')
     if size > 1e6:
         print(f'WARNING, file too large: {size*1e-6:0.4f} MB')
 
@@ -60,6 +60,8 @@ if __name__ == '__main__':
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
     indices = np.random.randint(0, N, n)
     # indices = np.arange(N)
+    plot.scatter_multiple(data['x'][:n], data['u'][:n],
+                          'x', filename='x-scatter-sub')
     plot.scatter_multiple(data['y'][indices], data['v'][indices],
                           'y', filename='y-scatter-sub', s=1)
     i = 0
@@ -78,7 +80,7 @@ if __name__ == '__main__':
     N = data['z'][0].shape[0]
     N_sqrt = np.sqrt(N).astype(int)
     print(f'N sqrt: {N_sqrt}')
-    bins = int(round(N_sqrt / 4))
+    bins = int(round(N_sqrt / 2))
     plot.hist_2d_multiple(data['y'], data['v'],
                           'y', filename='y-hist2d', bins=bins)
     plot.hist_2d_multiple(data['z'][0], data['w'][0],

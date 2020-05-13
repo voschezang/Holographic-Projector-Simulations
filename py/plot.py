@@ -13,6 +13,11 @@ cyclic_cmap = 'twilight'
 
 
 def scatter_multiple(x, u=None, title='', prefix='', filename=None, **kwargs):
+    if 's' not in kwargs:
+        n = x.shape[0]
+        kwargs['s'] = max(1, 10 - n / 2.)
+        print(f"n: {n}, \ts: {kwargs['s']}")
+
     plot_amp_phase_irradiance(_scatter_wrapper, x, u, title='',
                               filename=filename, **kwargs)
 
