@@ -25,6 +25,7 @@
 /* #define WTYPE double complex // wave type */
 /* #define ABS(x) (cabs(x)) */
 #define WTYPE cuDoubleComplex // wave type for host
+#define IO_PRECISION 8
 /* #define ABS(x) (cuCabs(x)) */
 #define STYPE double  // space (coordinate) type
 #else

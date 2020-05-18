@@ -7,6 +7,7 @@
 #include <numeric>
 #include <time.h>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 /* #include <type_traits> */
 
@@ -231,36 +232,53 @@ void print_complex(WTYPE x, std::ofstream& out) {
   }
 }
 
-void write_array(char c, std::vector<STYPE> &x, std::ofstream& out) {
-  // key
-  /* out << "{name: " << c << ", data: ["; */
-  out << c << ":";
-
-  // first value
-  out << x[0];
-
-  // other values, prefixed by a comma
-  // start at index 1
+template<typename T>
+void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, std::ofstream& out) {
+  out << f(x[0]);
   for (size_t i = 1; i < x.size(); ++i)
-    out << ',' << x[i];
-
-  out << '\n';
+    out << sep << f(x[i]);
 }
 
-void write_complex_array(char c, std::vector<WTYPE> &x, std::ofstream& out) {
-  // key
-  /* out << "{name: " << c << ", data: ["; */
-  out << c << ":";
-  // first value
-  print_complex(x[0], out);
-  // other values, prefixed by ','
-  // start at index 1
-  for (size_t i = 1; i < x.size(); ++i) {
-    out << ',';
-    print_complex(x[i], out);
-  }
-  /* out << "] }\n"; */
-  out << "\n";
+template<typename T>
+void write_array(std::vector<T> &x, const char sep, std::ofstream& out) {
+  // TODO optimize
+  out << x[0];
+  for (size_t i = 1; i < x.size(); ++i)
+    out << sep << x[i];
+}
+
+void write_complex_array(std::vector<WTYPE> &x, const char sep, std::ofstream& out) {
+  out << x[0].x << sep << x[0].y;
+  for (size_t i = 0; i < x.size(); ++i)
+    out << sep << x[i].x << sep << x[i].y;
+}
+
+inline std::string quote(std::string s) {
+  return "\"" + s + "\"";
+}
+
+inline std::string quote(char c) {
+  return "\"" + std::string{c} + "\"";
+}
+
+/**
+ * Parse as `{"k" <sep1> v <sep2>
+ *            "k" <sep1> v <sep2>
+ *            "k" <sep1> v}`
+ */
+void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, std::ofstream& out) {
+  // Use JSON-like separators with spaces for readiblity.
+  const auto
+    sep1 = ": ",
+    sep2 = ", ";
+
+  out << "{" \
+      << quote("phasor")    << sep1 << quote(phasor) << sep2 \
+      << quote("pos")       << sep1 << quote(pos)    << sep2 \
+      << quote("z_offset")  << sep1 << p.z_offset    << sep2 \
+      << quote("len")       << sep1 << len           << sep2 \
+      << quote("precision") << sep1 << IO_PRECISION  << sep2 \
+      << quote("dims")      << sep1 << DIMS          << "}\n";
 }
 
 void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
@@ -277,29 +295,36 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
 
 template <FileType type>
 void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
-                  const char keys[3], bool overwrite, Plane p) {
-  /* const char fn[] = "../tmp/out.txt"; */
-  /* const char *mode = overwrite ? "wb" : "ab"; */
-  auto fn = "../tmp/out.txt";
-  std::ofstream out;
-  /* // TODO use csv for i/o, read python generated x */
+                  std::string k1, std::string k2, bool overwrite, Plane p) {
   if (type != FileType::TXT) return;
-  if (overwrite) {
+  if (overwrite)
     print("Save results as txt");
-    /* remove(fn); // fails if file does not exist */
-    out.open(fn, std::ofstream::binary);
-  } else {
-    out.open(fn, std::ofstream::app);
-  }
-  /* FILE *out = fopen(fn, mode); */
-  /* /\* write_complex_array(std::string(keys[0], 1), x, out); *\/ */
-  /* /\* write_complex_array(keys[0], x, out); *\/ */
-  /* write_array(keys[1], u, out); */
-  /* fclose(out); */
 
-  out << std::scientific;
-  write_complex_array(keys[0], x, out);
-  write_array(keys[1], u, out);
+  auto dir = std::string{"../tmp/"};
+  auto mode = overwrite ? std::ofstream::binary : std::ofstream::app;
+  std::ofstream out;
+  out.open(dir + "out.json", mode);
+  write_metadata(k1, k2, p, x.size(), out);
+  out.close();
+
+  /* out.open(dir + k1 + ".dat", mode); */
+  /* out << std::scientific; // to allow e.g. 1.0e-50 */
+  /* out << std::setprecision(IO_PRECISION); */
+  /* write_complex_array(x, ',', out); */
+
+  out << std::scientific; // to allow e.g. 1.0e-50
+  out << std::setprecision(IO_PRECISION);
+
+  out.open(dir + k1 + "_amp.dat", std::ofstream::binary);
+  map_to_and_write_array(x, cuCabs, ',', out);
+  out.close();
+
+  out.open(dir + k1 + "_phase.dat", std::ofstream::binary);
+  map_to_and_write_array(x, angle, ',', out);
+  out.close();
+
+  out.open(dir + k2 + ".dat", std::ofstream::binary);
+  write_array(u, ',', out);
   out.close();
 }
 

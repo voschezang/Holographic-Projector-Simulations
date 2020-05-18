@@ -155,6 +155,13 @@ std::vector<STYPE> plane(size_t n, Plane p) {
       v[Ix(i,j,0)] = i * dS - offset;
       v[Ix(i,j,1)] = j * dS - offset;
       v[Ix(i,j,2)] = p.z_offset;
+      /* if (i == 0 && j == 0) { */
+      /*   std::cout << "v[" << Ix(i,j,0) << "]: " << v[Ix(i,j,0)] << '\n'; */
+      /*   assert(abs(-1e-3) > 1e-30); */
+      /* /\*   assert(v[0] > 1e-30); *\/ */
+      /*   assert(abs(v[Ix(i,j,0)]) > 1e-30); */
+      /* } */
+      /* assert(abs(v[Ix(i,j,0)]) > 1e-30); */
 
       if (p.randomize) {
         v[Ix(i,j,0)] += random_range * (random[j*2] - 0.5);
