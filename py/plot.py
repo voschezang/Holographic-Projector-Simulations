@@ -13,6 +13,7 @@ cyclic_cmap = 'twilight'
 
 
 def scatter_multiple(x, u=None, title='', prefix='', filename=None, **kwargs):
+    print('scatter', u.min(), u.max())
     if 's' not in kwargs:
         n = x.shape[0]
         kwargs['s'] = max(1, 10 - n / 2.)
@@ -90,6 +91,7 @@ def sci_labels(ax, decimals=1, y=True, z=False):
     if y:
         ax.yaxis.set_major_formatter(formatter)
     if z:
+        # 3D plot
         ax.zaxis.set_major_formatter(formatter)
 
 

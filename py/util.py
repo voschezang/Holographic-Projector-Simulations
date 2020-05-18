@@ -1,6 +1,7 @@
 import numpy as np
 import sys
 import os
+import json
 import zipfile
 import matplotlib.pyplot as plt
 import scipy.optimize
@@ -598,22 +599,68 @@ def parse_line(data: dict, k: str, content: str):
                 print(complex(x))
 
 
-def parse_file(dir='../tmp', zipfilename='out.zip', filename='out.txt',
+def _parse_complex(filename: str, n: int, precision=8):
+    re, im = _parse_double(filename, n, precision).reshape((-1, 2))
+    return re + im * 1j
+
+
+def _parse_double(filename: str, n: int, precision=8, sep=','):
+    if precision not in (8, 16):
+        raise NotImplementedError
+
+    # TODO use packed data (standard internal data repr), no need for
+    # scientific notation
+    # with open() as f:
+    #   np.frombuffer(f.read(), 'f8', count=n, offset=0)
+
+    # use text (csv) files because binary files are not platform independent
+    # but it does allow for scientific notation with arbitrary precision
+    # comma separator results in more data but is required for correct output
+    data = np.fromfile(filename, count=n, sep=sep, offset=0,
+                       dtype=f"<f{precision}")
+    assert data.size == n, \
+        f"{filename}\tsize is {data.size} but should've been {n}"
+    return data
+
+
+def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
                unique_keys='xyuv') -> {}:
-    # example file:
-    """
-x:0,2,3,3
-y:2,3,3,4
-    """
+    params = []
     data = {k: [] for k in 'xyzuvw'}
     with zipfile.ZipFile(os.path.join(dir, zipfilename)) as z:
         # with open(fn, 'rb') as f:
-        with z.open(os.path.join(dir, filename), 'r') as f:
+        filename = prefix + '.json'
+        with z.open(filename, 'r') as f:
             for line in f:
-                k, content = line.decode().split(':')
-                parse_line(data, k, content)
+                if line:
+                    params.append(json.loads(line))
+
+        # filename = prefix + '.dat'
+        # TODO read from zip?
+        # with z.open(os.path.join(dir, filename), 'r') as f:
+        # f = os.path.join(dir, filename)
+        for p in params:
+            print(p)
+            amp = _parse_double(os.path.join(dir, p['phasor'] + '_amp.dat'),
+                                p['len'], p['precision'])
+            phase = _parse_double(os.path.join(dir, p['phasor'] + '_phase.dat'),
+                                  p['len'], p['precision'])
+            pos = _parse_double(os.path.join(dir, p['pos'] + '.dat'),
+                                p['len'] * p['dims'], p['precision'])
+
+            k1 = p['phasor'][:1]
+            k2 = p['pos'][:1]
+            data[k1].append(np.array([amp, phase]).T)
+            data[k2].append(pos.reshape(-1, DIMS))
+
+            print(k1, data[k1][0].shape)
+            print(k2, data[k2][0].shape)
+            print(amp.shape, phase.shape, pos.shape)
+            # print(data[p['phasor'][:1]][-1].shape)
+            # print(data[p['pos'][:1]][-1].shape)
+            # print(amp.min(), amp.max())
 
     for k in unique_keys:
         data[k] = data[k][0]
 
-    return data
+    return params, data

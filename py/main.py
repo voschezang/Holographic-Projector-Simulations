@@ -29,7 +29,7 @@ if __name__ == '__main__':
     if size > 1e6:
         print(f'WARNING, file too large: {size*1e-6:0.4f} MB')
 
-    data = util.parse_file(dir, fn, 'out.txt')
+    params, data = util.parse_file(dir, fn, 'out')
 
     # if util.get_flag("-scatter"):
     #     plot.matrix_multiple(data['x'], 'x', filename='x')
@@ -60,6 +60,9 @@ if __name__ == '__main__':
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
     indices = np.random.randint(0, N, n)
     # indices = np.arange(N)
+    print('scatter plot x')
+    print('x', data['x'][:n].shape)
+    print('u', data['u'][:n].shape)
     plot.scatter_multiple(data['x'][:n], data['u'][:n],
                           'x', filename='x-scatter-sub')
     plot.scatter_multiple(data['y'][indices], data['v'][indices],
