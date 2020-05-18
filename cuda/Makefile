@@ -1,5 +1,6 @@
 C := nvcc # e.g. /usr/local/cuda-10.2/bin/nvcc
 EXE := run
+DIR := ../tmp
 ZIP := ../tmp/out.zip
 HyperParams = EXAMPLE='"text"'
 # TODO add stream size, kernel size, x distribution, Ny, Nz
@@ -20,7 +21,7 @@ run:
 
 zip:
 	rm -f $(ZIP)
-	zip $(ZIP) ../tmp/out.txt
+	cd $(DIR) && zip $(ZIP) out.json x_amp.dat x_phase.dat u.dat
 
 # CUDA
 init-path:

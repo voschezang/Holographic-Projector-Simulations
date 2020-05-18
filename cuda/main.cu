@@ -37,9 +37,9 @@
 
 int main() {
   const size_t
-    Nx = 1, Ny = N, Nz = N,
-    n_planes = 10;;
-  const auto shape = Shape::Line;
+    Nx = 10, Ny = N, Nz = N,
+    n_planes = 1;;
+  const auto shape = Shape::Circle;
   const Params params = init::params(Variable::Offset, n_planes);
   // const Params params = init::params(Variable::Offset, n_planes);
   const Geometry p = init::geometry(N); // TODO for both y,z
@@ -75,7 +75,7 @@ int main() {
 
   summarize_double('u', u);
   summarize_double('v', v);
-  write_arrays<FileType::TXT>(x, u, "xu", true, params.input);
+  write_arrays<FileType::TXT>(x, u, "x", "u", true, params.input);
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("Runtime init: \t%0.3f\n", dt(t0, t1));
   cudaProfilerStart();
@@ -86,17 +86,20 @@ int main() {
   auto y = time_transform<Direction::Backward>(x, u, v, p, &t1, &t2, 1);
   check_cvector(y);
   summarize_c('y', y);
-  write_arrays<FileType::TXT>(y, v, "yv", false, params.projector);
+  write_arrays<FileType::TXT>(y, v, "y", "v", false, params.projector);
 
   // The projection distributions at various locations are obtained using forward transformations
-  for (auto& projection : params.projections) {
+  for (size_t i = 0; i < params.projections.size(); ++i) {
+    auto suffix = std::to_string(i);
     auto p = init::geometry(Nz);
-    auto w = init::plane(Nz, projection);
+    auto w = init::plane(Nz, params.projections[i]);
     auto z = time_transform<Direction::Forward>(y, v, w, p, &t1, &t2, 1);
     check_cvector(z);
-    summarize_c('z', z);
+    if (i == 0)
+      summarize_c('z', z);
+
     // TODO do this async
-    write_arrays<FileType::TXT>(z, w, "zw", false, projection);
+    write_arrays<FileType::TXT>(z, w, "z" + suffix, "w" + suffix, false, params.projections[i]);
   }
 
   printf("--- --- ---   --- --- ---  --- --- --- \n");
