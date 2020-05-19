@@ -49,7 +49,7 @@ inline void partial_superposition_per_block(const Geometry p, const size_t Nx,
     case 128: SuperpositionPerBlock(128) break;
     case 256: SuperpositionPerBlock(256) break;
     case 512: SuperpositionPerBlock(512) break;
-    default: SuperpositionPerBlock(16);
+    default: printf("BlockSize incorrect\n");
     }
 /* #pragma unroll */
 /*     for (unsigned int size = 1; size < 2048; size*=2) */

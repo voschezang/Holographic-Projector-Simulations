@@ -39,7 +39,7 @@ namespace init {
   Params params(Variable var, size_t n_planes) {
   // TODO allow multiple x planes
   const double z_offset = 0.0;
-  const bool randomize = false;
+  const bool randomize = true;
   auto projections = std::vector<Plane>{};
   // Note that the projection params slightly differ from the projector params
   for (auto& i : range(n_planes))
@@ -160,9 +160,11 @@ std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
     dy = p.width * SCALE / (double) y * ratio,
     x_offset = 0.5 * p.width, // TODO rename => x_range
     y_offset = 0.5 * p.width * ratio,
-    margin = 0.0, // TODO min space between projector pixels
-    x_random_range = dx - 0.5 * margin,
-    y_random_range = dy - 0.5 * margin;
+    rel_margin = 0.01,
+    x_margin = rel_margin * x_offset, // TODO min space between projector pixels
+    y_margin = rel_margin * y_offset,
+    x_random_range = dx - 0.5 * x_margin,
+    y_random_range = dy - 0.5 * y_margin;
 
   const size_t n_random = x + y;
   curandGenerator_t generator;
