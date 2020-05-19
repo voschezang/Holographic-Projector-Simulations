@@ -36,42 +36,25 @@
 
 
 int main() {
-  const size_t
-    Nx = 10, Ny = N, Nz = N,
-    n_planes = 1;;
+  // TODO round up if N is not quadratic
+  const struct {size_t x,y,z;} n = {x: 10, y: N_sqrt * N_sqrt, z: N_sqrt * N_sqrt};
+  const size_t n_planes = 1;
   const auto shape = Shape::Circle;
+  const bool hd = false;
   const Params params = init::params(Variable::Offset, n_planes);
   // const Params params = init::params(Variable::Offset, n_planes);
-  const Geometry p = init::geometry(N); // TODO for both y,z
-  printf("\nHyperparams:");
-  printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
-  printf("\t(%fk threads)", p.gridSize * p.blockSize * 1e-3);
-
-  printf("\n Input size (datapoints): x: %i, y: %i, z: %i", Nx, Ny, Nz);
-  printf("\n E[N_x / thread]: %6fk", Nx / (double) p.gridSize * p.blockSize * 1e-3);
-  printf("\tE[N_y / thread]: %6fk", Ny / (double) p.gridSize * p.blockSize * 1e-3);
-
-  printf("\n n streams: %4i", p.n_streams);
-  printf("\tbatch size: \t%6i", p.stream_size);
-  printf("\tkernel size: \t%4i", p.kernel_size);
-
-  printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB());
-  {
-    size_t n = SHARED_MEMORY_SIZE(p.blockSize);
-    double m = n * sizeof(WTYPE) * 1e-3;
-    printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
-  }
+  const Geometry p = init::geometry(n.y);
+  print_info(p, n.x, n.y, n.z);
   struct timespec t0, t1, t2;
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // TODO use cmd arg for x length
-  // TODO rm old lowercase vars and replace them by current uppercase vars
   auto
-    x = std::vector<WTYPE>(Nx, {1.0});
+    x = std::vector<WTYPE>(n.x, {1.0});
 
   auto
     u = init::sparse_plane(x.size(), shape, params.input.width),
-    v = init::plane(Ny, params.projector);
+    v = init::plane(n.y, params.projector, hd);
 
   summarize_double('u', u);
   summarize_double('v', v);
@@ -91,8 +74,8 @@ int main() {
   // The projection distributions at various locations are obtained using forward transformations
   for (size_t i = 0; i < params.projections.size(); ++i) {
     auto suffix = std::to_string(i);
-    auto p = init::geometry(Nz);
-    auto w = init::plane(Nz, params.projections[i]);
+    auto p = init::geometry(n.z);
+    auto w = init::plane(n.z, params.projections[i], false);
     auto z = time_transform<Direction::Forward>(y, v, w, p, &t1, &t2, 1);
     check_cvector(z);
     if (i == 0)

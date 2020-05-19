@@ -112,11 +112,11 @@ double flops(double runtime, size_t n, size_t m) {
   return 1e-12 * n * m * (double) FLOP_PER_POINT / runtime;
 }
 
-double bandwidth(double runtime, const int n_planes, const char include_tmp) {
+double bandwidth(double runtime, size_t n, const int n_planes, const char include_tmp) {
   // input phasor  + input space + output space
   const double unit = 1e-6; // MB/s
-  double input = n_planes * N * (sizeof(WTYPE) + 2 * sizeof(STYPE));
-  double output = n_planes * N * sizeof(WTYPE);
+  double input = n_planes * n * (sizeof(WTYPE) + 2 * sizeof(STYPE));
+  double output = n_planes * n * sizeof(WTYPE);
   if (!include_tmp)
     return unit * (input + output) / runtime;
 
@@ -147,13 +147,35 @@ void check_cvector(std::vector<WTYPE> x) {
 #endif
 }
 
-double memory_in_MB() {
+double memory_in_MB(size_t n) {
   // Return lower-bound of memory use
   // complex arrays x,y \in C^N
   // real (double precision) arrays u,v \in C^(DIMS * N)
-  unsigned int bytes = 2 * N * sizeof(WTYPE) + 2 * DIMS * N * sizeof(STYPE);
+  unsigned int bytes = n * sizeof(WTYPE) + DIMS * n * sizeof(STYPE);
   return bytes * 1e-6;
 }
+
+void print_info(Geometry p, size_t Nx, size_t Ny, size_t Nz) {
+  printf("\nHyperparams:");
+  printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
+  printf("\t(%fk threads)", p.gridSize * p.blockSize * 1e-3);
+
+  printf("\n Input size (datapoints): x: %i, y: %i, z: %i", Nx, Ny, Nz);
+  printf("\n E[N_x / thread]: %6fk", Nx / (double) p.gridSize * p.blockSize * 1e-3);
+  printf("\tE[N_y / thread]: %6fk", Ny / (double) p.gridSize * p.blockSize * 1e-3);
+
+  printf("\n n streams: %4i", p.n_streams);
+  printf("\tbatch size: \t%6i", p.stream_size);
+  printf("\tkernel size: \t%4i", p.kernel_size);
+
+  printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(Ny));
+  {
+    size_t n = SHARED_MEMORY_SIZE(p.blockSize);
+    double m = n * sizeof(WTYPE) * 1e-3;
+    printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
+  }
+}
+
 
 std::vector<int> range(size_t len) {
   // similar to numpy.arrange
@@ -297,6 +319,7 @@ template <FileType type>
 void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
                   std::string k1, std::string k2, bool overwrite, Plane p) {
   if (type != FileType::TXT) return;
+  // TODO use local static instead of overwrite bool
   if (overwrite)
     print("Save results as txt");
 

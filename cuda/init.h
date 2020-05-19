@@ -39,7 +39,7 @@ namespace init {
   Params params(Variable var, size_t n_planes) {
   // TODO allow multiple x planes
   const double z_offset = 0.0;
-  const bool randomize = true;
+  const bool randomize = false;
   auto projections = std::vector<Plane>{};
   // Note that the projection params slightly differ from the projector params
   for (auto& i : range(n_planes))
@@ -130,15 +130,41 @@ Geometry geometry (const size_t n) {
   return p; // copy on return is permissible
 }
 
-std::vector<STYPE> plane(size_t n, Plane p) {
-  static int seed = 1234; // TODO manage externally from this function
+/**
+ * Distribute sampling points over a 2D plane in 3D space.
+ */
+std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
+  static unsigned int seed = 1234; // TODO manage externally from this function
   auto v = std::vector<STYPE>(n * DIMS);
-  const size_t n_sqrt = round(sqrt(v.size() / DIMS));
-  const double dS = p.width * SCALE / (double) n_sqrt; // actually dS^(1/DIMS)
-  const double offset = 0.5 * p.width;
-  const size_t n_random = 2 * n_sqrt;
-  const double margin = 0.;
-  const double random_range = dS - 0.5 * margin;
+  /* const size_t n_sqrt = round(sqrt(n)); */
+  double ratio = 1.;
+  size_t
+    x = round(sqrt(n)),
+    y = x;
+  assert(x * y == n);
+
+  if (hd) {
+    // assume HD dimensions
+    ratio = 1920. / 1080.;
+    x = sqrt(n * ratio), y = n / x;
+    printf("Screen dimensions: %i x %i\n", x, y);
+    assert(x * y <= n);
+    // neglect remaining pixels
+  }
+
+  /* const double dS = p.width * SCALE / (double) n_sqrt; // actually dS^(1/DIMS) */
+  /* // the corresponding height is applied implicitly */
+
+  const double
+    dx = p.width * SCALE / (double) x,
+    dy = p.width * SCALE / (double) y * ratio,
+    x_offset = 0.5 * p.width, // TODO rename => x_range
+    y_offset = 0.5 * p.width * ratio,
+    margin = 0.0, // TODO min space between projector pixels
+    x_random_range = dx - 0.5 * margin,
+    y_random_range = dy - 0.5 * margin;
+
+  const size_t n_random = x + y;
   curandGenerator_t generator;
   float *d_random, random[n_random];
 
@@ -147,14 +173,14 @@ std::vector<STYPE> plane(size_t n, Plane p) {
     cu( cudaMalloc( (void **) &d_random, n_random * sizeof(float) ) );
   }
 
-  for (unsigned int i = 0; i < n_sqrt; ++i) {
+  for (unsigned int i = 0; i < x; ++i) {
     if (p.randomize)
       gen_random(random, d_random, n_random, generator);
 
-    for (unsigned int j = 0; j < n_sqrt; ++j) {
-      v[Ix(i,j,0)] = i * dS - offset;
-      v[Ix(i,j,1)] = j * dS - offset;
-      v[Ix(i,j,2)] = p.z_offset;
+    for (unsigned int j = 0; j < y; ++j) {
+      v[Ix(i,j,0,y)] = i * dx - y_offset;
+      v[Ix(i,j,1,y)] = j * dy - x_offset;
+      v[Ix(i,j,2,y)] = p.z_offset;
       /* if (i == 0 && j == 0) { */
       /*   std::cout << "v[" << Ix(i,j,0) << "]: " << v[Ix(i,j,0)] << '\n'; */
       /*   assert(abs(-1e-3) > 1e-30); */
@@ -164,11 +190,21 @@ std::vector<STYPE> plane(size_t n, Plane p) {
       /* assert(abs(v[Ix(i,j,0)]) > 1e-30); */
 
       if (p.randomize) {
-        v[Ix(i,j,0)] += random_range * (random[j*2] - 0.5);
-        v[Ix(i,j,1)] += random_range * (random[j*2+1] - 0.5);
+        v[Ix(i,j,0,y)] += x_random_range * (random[j*2] - 0.5);
+        v[Ix(i,j,1,y)] += y_random_range * (random[j*2+1] - 0.5);
       }
     }
   }
+  /* } else { */
+  /*   // assume HD dimensions */
+  /*   const auto x = 1920, y = 1080; */
+  /*   assert(x * y == n); */
+  /*   for (unsigned int i = 0; i < x; ++i) { */
+  /*     for (unsigned int j = 0; j < y; ++j) { */
+
+  /*     } */
+  /*   } */
+  /* } */
 
   if (p.randomize) {
     curandDestroyGenerator(generator);

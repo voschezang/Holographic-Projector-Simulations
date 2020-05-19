@@ -10,7 +10,7 @@
 #define ZERO make_cuDoubleComplex(0,0)
 /* #define VOL(type, x) *((type *) &x) */
 
-
+#define HD (1920 * 1080)
 #define LAMBDA (1 * 0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser)
 #define TWO_PI (2 * M_PI)
 #define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
@@ -39,7 +39,8 @@
 // #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * N_sqrt
 /* #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * DIMS */
 #define I_(i,j) (j + (i) * N_sqrt)
-#define Ix(i,j,k) (k + (j) * DIMS + (i) * DIMS * N_sqrt)
+/* #define Ix(i,j,k) (k + (j) * DIMS + (i) * DIMS * N_sqrt) */
+#define Ix(i,j,k,n) (k + (j) * DIMS + (i) * DIMS * (n))
 
 /* #define Matrix(type, size1, size2) std::vector<std::vector<type>>(size1, std::vector<type>(size2)) */
 /* #define Matrix(type, size1, size2) std::vector<vtype<dtype>>(size1, type(size2)) */

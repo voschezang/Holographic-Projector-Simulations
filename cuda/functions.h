@@ -26,11 +26,12 @@ inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
     /* const size_t local_memory_size = p.kernel_size * sizeof(WTYPE);  */ \
     /* TODO add SHARED_MEMORY_SIZE * sizeof(WTYPE) */                   \
     superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
-      (p, d_x, N, d_u, &d_y_block[j], &d_v[k * DIMS] );                 \
+      (p, d_x, Nx, d_u, &d_y_block[j], &d_v[k * DIMS] );                 \
   }
 
 template<const Direction direction>
-inline void partial_superposition_per_block(const Geometry p, const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
+inline void partial_superposition_per_block(const Geometry p, const size_t Nx,
+                                            const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
                                             cudaStream_t stream, double *d_y_block)
 {
   assert(p.blockSize <= 512); // not implemented
@@ -152,7 +153,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
       cp_batch_data_to_device(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
                               streams[i_stream]);
 
-      partial_superposition_per_block<direction>(p, d_x_ptr, d_u_ptr,
+      partial_superposition_per_block<direction>(p, x.size(), d_x_ptr, d_u_ptr,
                                                  d_v[i_stream].data,
                                                  streams[i_stream], d_y_block[i_stream]);
     }
@@ -197,6 +198,9 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   return y;
 }
 
+/**
+ * Time the transform operation over the full input.
+ */
 template<const Direction direction>
 std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                        const std::vector<STYPE> &u,
@@ -212,8 +216,8 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
     printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
            flops(time, x.size(), y.size()), FLOP_PER_POINT);
     // TODO correct bandwidth datasize
-    printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, 1, 0));
-    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, 1, 1));
+    printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, y.size(), 1, 0));
+    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, y.size(), 1, 1));
   }
   return y;
 }
