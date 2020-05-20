@@ -12,41 +12,82 @@ cmap = 'inferno'
 cyclic_cmap = 'twilight'
 
 
-def scatter_multiple(x, u=None, title='', prefix='', filename=None, **kwargs):
-    print('scatter', u.min(), u.max())
+def hist_2d_hd(phasor, u, title='', filename=None,  xbins=10, ratio=1, **kwargs):
+    x = u[:, 1]
+    y = u[:, 0]
+    ybins = round(xbins * ratio)
+    print('bins', xbins, ybins)
+    bins = (np.linspace(x.min(), x.max(), xbins + 1)[1:-1],
+            np.linspace(y.min(), y.max(), ybins + 1)[1:-1])
+    bins = (xbins, ybins)
+    h = 4
+    w = round(h * ratio)
+    print(w, h, w / h)
+    for i, k in enumerate(['amp', 'phase']):
+        plt.figure(figsize=(w, h))
+        ax = plt.subplot()
+        _hist2d_wrapper(x, y, phasor[:, i],
+                        bins=bins, density=True, **kwargs)
+        plt.axis('off')
+
+        # force aspect ratio
+        ax.set_aspect(1.0 / ax.get_data_ratio() / ratio)
+
+        # plt.tight_layout()
+        if filename is not None:
+            save_fig(f'{filename}_{k}', ext='png')
+
+
+def scatter_multiple(x, u=None, title='', filename=None, **kwargs):
     if 's' not in kwargs:
         n = x.shape[0]
         kwargs['s'] = max(1, 10 - n / 2.)
-        print(f"n: {n}, \ts: {kwargs['s']}")
+        print(f"n: {n}, \tpointsize s: {kwargs['s']}")
 
-    plot_amp_phase_irradiance(_scatter_wrapper, x, u, title='',
-                              filename=filename, **kwargs)
+    amp_phase_irradiance(_scatter_wrapper, x, u, title=title,
+                         filename=filename, **kwargs)
 
 
 def hist_2d_multiple(x, u, title='', filename=None, bins=100, **kwargs):
-    plot_amp_phase_irradiance(_hist2d_wrapper, x, u, title='',
-                              filename=filename, bins=bins, **kwargs)
+    amp_phase_irradiance(_hist2d_wrapper, x, u, title=title,
+                         filename=filename, bins=bins, **kwargs)
 
 
 def hexbin_multiple(x, u, title='', filename=None,  bins=10, **kwargs):
-    plot_amp_phase_irradiance(plt.hexbin, x, u, title=title,
-                              filename=filename, gridsize=bins, **kwargs)
+    amp_phase_irradiance(plt.hexbin, x, u, title=title,
+                         filename=filename, gridsize=bins, **kwargs)
 
 
 def _scatter_wrapper(x, y, z, **kwargs):
+    threshold = 20
     plt.scatter(x, y, c=z, **kwargs)
     if x.shape[0] > 1:
-        plt.xlim(x.min(), x.max())
+        a, b = x.min(), x.max()
+        if x.shape[0] < threshold:
+            margin = (b - a) * 0.05
+            a -= margin
+            b += margin
+
+        if a != b:
+            plt.xlim(a, b)
 
     if y.shape[0] > 1:
-        plt.ylim(y.min(), y.max())
+        a, b = y.min(), y.max()
+        if x.shape[0] < threshold:
+            margin = (b - a) * 0.05
+            a -= margin
+            b += margin
+
+        if a != b:
+            plt.ylim(a, b)
 
 
 def _hist2d_wrapper(x, y, z, **kwargs):
     plt.hist2d(x, y, weights=z, **kwargs)
 
 
-def plot_amp_phase_irradiance(plot_func, x, v, title='', filename=None, **kwargs):
+def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
+                         fullscreen=False, **kwargs):
     """
     x   2d array of amp, phase
     v   3d array of spacial locations of data x

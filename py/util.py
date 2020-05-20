@@ -653,9 +653,9 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
             data[k1].append(np.array([amp, phase]).T)
             data[k2].append(pos.reshape(-1, DIMS))
 
-            print(k1, data[k1][0].shape)
-            print(k2, data[k2][0].shape)
-            print(amp.shape, phase.shape, pos.shape)
+            # print(k1, data[k1][0].shape)
+            # print(k2, data[k2][0].shape)
+            # print(amp.shape, phase.shape, pos.shape)
             # print(data[p['phasor'][:1]][-1].shape)
             # print(data[p['pos'][:1]][-1].shape)
             # print(amp.min(), amp.max())
