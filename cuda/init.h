@@ -36,14 +36,18 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-  Params params(Variable var, size_t n_planes) {
+Params params(Variable var, size_t n_planes) {
   // TODO allow multiple x planes
-  const double z_offset = 0.0;
+  const double z_offset = 0.2;
   const bool randomize = true;
   auto projections = std::vector<Plane>{};
+  const double width = 1.344e-4;
+  /* const bool hd = false; */
+  const bool hd = true;
+  /* const double width = 5e-4; */
   // Note that the projection params slightly differ from the projector params
   for (auto& i : range(n_planes))
-    projections.push_back({name: 'z', width: 5e-4, z_offset: z_offset, randomize: randomize});
+    projections.push_back({name: 'z', width: width * 2, z_offset: 0.0, randomize: randomize, hd: false});
 
   // Setup the independent variable for the experiment
   if (n_planes > 1) {
@@ -55,31 +59,17 @@ namespace init {
     }
     else if (var == Variable::Width) {
       // TODO logspace/geomspace
-      auto values = linspace(n_planes, 1e-6, 1e-3);
+      auto values = logspace(n_planes, -1, -4.5);
       for (auto& i : range(n_planes))
         projections[i].width = values[i];
     }
   }
-  /* switch (var) { */
-  /* case Variable::Offset: */
-  /*   const double delta = 0.01; */
-  /*   auto values = linspace(n_planes, 0.0, delta * n_planes); */
-  /*   for (auto& i : range(n_planes)) */
-  /*     projections[i].z_offset = values[i]; */
-  /*   break; */
-
-  /* case Variable::Width: */
-  /*   auto values = linspace(n_planes, 0.001, 0.1); */
-  /*   for (auto& i : range(n_planes)) */
-  /*     projections[i].width = values[i]; */
-  /*   break; */
-  /* } */
 
   return
-    {   input       : {name: 'x', width: 1e-4, z_offset : 0.0,
-          randomize : randomize},
-        projector   : {name: 'y', width: 5e-4, z_offset : -0.02,
-          randomize : randomize},
+    {   input       : {name: 'x', width: 5e-3, z_offset : 0.0,
+          randomize : randomize, hd: false},
+        projector   : {name: 'y', width: width, z_offset : z_offset,
+          randomize : randomize, hd: hd},
         projections : projections};
 }
 
@@ -133,7 +123,8 @@ Geometry geometry (const size_t n) {
 /**
  * Distribute sampling points over a 2D plane in 3D space.
  */
-std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
+std::vector<STYPE> plane(size_t n, Plane p) {
+  // TODO return ptr to device memory, copy pos data to CPU during batches
   static unsigned int seed = 1234; // TODO manage externally from this function
   auto v = std::vector<STYPE>(n * DIMS);
   /* const size_t n_sqrt = round(sqrt(n)); */
@@ -143,26 +134,23 @@ std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
     y = x;
   assert(x * y == n);
 
-  if (hd) {
-    // assume HD dimensions
+  if (p.hd) {
+    // assume HD dimensions, keep remaining pixels for kernel geometry compatibility
     ratio = 1920. / 1080.;
     x = sqrt(n * ratio), y = n / x;
-    printf("Screen dimensions: %i x %i\n", x, y);
+    printf("Screen dimensions: %i x %i\t", x, y);
+    printf("Remaining points: %i/%i\n", n - x*y, n);
     assert(x * y <= n);
-    // neglect remaining pixels
   }
-
-  /* const double dS = p.width * SCALE / (double) n_sqrt; // actually dS^(1/DIMS) */
-  /* // the corresponding height is applied implicitly */
 
   const double
     dx = p.width * SCALE / (double) x,
     dy = p.width * SCALE / (double) y * ratio,
-    x_offset = 0.5 * p.width, // TODO rename => x_range
-    y_offset = 0.5 * p.width * ratio,
-    rel_margin = 0.01,
-    x_margin = rel_margin * x_offset, // TODO min space between projector pixels
-    y_margin = rel_margin * y_offset,
+    x_half = 0.5 * p.width,
+    y_half = 0.5 * p.width * ratio,
+    rel_margin = p.randomize ? 0.0 : 0.0,
+    x_margin = rel_margin * dx, // TODO min space between projector pixels
+    y_margin = rel_margin * dy,
     x_random_range = dx - 0.5 * x_margin,
     y_random_range = dy - 0.5 * y_margin;
 
@@ -180,16 +168,9 @@ std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
       gen_random(random, d_random, n_random, generator);
 
     for (unsigned int j = 0; j < y; ++j) {
-      v[Ix(i,j,0,y)] = i * dx - y_offset;
-      v[Ix(i,j,1,y)] = j * dy - x_offset;
+      v[Ix(i,j,0,y)] = i * dx - x_half;
+      v[Ix(i,j,1,y)] = j * dy - y_half;
       v[Ix(i,j,2,y)] = p.z_offset;
-      /* if (i == 0 && j == 0) { */
-      /*   std::cout << "v[" << Ix(i,j,0) << "]: " << v[Ix(i,j,0)] << '\n'; */
-      /*   assert(abs(-1e-3) > 1e-30); */
-      /* /\*   assert(v[0] > 1e-30); *\/ */
-      /*   assert(abs(v[Ix(i,j,0)]) > 1e-30); */
-      /* } */
-      /* assert(abs(v[Ix(i,j,0)]) > 1e-30); */
 
       if (p.randomize) {
         v[Ix(i,j,0,y)] += x_random_range * (random[j*2] - 0.5);
@@ -197,16 +178,11 @@ std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
       }
     }
   }
-  /* } else { */
-  /*   // assume HD dimensions */
-  /*   const auto x = 1920, y = 1080; */
-  /*   assert(x * y == n); */
-  /*   for (unsigned int i = 0; i < x; ++i) { */
-  /*     for (unsigned int j = 0; j < y; ++j) { */
 
-  /*     } */
-  /*   } */
-  /* } */
+  // fill rest of array to minimize incompatibility issues
+  for (unsigned int i = x * y; i < n; ++i)
+    for (unsigned int j = 0; j < DIMS; ++j)
+      v[i * DIMS + j] = v[j];
 
   if (p.randomize) {
     curandDestroyGenerator(generator);
@@ -215,11 +191,11 @@ std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
   return v;
 }
 
- std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
+std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
   // each plane x,u y,v z,w is a set of points in 3d space
   /* const double dS = width * SCALE / (double) N_sqrt; // actually dS^(1/DIMS) */
   /* const double offset = 0.5 * width; */
-  auto u = std::vector<STYPE>(n * DIMS);
+  auto u = std::vector<STYPE>(n * DIMS, 0.0);
   assert(n != 0);
   if (n == 1) return u;
 
@@ -230,8 +206,22 @@ std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
       du = width / (double) n, // TODO use SCALE?
       half_width = width / 2.0;
 
-    for (unsigned int i = 0; i < u.size(); i+=DIMS)
-      u[i] = i * du - half_width;
+    for (unsigned int i = 0; i < n; ++i)
+      u[i*DIMS] = i * du - half_width;
+
+    break;
+  }
+  case Shape::Cross: {
+    const size_t half_n = n / 2;
+    const auto
+      du = width * width / (double) n, // TODO use SCALE?
+      half_width = width / 2.0;
+
+    // if n is even, skip the center
+    for (unsigned int i = 0; i < n / 2; ++i) {
+      u[i * DIMS] = i * du - half_width;
+      u[(i + half_n/2) * DIMS] = i * du - half_width;
+    }
     break;
   }
   case Shape::Circle: {
@@ -242,10 +232,24 @@ std::vector<STYPE> plane(size_t n, Plane p, bool hd) {
       /* circumference = TWO_PI * pow(radius, 2), */
       d_phase = TWO_PI / (double) n;
 
-    for (unsigned int i = 0; i < u.size(); i+=DIMS) {
-      u[i  ] = sin(i * d_phase) * radius;
-      u[i+1] = cos(i * d_phase) * radius;
+    for (unsigned int i = 0; i < n; ++i) {
+      u[i * DIMS] = sin(i * d_phase) * radius;
+      u[i * DIMS + 1] = cos(i * d_phase) * radius;
     }
+    break;
+  }
+  case Shape::DottedCircle: {
+    // (using polar coordinates)
+    auto
+      radius = width / 2.0,
+      /* circumference = TWO_PI * pow(radius, 2), */
+      d_phase = TWO_PI / (double) (n-1);
+
+    for (unsigned int i = 1; i < n; ++i) {
+      u[i * DIMS] = sin(i * d_phase) * radius;
+      u[i * DIMS + 1] = cos(i * d_phase) * radius;
+    }
+
     break;
   }
   }

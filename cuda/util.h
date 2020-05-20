@@ -15,7 +15,7 @@
 #include "kernel.cu"
 
 enum class FileType {TXT, DAT, GRID};
-enum class Shape {Line, Circle};
+enum class Shape {Line, Cross, Circle, DottedCircle};
 enum class Variable {Offset, Width};
 
 /* Geometry Hierarchy (parameters)
@@ -60,6 +60,8 @@ struct Plane {
   double width;
   double z_offset;
   bool randomize;
+  bool hd; // TODO
+  /* size_t x, y; // effective width, height, upperbounded by .size() */
 };
 
 struct Params {
@@ -176,7 +178,6 @@ void print_info(Geometry p, size_t Nx, size_t Ny, size_t Nz) {
   }
 }
 
-
 std::vector<int> range(size_t len) {
   // similar to numpy.arrange
   auto values = std::vector<int>(len);
@@ -201,6 +202,26 @@ std::vector<double> linspace(size_t len, double min, double max) {
   return values;
 }
 
+std::vector<double> logspace(size_t len, double a, double b) {
+  // Returns a sequence from 10^a to 10^b
+  assert(len > 0);
+  assert(len > 1 || a == b);
+  auto values = std::vector<double>(len);
+  const double
+    base = 10.,
+    range = b - a,
+    delta = range / len;
+
+  for (size_t i = 0; i < len; ++i)
+    values[i] = pow(base, a + delta * i);
+
+  return values;
+}
+
+bool abs_of_is_positive(WTYPE x) {
+  return cuCabs(x) > 0;
+}
+
 void summarize_c(char name, std::vector<WTYPE> &x) {
   double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
   /* for (const auto& x : X) { */
@@ -214,7 +235,7 @@ void summarize_c(char name, std::vector<WTYPE> &x) {
   printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f, mean: %f\n", name, min_amp, max_amp, max_phase, mean);
 }
 
-void normalize_amp(std::vector<WTYPE> &x, char log_normalize) {
+void normalize_amp(std::vector<WTYPE> &x, bool log_normalize) {
   double max_amp = 0;
   for (size_t i = 0; i < x.size(); ++i)
     max_amp = fmax(max_amp, cuCabs(x[i]));
@@ -300,7 +321,9 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, st
       << quote("z_offset")  << sep1 << p.z_offset    << sep2 \
       << quote("len")       << sep1 << len           << sep2 \
       << quote("precision") << sep1 << IO_PRECISION  << sep2 \
-      << quote("dims")      << sep1 << DIMS          << "}\n";
+      << quote("precision") << sep1 << IO_PRECISION  << sep2 \
+      << quote("dims")      << sep1 << DIMS          << sep2 \
+      << quote("hd")        << sep1 << p.hd          << "}\n";
 }
 
 void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {

@@ -12,10 +12,11 @@
 /* #define N_sqrt 8 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
-#define N_sqrt 128
+/* #define N_sqrt 128 */
 /* #define N_sqrt 256 */
-/* #define N_sqrt 512 */
+#define N_sqrt 512
 /* #define N_sqrt 1024 */
+/* #define N_sqrt 1440 */
 /* #define N (N_sqrt * N_sqrt) */
 /* #define N2 (N_sqrt * N_sqrt) */
 /* #define STREAM_BATCH_SIZE 8 // n datapoints per stream // stream batch size // TODO rename to STREAM_BATCH_SIZE? */

@@ -37,11 +37,11 @@
 
 int main() {
   // TODO round up if N is not quadratic
-  const struct {size_t x,y,z;} n = {x: 10, y: N_sqrt * N_sqrt, z: N_sqrt * N_sqrt};
-  const size_t n_planes = 1;
-  const auto shape = Shape::Circle;
-  const bool hd = false;
-  const Params params = init::params(Variable::Offset, n_planes);
+  const struct {size_t x,y,z;} n = {x: 5, y: N_sqrt * N_sqrt, z: N_sqrt * N_sqrt};
+  const size_t n_planes = 5;
+  const auto shape = Shape::DottedCircle;
+  // const auto shape = Shape::Line;
+  const Params params = init::params(Variable::Width, n_planes);
   // const Params params = init::params(Variable::Offset, n_planes);
   const Geometry p = init::geometry(n.y);
   print_info(p, n.x, n.y, n.z);
@@ -54,10 +54,10 @@ int main() {
 
   auto
     u = init::sparse_plane(x.size(), shape, params.input.width),
-    v = init::plane(n.y, params.projector, hd);
+    v = init::plane(n.y, params.projector);
 
   summarize_double('u', u);
-  summarize_double('v', v);
+  summarize_double('v', v); // TODO edit in case hd == true
   write_arrays<FileType::TXT>(x, u, "x", "u", true, params.input);
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("Runtime init: \t%0.3f\n", dt(t0, t1));
@@ -69,13 +69,14 @@ int main() {
   auto y = time_transform<Direction::Backward>(x, u, v, p, &t1, &t2, 1);
   check_cvector(y);
   summarize_c('y', y);
+  // TODO edit in case hd == true
   write_arrays<FileType::TXT>(y, v, "y", "v", false, params.projector);
 
   // The projection distributions at various locations are obtained using forward transformations
   for (size_t i = 0; i < params.projections.size(); ++i) {
     auto suffix = std::to_string(i);
     auto p = init::geometry(n.z);
-    auto w = init::plane(n.z, params.projections[i], false);
+    auto w = init::plane(n.z, params.projections[i]);
     auto z = time_transform<Direction::Forward>(y, v, w, p, &t1, &t2, 1);
     check_cvector(z);
     if (i == 0)

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <algorithm>
 
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
@@ -112,8 +113,10 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
   const size_t n = v.size() / DIMS;
+  assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
   if (x.size() < p.gridSize * p.blockSize)
     print("Warning, suboptimal input size");
+
 
   auto y = std::vector<WTYPE>(n);
 
@@ -194,7 +197,9 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   cu( cudaFreeHost(d_y_block_ptr ) );
   cu( cudaFreeHost(d_v_ptr       ) );
 
-  normalize_amp(y, 0);
+  size_t len = min(100, (unsigned int) y.size());
+  assert(std::any_of(y.begin(), y.begin() + len, abs_of_is_positive));
+  normalize_amp(y, false);
   return y;
 }
 
