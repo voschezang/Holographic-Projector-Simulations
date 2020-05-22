@@ -12,22 +12,32 @@ cmap = 'inferno'
 cyclic_cmap = 'twilight'
 
 
-def hist_2d_hd(phasor, u, title='', filename=None,  xbins=10, ratio=1, **kwargs):
+def _regular_bins(minima=[], maxima=[], n_bins=[]):
+    n = len(n_bins)
+    assert (n == len(minima)) and (n == len(maxima))
+    return [np.linspace(minima[i], maxima[i], n_bins[i] + 1)[1:-1]
+            for i in range(n)]
+
+
+def hist_2d_hd(phasor, u, title='', filename=None,  xbins=10, ratio=1,
+               **kwargs):
     x = u[:, 1]
     y = u[:, 0]
     ybins = round(xbins * ratio)
     print('bins', xbins, ybins)
-    bins = (np.linspace(x.min(), x.max(), xbins + 1)[1:-1],
-            np.linspace(y.min(), y.max(), ybins + 1)[1:-1])
-    bins = (xbins, ybins)
+    # bins = (np.linspace(x.min(), x.max(), xbins + 1)[1:-1],
+    #         np.linspace(y.min(), y.max(), ybins + 1)[1:-1])
+    bins = _regular_bins([x.min(), y.min()],
+                         [x.max(), y.max()],
+                         [xbins, ybins])
+    # bins = (xbins, ybins)
     h = 4
     w = round(h * ratio)
     print(w, h, w / h)
     for i, k in enumerate(['amp', 'phase']):
         plt.figure(figsize=(w, h))
         ax = plt.subplot()
-        _hist2d_wrapper(x, y, phasor[:, i],
-                        bins=bins, density=True, **kwargs)
+        _hist2d_wrapper(x, y, phasor[:, i], bins=bins, **kwargs)
         plt.axis('off')
 
         # force aspect ratio
@@ -48,9 +58,13 @@ def scatter_multiple(x, u=None, title='', filename=None, **kwargs):
                          filename=filename, **kwargs)
 
 
-def hist_2d_multiple(x, u, title='', filename=None, bins=100, **kwargs):
+def hist_2d_multiple(x, u, title='', filename=None, xbins=100, ratio=1., **kwargs):
+    ybins = round(xbins * ratio)
+    bins = _regular_bins([u[:, 1].min(), u[:, 0].min()],
+                         [u[:, 1].max(), u[:, 0].max()],
+                         [xbins, ybins])
     amp_phase_irradiance(_hist2d_wrapper, x, u, title=title,
-                         filename=filename, bins=bins, **kwargs)
+                         filename=filename, bins=bins, ratio=ratio, **kwargs)
 
 
 def hexbin_multiple(x, u, title='', filename=None,  bins=10, **kwargs):
@@ -83,11 +97,11 @@ def _scatter_wrapper(x, y, z, **kwargs):
 
 
 def _hist2d_wrapper(x, y, z, **kwargs):
-    plt.hist2d(x, y, weights=z, **kwargs)
+    plt.hist2d(x, y, weights=z, density=True, **kwargs)
 
 
 def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
-                         fullscreen=False, **kwargs):
+                         ratio=1., **kwargs):
     """
     x   2d array of amp, phase
     v   3d array of spacial locations of data x
@@ -99,22 +113,47 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
         kwargs['cmap'] = cmap
 
     n_subplots = 3
-    fig = plt.figure(figsize=(n_subplots * 5, 4))
+    horizontal = ratio < 1.1
+    # h = 15, w = 4
+    if horizontal:
+        w = n_subplots * ratio * 5
+        h = 4
+    else:
+        h = n_subplots * ratio * 2 + 1
+        w = 8
+
+    fig = plt.figure(figsize=(round(w), h))
     plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
 
-    ax = plt.subplot(131)
+    if horizontal:
+        ax = plt.subplot(131)
+    else:
+        ax = plt.subplot(311)
+
     plot_func(v[:, 1], v[:, 0], a, **kwargs)
     scatter_markup(ax)
     plt.title('Amplitude')
 
-    ax = plt.subplot(133)
+    # change subplot order to allow cmap to be changed later
+    # ax = plt.subplot(133)
+    if horizontal:
+        ax = plt.subplot(133)
+    else:
+        ax = plt.subplot(313)
+
     plot_func(v[:, 1], v[:, 0], irradiance(to_polar(a, phi)), **kwargs)
     scatter_markup(ax)
     plt.title('Irradiance')
 
+    # ax = plt.subplot(132)
+
+    if horizontal:
+        ax = plt.subplot(132)
+    else:
+        ax = plt.subplot(312)
+
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = cyclic_cmap
-    ax = plt.subplot(132)
     plot_func(v[:, 1], v[:, 0], phi, **kwargs)
     scatter_markup(ax)
     plt.title('Phase')

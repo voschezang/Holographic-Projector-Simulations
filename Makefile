@@ -34,8 +34,7 @@ ssh:
 	# emacs: use SPC f f /sshx:nikhef
 
 deps:
-	# make sure python, python-pip are installed
-	pip --user install -r requirements.txt
+	make -C py deps
 
 mount:
 	# note the `/` at the end of my_dir/

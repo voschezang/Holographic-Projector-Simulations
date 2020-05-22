@@ -608,6 +608,13 @@ def _parse_double(filename: str, n: int, precision=8, sep=','):
     if precision not in (8, 16):
         raise NotImplementedError
 
+    # TODO use sep length in bytes
+    print(os.path.getsize(filename), 'vs', n * precision,
+          os.path.getsize(filename) / (n * precision + len(sep)))
+    if os.path.getsize(filename) < n * precision:
+        print("Warning, filesize too small")
+        raise SystemError
+
     # TODO use packed data (standard internal data repr), no need for
     # scientific notation
     # with open() as f:
@@ -639,19 +646,25 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
         # TODO read from zip?
         # with z.open(os.path.join(dir, filename), 'r') as f:
         # f = os.path.join(dir, filename)
-        for p in params:
-            print(p)
-            amp = _parse_double(os.path.join(dir, p['phasor'] + '_amp.dat'),
-                                p['len'], p['precision'])
-            phase = _parse_double(os.path.join(dir, p['phasor'] + '_phase.dat'),
-                                  p['len'], p['precision'])
-            pos = _parse_double(os.path.join(dir, p['pos'] + '.dat'),
-                                p['len'] * p['dims'], p['precision'])
+        for i, p in enumerate(params):
+            print(i, p)
+            # TODO try read, if fail then clear params[i]
+            try:
+                amp = _parse_double(os.path.join(dir, p['phasor'] + '_amp.dat'),
+                                    p['len'], p['precision'])
+                phase = _parse_double(os.path.join(dir, p['phasor'] + '_phase.dat'),
+                                      p['len'], p['precision'])
+                pos = _parse_double(os.path.join(dir, p['pos'] + '.dat'),
+                                    p['len'] * p['dims'], p['precision'])
 
-            k1 = p['phasor'][:1]
-            k2 = p['pos'][:1]
-            data[k1].append(np.array([amp, phase]).T)
-            data[k2].append(pos.reshape(-1, DIMS))
+                k1 = p['phasor'][:1]
+                k2 = p['pos'][:1]
+                data[k1].append(np.array([amp, phase]).T)
+                data[k2].append(pos.reshape(-1, DIMS))
+                print(data[k1][-1].shape, data[k2][-1].shape)
+
+            except SystemError:
+                p['len'] = 0
 
             # print(k1, data[k1][0].shape)
             # print(k2, data[k2][0].shape)
