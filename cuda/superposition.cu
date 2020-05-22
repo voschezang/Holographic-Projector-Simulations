@@ -60,7 +60,7 @@ inline __device__ WTYPE single(const size_t i, const size_t j,
     return polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
 }
 
-template<Direction direction>
+template<Direction direction, bool add_constant_source>
 inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
                                   const STYPE *__restrict__ u,
                                   WTYPE *__restrict__ y_local,
@@ -82,10 +82,11 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
 
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   const size_t stride = blockDim.x * gridDim.x;
+
   // add single far away light source, with arbitrary (but constant) phase
   // assume threadIdx.x is a runtime constant
-  if (blockDim.x >= KERNEL_SIZE)
-    if (idx < KERNEL_SIZE)
+  if (add_constant_source)
+    if (blockDim.x >= KERNEL_SIZE && idx < KERNEL_SIZE)
       y_local[idx] = polar(1, ARBITRARY_PHASE);
 
   // for each y-datapoint in current batch
@@ -201,6 +202,7 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__
   if (size >= 2) {
     // final intra warp aggregation
     if (PARALLEL_INTRA_WARP_AGG && blockSize >= 2 * WARP_SIZE) {
+      // TODO this is incorrect, output has matrix-like noise
       // let each warp aggregate a different batch
       const unsigned int n_warps = CEIL(blockSize, WARP_SIZE);
       const unsigned int wid = tid / WARP_SIZE;
@@ -234,7 +236,7 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__
   // do not sync blocks, exit kernel and agg block results locally or in different kernel
 }
 
-template<Direction direction, unsigned int blockSize>
+template<Direction direction, bool add_constant_source, unsigned int blockSize>
 __global__ void per_block(const Geometry p,
                           const WTYPE *__restrict__ x, const size_t N_x,
                           const STYPE *__restrict__ u,
@@ -246,7 +248,7 @@ __global__ void per_block(const Geometry p,
   {
     // extern WTYPE y_local[]; // this yields; warning: address of a host variable "dynamic" cannot be directly taken in a device function
     WTYPE y_local[KERNEL_SIZE] = {}; // init to zero
-    superposition::per_thread<direction>(x, N_x, u, y_local, v);
+    superposition::per_thread<direction, add_constant_source>(x, N_x, u, y_local, v);
     superposition::copy_result(y_local, y_shared);
   }
   superposition::aggregate_blocks<blockSize>(y_shared, y_global);

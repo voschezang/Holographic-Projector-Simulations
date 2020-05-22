@@ -26,11 +26,11 @@ inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
 #define SuperpositionPerBlock(size) {                                   \
     /* const size_t local_memory_size = p.kernel_size * sizeof(WTYPE);  */ \
     /* TODO add SHARED_MEMORY_SIZE * sizeof(WTYPE) */                   \
-    superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
+    superposition::per_block<direction, add_constant_source, size><<< p.gridSize, p.blockSize, 0, stream >>> \
       (p, d_x, Nx, d_u, &d_y_block[j], &d_v[k * DIMS] );                 \
   }
 
-template<const Direction direction>
+template<const Direction direction, bool add_constant_source>
 inline void partial_superposition_per_block(const Geometry p, const size_t Nx,
                                             const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
                                             cudaStream_t stream, double *d_y_block)
@@ -99,7 +99,7 @@ inline void agg_batch(const Geometry p, WTYPE *y, cudaStream_t stream,
 
    type& X is used to reference X instead of copying it (similar to a pointer *x, which would require later dereferencing)
 */
-template<const Direction direction>
+template<Direction direction, bool add_constant_source>
 inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
                                     const std::vector<STYPE> &u,
                                     const std::vector<STYPE> &v,
@@ -156,7 +156,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
       cp_batch_data_to_device(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
                               streams[i_stream]);
 
-      partial_superposition_per_block<direction>(p, x.size(), d_x_ptr, d_u_ptr,
+      partial_superposition_per_block<direction, add_constant_source>(p, x.size(), d_x_ptr, d_u_ptr,
                                                  d_v[i_stream].data,
                                                  streams[i_stream], d_y_block[i_stream]);
     }
@@ -206,7 +206,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 /**
  * Time the transform operation over the full input.
  */
-template<const Direction direction>
+template<Direction direction, bool add_constant_source>
 std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                        const std::vector<STYPE> &u,
                        const std::vector<STYPE> &v,
@@ -214,7 +214,7 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                        struct timespec *t1, struct timespec *t2,
                        unsigned verbose) {
   clock_gettime(CLOCK_MONOTONIC, t1);
-  auto y = transform<Direction::Backward>(x, u, v, p);
+  auto y = transform<Direction::Backward, add_constant_source>(x, u, v, p);
   clock_gettime(CLOCK_MONOTONIC, t2);
   const double time = dt(*t1, *t2);
   if (verbose) {

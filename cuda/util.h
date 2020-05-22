@@ -275,6 +275,9 @@ void print_complex(WTYPE x, std::ofstream& out) {
   }
 }
 
+/**
+ * (With lazy evaluation) Map function `f` to array and write the result to file `out`.
+ */
 template<typename T>
 void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, std::ofstream& out) {
   out << f(x[0]);

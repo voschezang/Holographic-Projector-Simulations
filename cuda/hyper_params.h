@@ -2,11 +2,6 @@
 #define HYPER_PARAMS
 
 /* #define DEBUG */
-/* #define Z_TRANSFORM // compute z transform */
-#define CACHE_BATCH 1 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
-#define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
-#define PARALLEL_INTRA_WARP_AGG 1
-
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
@@ -48,7 +43,7 @@
 #elif (N_sqrt <= 64)
 #define BLOCKDIM 16
 #elif (N_sqrt <= 128)
-#define BLOCKDIM 64
+#define BLOCKDIM 64 // TODO blocksize >32 causes matrix-bug (in combination with PARALLEL_INTRA_WARP_AGG?)
 #elif (N_sqrt <= 512)
 #define BLOCKDIM 128
 #else
@@ -61,6 +56,16 @@
 /* #define GRIDDIM (2 * BLOCKDIM) */
 #define GRIDDIM (2 * BLOCKDIM)
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
+
+#define CACHE_BATCH 1 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
+
+#if (BLOCKDIM >= 32)
+#define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
+#else
+#define REDUCE_SHARED_MEMORY 1
+#endif
+
+#define PARALLEL_INTRA_WARP_AGG 0 // TODO reimplement
 
 #if (REDUCE_SHARED_MEMORY > 1 && KERNEL_SIZE >= REDUCE_SHARED_MEMORY)
 #define SHARED_MEMORY_SIZE(blockSize) ((KERNEL_SIZE * blockSize) / REDUCE_SHARED_MEMORY)

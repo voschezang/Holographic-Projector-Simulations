@@ -23,7 +23,7 @@ void init_random(curandGenerator_t *gen, unsigned int seed) {
   curandSetPseudoRandomGeneratorSeed(*gen, seed);
 }
 
-void gen_random(float *x, float *d_x, size_t len, curandGenerator_t gen) {
+void randomize(float *x, float *d_x, size_t len, curandGenerator_t gen) {
   // TODO do this on cpu or at runtime (per batch)
   curandGenerateUniform(gen, d_x, len);
   cudaMemcpy(x, d_x, len * sizeof(float), cudaMemcpyDeviceToHost);
@@ -36,14 +36,13 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-Params params(Variable var, size_t n_planes) {
+Params params(const Variable var, const size_t n_planes, const bool hd) {
   // TODO allow multiple x planes
-  const double z_offset = 0.2;
-  const bool randomize = true;
+  const double z_offset = 0.4;
+  /* const bool randomize = true; */
+  const bool randomize = false;
   auto projections = std::vector<Plane>{};
-  const double width = 1.344e-4;
-  /* const bool hd = false; */
-  const bool hd = true;
+  const double width = 1.344e-3; // = 1920 x 7e-6
   /* const double width = 5e-4; */
   // Note that the projection params slightly differ from the projector params
   for (auto& i : range(n_planes))
@@ -148,7 +147,7 @@ std::vector<STYPE> plane(size_t n, Plane p) {
     dy = p.width * SCALE / (double) y * ratio,
     x_half = 0.5 * p.width,
     y_half = 0.5 * p.width * ratio,
-    rel_margin = p.randomize ? 0.0 : 0.0,
+    rel_margin = p.randomize ? 0.01 : 0.0,
     x_margin = rel_margin * dx, // TODO min space between projector pixels
     y_margin = rel_margin * dy,
     x_random_range = dx - 0.5 * x_margin,
@@ -165,7 +164,7 @@ std::vector<STYPE> plane(size_t n, Plane p) {
 
   for (unsigned int i = 0; i < x; ++i) {
     if (p.randomize)
-      gen_random(random, d_random, n_random, generator);
+      randomize(random, d_random, n_random, generator);
 
     for (unsigned int j = 0; j < y; ++j) {
       v[Ix(i,j,0,y)] = i * dx - x_half;
@@ -239,6 +238,7 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
     break;
   }
   case Shape::DottedCircle: {
+    // TODO randomize slightly
     // (using polar coordinates)
     auto
       radius = width / 2.0,
