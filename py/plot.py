@@ -20,33 +20,26 @@ def _regular_bins(minima=[], maxima=[], n_bins=[]):
             for i in range(n)]
 
 
-def hist_2d_hd(phasor, u, title='', filename=None,  xbins=10, ratio=1,
+def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
                bin_threshold=0.1, **kwargs):
-    x = u[:, 1]
-    y = u[:, 0]
-    ybins = round(xbins * ratio)
-    assert xbins < x.size
-    assert ybins < y.size
-    print('bins', xbins, ybins)
-    if x.size % xbins != 0:
-        print('Warning: Under/over-sampling with incorrect ratio',
-              {'x': round(x.size / xbins, 4)})
-        print('Warning: Under/over-sampling with incorrect ratio',
-              {'x': x.size % xbins})
-        xbins = int(util.find_nearest_denominator(
-            x.size, xbins, bin_threshold))
+    Nx, Ny = util.solve_xy_is_a(u.shape[0], ratio)
+    ybins = int(util.find_nearest_denominator(Ny, ybins, bin_threshold))
+    if Nx == Ny:
+        # ratio is close to 1.0
+        xbins = ybins
+        assert xbins <= Nx
+    else:
+        # derive xbins from updated ybins to preserve "squareness" of pixels
+        xbins = min(Nx, round(ybins * ratio))
+        xbins = util.find_nearest_denominator(Nx, xbins, bin_threshold)
 
-    if y.size % ybins != 0:
-        print(y.size, ybins, y.size / ybins, y.size % ybins)
-        print('Warning: Under/over-sampling with incorrect ratio',
-              {'y': round(y.size / ybins, 4)})
-        print('Warning: Under/over-sampling with incorrect ratio',
-              {'y': y.size % ybins})
-        ybins = int(util.find_nearest_denominator(
-            y.size, ybins, bin_threshold))
+    print(f'bins x: {xbins} (~{Nx / xbins:0.1f} per bin),',
+          f'y: {ybins} (~{Ny / ybins:0.1f} per bin)')
 
-    print('bins', xbins, ybins)
-
+    assert xbins <= Nx
+    assert ybins <= Ny
+    x = u[:, 0]
+    y = u[:, 1]
     # bins = (np.linspace(x.min(), x.max(), xbins + 1)[1:-1],
     #         np.linspace(y.min(), y.max(), ybins + 1)[1:-1])
     bins = _regular_bins([x.min(), y.min()],
@@ -80,7 +73,7 @@ def scatter_multiple(x, u=None, title='', filename=None, **kwargs):
                          filename=filename, **kwargs)
 
 
-def hist_2d_multiple(phasor, pos, title='', filename=None, xbins=100, ratio=1.,
+def hist_2d_multiple(phasor, pos, title='', filename=None, ybins=100, ratio=1.,
                      bin_threshold=0.1, **kwargs):
     """
     Plot 2d histogram
@@ -95,13 +88,26 @@ def hist_2d_multiple(phasor, pos, title='', filename=None, xbins=100, ratio=1.,
     xbins, ybins : horizontal and vertical bins (respectively) and relate to
     the plot/image; not to the phasor.
     """
-    ybins = round(xbins * ratio)
-    xbins = util.find_nearest_denominator(pos.shape[1], xbins, bin_threshold)
-    ybins = util.find_nearest_denominator(pos.shape[0], ybins, bin_threshold)
-    bins = _regular_bins([pos[:, 1].min(), pos[:, 0].min()],
-                         [pos[:, 1].max(), pos[:, 0].max()],
+    Nx, Ny = util.solve_xy_is_a(pos.shape[0], ratio)
+    print('pos', pos.shape, Nx, Ny, Nx > Ny)
+    ybins = util.find_nearest_denominator(Ny, ybins, bin_threshold)
+    if Nx == Ny:
+        # ratio is close to 1.0
+        xbins = ybins
+        assert xbins <= Nx
+    else:
+        # derive xbins from updated ybins to preserve "squareness" of pixels
+        xbins = min(Nx, round(ybins * ratio))
+        xbins = util.find_nearest_denominator(Nx, xbins, bin_threshold)
+
+    assert xbins <= Nx
+    assert ybins <= Ny
+    x = pos[:, 0]
+    y = pos[:, 1]
+    bins = _regular_bins([x.min(), y.min()],
+                         [x.max(), y.max()],
                          [xbins, ybins])
-    amp_phase_irradiance(_hist2d_wrapper, phasor, u, title=title,
+    amp_phase_irradiance(_hist2d_wrapper, phasor, pos, title=title,
                          filename=filename, bins=bins, ratio=ratio, **kwargs)
 
 
@@ -112,11 +118,12 @@ def hexbin_multiple(x, u, title='', filename=None,  bins=10, **kwargs):
 
 def _scatter_wrapper(x, y, z, **kwargs):
     threshold = 20
+    rel_margin = 0.05
     plt.scatter(x, y, c=z, **kwargs)
     if x.shape[0] > 1:
         a, b = x.min(), x.max()
         if x.shape[0] < threshold:
-            margin = (b - a) * 0.05
+            margin = (b - a) * rel_margin
             a -= margin
             b += margin
 
@@ -126,7 +133,7 @@ def _scatter_wrapper(x, y, z, **kwargs):
     if y.shape[0] > 1:
         a, b = y.min(), y.max()
         if x.shape[0] < threshold:
-            margin = (b - a) * 0.05
+            margin = (b - a) * rel_margin
             a -= margin
             b += margin
 
@@ -174,7 +181,9 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     else:
         ax = plt.subplot(311)
 
-    plot_func(v[:, 1], v[:, 0], a, **kwargs)
+    v1 = v[:, 0]
+    v2 = v[:, 1]
+    plot_func(v1, v2, a, **kwargs)
     scatter_markup(ax)
     plt.title('Amplitude')
 
@@ -185,7 +194,7 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     else:
         ax = plt.subplot(313)
 
-    plot_func(v[:, 1], v[:, 0], irradiance(to_polar(a, phi)), **kwargs)
+    plot_func(v1, v2, irradiance(to_polar(a, phi)), **kwargs)
     scatter_markup(ax)
     plt.title('Irradiance')
 
@@ -198,7 +207,7 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
 
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = cyclic_cmap
-    plot_func(v[:, 1], v[:, 0], phi, **kwargs)
+    plot_func(v1, v2, phi, **kwargs)
     scatter_markup(ax)
     plt.title('Phase')
 

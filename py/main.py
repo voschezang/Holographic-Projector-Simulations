@@ -53,13 +53,8 @@ if __name__ == '__main__':
     # plot subset
     N = data['y'].shape[0]
     ratio = 1920. / 1080. if params[1]['hd'] else 1.
-    Nx = int(np.sqrt(N * ratio))
-    Ny = N // Nx
+    Nx, Ny = util.solve_xy_is_a(N, ratio)
     Nxy = Nx * Ny
-    assert Nx - 1 <= round(Ny * ratio) <= Nx + 1, (Nx, Ny, ratio, Ny * ratio)
-    if ratio == 1:
-        assert Nx == Ny
-
     for k in 'yv':
         data[k] = data[k][:Nxy]
 
@@ -70,12 +65,15 @@ if __name__ == '__main__':
     print(f'N sqrt (y): {N_sqrt}')
 
     bins = min(1080, Ny)
-    print(f'bw plots ({bins}/1080 bins)')
+    print(f'bw plots ({bins}/1080 ybins)')
+    print('y,v pos ranges:',
+          f"{data['v'][:, 0].max() - data['v'][:, 0].min():.4E}",
+          f"{data['v'][:, 1].max() - data['v'][:, 1].min():.4E}")
     plot.hist_2d_hd(data['y'], data['v'],
-                    cmap='gray', filename='y-hist2d', xbins=bins, ratio=ratio)
+                    cmap='gray', filename='y-hist2d', ybins=bins, ratio=ratio)
 
     plot.hist_2d_hd(data['y'], data['v'],
-                    cmap='gray', filename='y-hist2d-lo', xbins=bins // 4, ratio=ratio)
+                    cmap='gray', filename='y-hist2d-lo', ybins=bins // 4, ratio=ratio)
 
     if 1:
         print('sample scatters')
@@ -109,11 +107,11 @@ if __name__ == '__main__':
 
         plot.hist_2d_multiple(data['y'], data['v'],
                               f"y (offset: {params[1]['z_offset']} m)",
-                              filename='y-hist2d', xbins=bins, ratio=ratio)
+                              filename='y-hist2d', ybins=bins, ratio=ratio)
         bins = int(min(N_sqrt, 1000))
         plot.hist_2d_multiple(data['z'][0], data['w'][0],
                               f"z (offset: {params[2]['z_offset']} m)",
-                              filename='z-hist2d', xbins=bins, ratio=1.)
+                              filename='z-hist2d', ybins=bins, ratio=1.)
 
         # animate.multiple(data['z'], data['w'], prefix='z-ani', bins=bins,
         #                  offsets=[p['z_offset'] for p in params[2:]])

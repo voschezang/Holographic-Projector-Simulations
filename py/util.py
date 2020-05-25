@@ -555,7 +555,10 @@ def find_nearest_denominator(n: int, x: float, threshold=0):
 
     in case x-1 and x+1 are equally valid results, the former is chosen
     """
-    assert n >= x > 0
+    if x >= n:
+        return n
+
+    assert n >= x > 0, f'for n {n}, x: {x}'
     assert int(n) == n
     maximum = threshold * n  # zero if threshold is zero
     m = round(x)
@@ -617,6 +620,21 @@ def find_nearest_denominator(n: int, x: float, threshold=0):
     #     return m2
     #
     raise NotImplementedError(f'Cannot find result for args {n} / {x}')
+
+
+def solve_xy_is_a(n: int, ratio=1.):
+    """ Solve the equation x * y = n, where x,y are unkown.
+    Can be used to find dimensions of a flattened matrix
+    (with original shape (x,y)).
+    """
+    x = int(np.sqrt(n * ratio))
+    y = n // x
+    assert x - 1 <= round(y * ratio) <= x + 1, \
+        f'for x: {x}, y: {y}, ratio: {ratio}, y * ratio: {y * ratio}'
+    if ratio == 1.:
+        assert x == y
+
+    return x, y
 
 
 def get_flag(name: str):
@@ -737,7 +755,6 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
                 k2 = p['pos'][:1]
                 data[k1].append(np.array([amp, phase]).T)
                 data[k2].append(pos.reshape(-1, DIMS))
-                print(data[k1][-1].shape, data[k2][-1].shape)
 
             except SystemError:
                 p['len'] = 0
