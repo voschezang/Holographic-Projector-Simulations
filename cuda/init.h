@@ -135,8 +135,10 @@ std::vector<STYPE> plane(size_t n, Plane p) {
 
   if (p.hd) {
     // assume HD dimensions, keep remaining pixels for kernel geometry compatibility
-    ratio = 1920. / 1080.;
-    x = sqrt(n * ratio), y = n / x;
+    ratio = 1920. / 1080.; // i.e. x / y
+    // solve for x: n * ratio = x * y * (x/y) = x^2
+    x = sqrt(n * ratio);
+    y = n / x;
     printf("Screen dimensions: %i x %i\t", x, y);
     printf("Remaining points: %i/%i\n", n - x*y, n);
     assert(x * y <= n);
@@ -144,9 +146,9 @@ std::vector<STYPE> plane(size_t n, Plane p) {
 
   const double
     dx = p.width * SCALE / (double) x,
-    dy = p.width * SCALE / (double) y * ratio,
+    dy = p.width * SCALE / ((double) y * ratio),
     x_half = 0.5 * p.width,
-    y_half = 0.5 * p.width * ratio,
+    y_half = 0.5 * p.width / ratio,
     rel_margin = p.randomize ? 0.01 : 0.0,
     x_margin = rel_margin * dx, // TODO min space between projector pixels
     y_margin = rel_margin * dy,
