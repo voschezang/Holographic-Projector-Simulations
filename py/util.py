@@ -123,10 +123,13 @@ def sample_grid(N, width=1, z_offset=0, random=None, center=1, dims=None,
 
 
 def HD_sample_grid(width=1, z_offset=0, scale=0.1, center=1, rotate_axis=None, distribution=None):
-    """ Returns a vector with sample coordinates of a virtual plane in 3d space.
-    width = scaling w.r.t. projector
-    z_offset = distance from origin in third (z) dim
-    scale = scale of projector/display resolution. Strongly affects runtime
+    """ Return a vector with sample coordinates of a virtual plane in 3d space.
+
+    params
+    ------
+    width : scaling w.r.t. projector
+    z_offset : distance from origin in third (z) dim
+    scale : scale of projector/display resolution. Strongly affects runtime
     """
     N_ = round(1080 * scale)
     M_ = round(1920 * scale)
@@ -192,12 +195,13 @@ def idx(x: np.ndarray, n: int, *indices):
 # @jit(nopython=True)
 def f(amplitude, phase, w, v, direction=1,  weighted=0):
     """
-    amplitude = origin amplitude
-    phase = origin phase
+    amplitude : origin amplitude
+    phase : origin phase
 
-    all spatial dims (except the last) for v,w must be perpendicular to the last dim
+    all spatial dims (except the last) for v,w must be perpendicular to the
+    last/prev dim
 
-    direction = -1 or +1 and must be specified manually
+    direction : -1 or +1, must be specified manually
     """
     # single wave superposition component
     delta = norm(w - v)
@@ -461,7 +465,7 @@ def K(n, k, width1=1, width2=1, offset=0, N_sqrt=100):
 
 @jit(nopython=True)
 def orthogonal(n_samples: int):
-    """ Returns a tuple rows, cols which are indices
+    """ Return a tuple rows, cols which are indices
     """
     major = int(round(np.sqrt(n_samples)))
     # note that major^2 could differ from n_samples
@@ -481,7 +485,7 @@ def orthogonal(n_samples: int):
 
 @jit(nopython=True)
 def sample_dicretized(rows, cols, n_bins=0):
-    """ Returns a tuple of x,y arrays containing sample coordinates
+    """ Return a tuple of x,y arrays containing sample coordinates
     """
     # using a 2D array raises numba error: NotImplementedError: iterating over 2D array
     # x, y = np.random.uniform(0, 1, size=(2, n_samples))
@@ -542,13 +546,85 @@ def semilog(x):
     return np.log(np.clip(np.abs(x), 1e-12, None))
 
 
+def find_nearest_denominator(n: int, x: float, threshold=0):
+    """ Return min_m (x - m) under the constraint n % m == 0
+    e.g. for n = 10, x = 5.1 return 5
+
+    threshold can be used in case of primes
+    e.g. a theshold of 0.01 will allow for an 10% error w.r.t n
+
+    in case x-1 and x+1 are equally valid results, the former is chosen
+    """
+    assert n >= x > 0
+    assert int(n) == n
+    maximum = threshold * n  # zero if threshold is zero
+    m = round(x)
+    if n % m <= maximum:
+        return m
+
+    m1 = max(1, np.floor(x).astype(int))
+    m2 = np.ceil(x).astype(int)
+
+    if m1 == m2 and maximum > 0:
+        # consider both m-1 and m+1 and the resulting relative error
+        # note that in case of zero threshold there is no reason to prefer m2 over m1
+        m1 -= 1
+        m2 += 1
+        # use the closest value; m1 is compared first
+        error1 = n % m1
+        error2 = n % m2
+        options = [(m1, error1), (m2, error2)]
+        if error2 < error1:
+            options.reverse()
+        for m, error in options:
+            if error < maximum:
+                return m
+
+    elif m1 != m2:
+        # consider m1 and m2, but ordered
+        options = [m1, m2]
+        if n - m2 < n - m1:
+            options.reverse()
+
+        for m in options:
+            if n % m <= maximum:
+                return m
+
+    while m1 >= 0 or m2 <= n:
+        # bias for m1
+        if m1 >= 0:
+            if n % m1 <= maximum:
+                return m1
+            else:
+                m1 -= 1
+
+        if m2 <= n:
+            if n % m2 <= maximum:
+                return m2
+            else:
+                m2 += 1
+
+    # alt, in case x in [m-1, m+1]
+    # m1 = int(n / np.floor(n / x))
+    # m2 = int(n / np.ceil(n / x))
+    # if abs(x - m2) < abs(x - m1):
+    #     # use the closest value; m1 is compared first
+    #     m1, m2 = m2, m1
+    #
+    # if n % m1 == 0:
+    #     return m1
+    # elif n % m2 == 0:
+    #     return m2
+    #
+    raise NotImplementedError(f'Cannot find result for args {n} / {x}')
+
+
 def get_flag(name: str):
     return get_arg(name, False, True)
 
 
 def get_arg(name: str, default_value=None, flag=False, parse_func=int):
-    """ Parse command line args
-    """
+    """ Parse command line args """
     try:
         index = sys.argv.index(name)
         value = sys.argv[index + 1]
@@ -609,7 +685,7 @@ def _parse_double(filename: str, n: int, precision=8, sep=','):
         raise NotImplementedError
 
     # TODO use sep length in bytes
-    print(os.path.getsize(filename), 'vs', n * precision,
+    print('len diff: ', os.path.getsize(filename), 'vs', n * precision,
           os.path.getsize(filename) / (n * precision + len(sep)))
     if os.path.getsize(filename) < n * precision:
         print("Warning, filesize too small")

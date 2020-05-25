@@ -63,8 +63,9 @@ if __name__ == '__main__':
     for k in 'yv':
         data[k] = data[k][:Nxy]
 
-    print(N, Nx, Ny, f'equal: {Nx * Ny == N}')
-    print(f'Nxy {Nxy}')
+    print({'N': N, 'Nx': Nx, 'Ny': Ny, 'eq': Nx * Ny == N})
+    # print(N, Nx, Ny, f'equal: {Nx * Ny == N}')
+    # print(f'Nxy {Nxy}')
     N_sqrt = int(np.sqrt(N))
     print(f'N sqrt (y): {N_sqrt}')
 

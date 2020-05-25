@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import EngFormatter
 
 from _img_dir import IMG_DIR
+import util
 from util import *  # N, N_sqrt
 plt.rcParams['font.family'] = 'serif'
 
@@ -20,11 +21,32 @@ def _regular_bins(minima=[], maxima=[], n_bins=[]):
 
 
 def hist_2d_hd(phasor, u, title='', filename=None,  xbins=10, ratio=1,
-               **kwargs):
+               bin_threshold=0.1, **kwargs):
     x = u[:, 1]
     y = u[:, 0]
     ybins = round(xbins * ratio)
+    assert xbins < x.size
+    assert ybins < y.size
     print('bins', xbins, ybins)
+    if x.size % xbins != 0:
+        print('Warning: Under/over-sampling with incorrect ratio',
+              {'x': round(x.size / xbins, 4)})
+        print('Warning: Under/over-sampling with incorrect ratio',
+              {'x': x.size % xbins})
+        xbins = int(util.find_nearest_denominator(
+            x.size, xbins, bin_threshold))
+
+    if y.size % ybins != 0:
+        print(y.size, ybins, y.size / ybins, y.size % ybins)
+        print('Warning: Under/over-sampling with incorrect ratio',
+              {'y': round(y.size / ybins, 4)})
+        print('Warning: Under/over-sampling with incorrect ratio',
+              {'y': y.size % ybins})
+        ybins = int(util.find_nearest_denominator(
+            y.size, ybins, bin_threshold))
+
+    print('bins', xbins, ybins)
+
     # bins = (np.linspace(x.min(), x.max(), xbins + 1)[1:-1],
     #         np.linspace(y.min(), y.max(), ybins + 1)[1:-1])
     bins = _regular_bins([x.min(), y.min()],
@@ -58,12 +80,28 @@ def scatter_multiple(x, u=None, title='', filename=None, **kwargs):
                          filename=filename, **kwargs)
 
 
-def hist_2d_multiple(x, u, title='', filename=None, xbins=100, ratio=1., **kwargs):
+def hist_2d_multiple(phasor, pos, title='', filename=None, xbins=100, ratio=1.,
+                     bin_threshold=0.1, **kwargs):
+    """
+    Plot 2d histogram
+
+    Params
+    ------
+    phasor : complex array
+        (e.g. x,y,z as used in other funcs)
+    pos : flattened 3d array
+        (e.g. u,v,w of corresponding positions)
+
+    xbins, ybins : horizontal and vertical bins (respectively) and relate to
+    the plot/image; not to the phasor.
+    """
     ybins = round(xbins * ratio)
-    bins = _regular_bins([u[:, 1].min(), u[:, 0].min()],
-                         [u[:, 1].max(), u[:, 0].max()],
+    xbins = util.find_nearest_denominator(pos.shape[1], xbins, bin_threshold)
+    ybins = util.find_nearest_denominator(pos.shape[0], ybins, bin_threshold)
+    bins = _regular_bins([pos[:, 1].min(), pos[:, 0].min()],
+                         [pos[:, 1].max(), pos[:, 0].max()],
                          [xbins, ybins])
-    amp_phase_irradiance(_hist2d_wrapper, x, u, title=title,
+    amp_phase_irradiance(_hist2d_wrapper, phasor, u, title=title,
                          filename=filename, bins=bins, ratio=ratio, **kwargs)
 
 
@@ -102,10 +140,16 @@ def _hist2d_wrapper(x, y, z, **kwargs):
 
 def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
                          ratio=1., **kwargs):
-    """
-    x   2d array of amp, phase
-    v   3d array of spacial locations of data x
-    plot_func(array1, array2, array3, pyplot_args)   e.g. plt.scatter
+    """ Triple plot of amplitude, phase, irradiance
+
+    Params
+    ------
+    x : array of shape (N, 2)
+        representing amplitude, phase of N datapoints
+    v : array of shape (N, 3)
+        the corresponding 3d positions of x
+    plot_func : func that takes args (array1, array2, array3, pyplot_args)
+        e.g. plt.scatter
     """
     a, phi = x.T
     if 'cmap' not in kwargs:
