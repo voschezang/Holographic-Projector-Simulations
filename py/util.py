@@ -401,7 +401,13 @@ def near(a, L):
 
 @jit()
 def irradiance(E, normalize=True):
-    # Irradiance (bestralingssterkte)
+    """ Irradiance (bestralingssterkte)
+    i.e. radian flux (power) by a surface per unit area.
+
+    Params
+    ------
+    E : array of complex float
+    """
     if normalize:
         a, phi = np.abs(E), np.angle(E)
         # a = 10 * (1 + a * 1 / a.max())

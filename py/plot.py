@@ -194,7 +194,7 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     else:
         ax = plt.subplot(313)
 
-    plot_func(v1, v2, irradiance(to_polar(a, phi)), **kwargs)
+    plot_func(v1, v2, irradiance(to_polar(a, phi), normalize=False), **kwargs)
     scatter_markup(ax)
     plt.title('Irradiance')
 
