@@ -18,19 +18,12 @@
 // a transformation from projector to projection is forwards, vice versa is backwards
 enum class Direction {Forward, Backward};
 
-// TODO const template params
-// struct Params {
-//   unsigned int blockSize;
-//   unsigned int REDUCE_SHARED_MEMORY;
-// };
-
-
-template<Direction dir>
-inline __device__ double value() {
-  // manual conversion because <type_traits> lib is not yet supported
-  if (dir == Direction::Forward) return double{1.0};
-  else return double{-1.0};
-}
+// template<Direction dir>
+// inline __device__ double value() {
+//   // manual conversion because <type_traits> lib is not yet supported
+//   if (dir == Direction::Forward) return double{1.0};
+//   else return double{-1.0};
+// }
 
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -55,9 +48,9 @@ inline __device__ WTYPE single(const size_t i, const size_t j,
   // TODO __ddiv_rd, __dmul_ru
 
   if (direction == Direction::Forward)
-    return polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
-  else
     return polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
+  else
+    return polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
 }
 
 template<Direction direction, bool add_constant_source>
@@ -91,6 +84,7 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
 
   // for each y-datapoint in current batch
   // outer loop for batch, inner loop for index is faster than vice versa
+  // TODO consider transposing u, v to improve memory coalescing (w[i, j] is always read for each thread i, then for each dim j)
   for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
     for (size_t i = idx; i < N_x; i += stride)
       y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_));

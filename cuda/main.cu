@@ -31,7 +31,7 @@
 
 
 int main() {
-  const struct {size_t x,y,z;} n = {x: 100,
+  const struct {size_t x,y,z;} n = {x: 1,
                                     y: N_sqrt * N_sqrt,
                                     z: N_sqrt * N_sqrt};
   const size_t n_planes = 1;

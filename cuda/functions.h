@@ -130,6 +130,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   // Note that in case x.size < GRIDDIM the remaining entries in the agg array are zero
   cudaStream_t streams[p.n_streams];
   // malloc data using pinned memory for all batches before starting streams
+  // TODO consider std::unique_ptr<>
   WTYPE *d_y_stream_ptr;
   double *d_y_block_ptr;
   double *d_y_batch_ptr;

@@ -38,9 +38,9 @@ namespace init {
 
 Params params(const Variable var, const size_t n_planes, const bool hd) {
   // TODO allow multiple x planes
-  const double z_offset = 0.4;
-  /* const bool randomize = true; */
-  const bool randomize = false;
+  const double z_offset = 0.1; // 0.1 gives fresnel zone plate pttn, but lab setup is 0.4
+  const bool randomize = true;
+  /* const bool randomize = false; */
   auto projections = std::vector<Plane>{};
   const double width = 1.344e-3; // = 1920 x 7e-6
   /* const double width = 5e-4; */
