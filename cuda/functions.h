@@ -151,7 +151,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
       if (p.n_batches > 10 && i_batch % (int) (p.n_batches / 10) == 0)
-        printf("batch %0.1fk\t / %0.3fk\n", i_batch * 1e-3, p.n_batches * 1e-3);
+        printf("\tbatch %0.3fk / %0.3fk\n", i_batch * 1e-3, p.n_batches * 1e-3);
 
       /* printf("batch %3i stream %3i\n", i_batch, i_stream); */
       cp_batch_data_to_device(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
@@ -209,21 +209,18 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
  */
 template<Direction direction, bool add_constant_source>
 std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
-                       const std::vector<STYPE> &u,
-                       const std::vector<STYPE> &v,
-                       const Geometry p,
-                       struct timespec *t1, struct timespec *t2,
-                       unsigned verbose) {
+                                  const std::vector<STYPE> &u,
+                                  const std::vector<STYPE> &v,
+                                  const Geometry p,
+                                  struct timespec *t1, struct timespec *t2,
+                                  double *dt, bool verbose) {
   clock_gettime(CLOCK_MONOTONIC, t1);
   auto y = transform<Direction::Backward, add_constant_source>(x, u, v, p);
   clock_gettime(CLOCK_MONOTONIC, t2);
-  const double time = dt(*t1, *t2);
-  if (verbose) {
-    printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
-           flops(time, x.size(), y.size()), FLOP_PER_POINT);
-    // TODO correct bandwidth datasize
-    printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(time, y.size(), 1, 0));
-    printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(time, y.size(), 1, 1));
-  }
+  *dt = diff(*t1, *t2);
+  if (verbose)
+    print_result(std::vector<double>{*dt}, x.size(), y.size());
+
   return y;
 }
+

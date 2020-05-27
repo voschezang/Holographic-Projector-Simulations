@@ -13,6 +13,7 @@
 /* #include <type_traits> */
 
 #include "macros.h"
+#include "algebra.h"
 #include "kernel.cu"
 
 enum class FileType {TXT, DAT, GRID};
@@ -115,16 +116,17 @@ double flops(double runtime, size_t n, size_t m) {
   return 1e-12 * n * m * (double) FLOP_PER_POINT / runtime;
 }
 
-double bandwidth(double runtime, size_t n, const int n_planes, const char include_tmp) {
-  // input phasor  + input space + output space
+double bandwidth(double runtime, size_t n, size_t m, bool include_tmp) {
+  // input phasor + input space + output space
+  // n,m : number of input, output datapoints
   const double unit = 1e-6; // MB/s
-  double input = n_planes * n * (sizeof(WTYPE) + 2 * sizeof(STYPE));
-  double output = n_planes * n * sizeof(WTYPE);
-  if (!include_tmp)
-    return unit * (input + output) / runtime;
-
-  double tmp = GRIDDIM * SHARED_MEMORY_SIZE(BLOCKDIM) * sizeof(WTYPE);
-  return unit * (input + output + tmp) / runtime;
+  double input = n * (sizeof(WTYPE) + 3 * sizeof(STYPE));
+  double output = m * 3 * sizeof(STYPE);
+  if (include_tmp) {
+    double tmp = GRIDDIM * SHARED_MEMORY_SIZE(BLOCKDIM) * sizeof(WTYPE);
+    return unit * (input + output + tmp) / runtime;
+  }
+  return unit * (input + output) / runtime;
 }
 
 void check(WTYPE  z) {
@@ -179,45 +181,16 @@ void print_info(Geometry p, size_t Nx, size_t Ny, size_t Nz) {
   }
 }
 
-std::vector<int> range(size_t len) {
-  // similar to numpy.arrange
-  auto values = std::vector<int>(len);
-  /* for (size_t i = 0; i < len; ++i) */
-  /*   values[i] += i; */
-  std::iota(values.begin(), values.end(), 0);
-  return values;
-}
-
-std::vector<double> linspace(size_t len, double min, double max) {
-  // similar to Armadillo linspace
-  assert(len > 0);
-  auto values = std::vector<double>(len, min); // init to `min`
-  if (len == 1)
-    return values;
-
-  const auto
-    range = max - min,
-    delta = range / (len - 1.0);
-
-  // start at 0 to maintain alignment
-  for (size_t i = 0; i < len; ++i)
-    values[i] += delta * i;
-
-  // check relative error
-  assert(values[len - 1] - max < 1e-03 * max);
-  return values;
-}
-
-std::vector<double> logspace(size_t len, double a, double b) {
-  // Returns a sequence from 10^a to 10^b
-  assert(len > 0);
-  assert(len > 1 || a == b);
-  const auto base = 10.0;
-  auto values = linspace(len, a, b);
-  for (size_t i = 0; i < len; ++i)
-    values[i] = pow(base, values[i]);
-
-  return values;
+void print_result(std::vector<double> dt, size_t n, size_t m) {
+  // n,m : number of input, output datapoints
+  const double mu = mean(dt);
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
+         flops(mu, n, m), FLOP_PER_POINT);
+  // TODO correct bandwidth datasize
+  printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(mu, n, m, false));
+  printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(mu, n, m, true));
+  if (dt.size() > 1)
+    printf("Var[dt]: %0.5f\n", variance(dt));
 }
 
 bool abs_of_is_positive(WTYPE x) {
@@ -404,7 +377,7 @@ void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
   out.close();
 }
 
-double dt(struct timespec t0, struct timespec t1) {
+double diff(struct timespec t0, struct timespec t1) {
   return (double) (t1.tv_sec - t0.tv_sec) + \
     ((double) (t1.tv_nsec - t0.tv_nsec)) * 1e-9;
 }

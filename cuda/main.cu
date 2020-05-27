@@ -41,12 +41,12 @@ int main() {
   const auto shape = Shape::DottedCircle;
   // const auto shape = Shape::Line;
   const Params params = init::params(Variable::Width, n_planes, hd);
-  // const Params params = init::params(Variable::Offset, n_planes);
   const Geometry p = init::geometry(n.y);
   // const double mean_amplitude = params.projector.z_offset / (double) n.x;
   const double mean_amplitude = 1.;
   print_info(p, n.x, n.y, n.z);
   struct timespec t0, t1, t2;
+  auto dt = std::vector<double>(n_planes);
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // TODO use cmd arg for x length
@@ -66,13 +66,14 @@ int main() {
   summarize_double('v', v); // TODO edit in case hd == true
   write_arrays<FileType::TXT>(x, u, "x", "u", true, params.input);
   clock_gettime(CLOCK_MONOTONIC, &t1);
-  printf("Runtime init: \t%0.3f\n", dt(t0, t1));
+  printf("Runtime init: \t%0.3f\n", diff(t0, t1));
   cudaProfilerStart();
   printf("--- --- ---   --- --- ---  --- --- --- \n");
 
   // The projector distribution is obtained by doing a single backwards transformation
   // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
-  auto y = time_transform<Direction::Backward, true>(x, u, v, p, &t1, &t2, 1);
+  // dt[0] will be overwritten
+  auto y = time_transform<Direction::Backward, true>(x, u, v, p, &t1, &t2, &dt[0], true);
   check_cvector(y);
   summarize_c('y', y);
   // TODO edit in case hd == true
@@ -83,7 +84,7 @@ int main() {
     auto suffix = std::to_string(i);
     auto p = init::geometry(n.z);
     auto w = init::plane(n.z, params.projections[i]);
-    auto z = time_transform<Direction::Forward, false>(y, v, w, p, &t1, &t2, 1);
+    auto z = time_transform<Direction::Forward, false>(y, v, w, p, &t1, &t2, &dt[i], false);
     check_cvector(z);
     if (i == 0)
       summarize_c('z', z);
@@ -92,6 +93,7 @@ int main() {
     write_arrays<FileType::TXT>(z, w, "z" + suffix, "w" + suffix, false, params.projections[i]);
   }
 
+  print_result(dt, n_planes * y.size(), n_planes * n.z);
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   printf("done\n");
   cudaProfilerStop();

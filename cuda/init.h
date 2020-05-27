@@ -9,6 +9,7 @@
 
 #include "macros.h"
 #include "hyper_params.h"
+#include "algebra.h"
 #include "util.h"
 
 /**
