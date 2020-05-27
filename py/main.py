@@ -15,7 +15,7 @@ def run():
 
 
 if __name__ == '__main__':
-    n_z_plots = 2
+    n_z_plots = 3
     if util.get_flag("-r") or util.get_flag("--rerun"):
         out = run()
 
@@ -115,15 +115,6 @@ if __name__ == '__main__':
         plot.hist_2d_multiple(data['z'][i], data['w'][i], title,
                               filename=f'z-hist2d-{i}', ybins=bins,
                               ratio=1.)
-    # w = data['w'][0]
-    # print(w.shape)
-    # tmp = w[:, 0].copy()
-    # w[:, 0] = w[:, 1]
-    # w[:, 1] = tmp
-    # print(w.shape)
-    # plot.hist_2d_multiple(data['z'][0], w,
-    #                       f"z (offset: {params[2]['z_offset']} m)",
-    #                       filename='z-hist2d-T', ybins=bins, ratio=1.)
 
     # animate.multiple(data['z'], data['w'], prefix='z-ani', bins=bins,
     #                  offsets=[p['z_offset'] for p in params[2:]])

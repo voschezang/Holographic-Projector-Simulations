@@ -33,8 +33,9 @@ def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
         xbins = min(Nx, round(ybins * ratio))
         xbins = util.find_nearest_denominator(Nx, xbins, bin_threshold)
 
-    print(f'bins x: {xbins} (~{Nx / xbins:0.1f} per bin),',
-          f'y: {ybins} (~{Ny / ybins:0.1f} per bin)')
+    print('bins:',
+          f'\tx: {xbins} (~{Nx / xbins:0.1f} per bin)\n',
+          f'\ty: {ybins} (~{Ny / ybins:0.1f} per bin)')
 
     assert xbins <= Nx
     assert ybins <= Ny
@@ -48,7 +49,7 @@ def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
     # bins = (xbins, ybins)
     h = 4
     w = round(h * ratio)
-    print(w, h, w / h)
+    # print(w, h, w / h)
     for i, k in enumerate(['amp', 'phase']):
         plt.figure(figsize=(w, h))
         ax = plt.subplot()
@@ -65,9 +66,9 @@ def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
 
 def scatter_multiple(x, u=None, title='', filename=None, **kwargs):
     if 's' not in kwargs:
+        # set point size
         n = x.shape[0]
         kwargs['s'] = max(1, 10 - n / 2.)
-        print(f"n: {n}, \tpointsize s: {kwargs['s']}")
 
     amp_phase_irradiance(_scatter_wrapper, x, u, title=title,
                          filename=filename, **kwargs)
@@ -89,7 +90,6 @@ def hist_2d_multiple(phasor, pos, title='', filename=None, ybins=100, ratio=1.,
     the plot/image; not to the phasor.
     """
     Nx, Ny = util.solve_xy_is_a(pos.shape[0], ratio)
-    print('pos', pos.shape, Nx, Ny, Nx > Ny)
     ybins = util.find_nearest_denominator(Ny, ybins, bin_threshold)
     if Nx == Ny:
         # ratio is close to 1.0

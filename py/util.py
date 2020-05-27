@@ -721,10 +721,9 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
         size = fileinfo(archive, filename).file_size
 
     # TODO use sep length in bytes
-    min_size = n * precision * len(sep) - 1
+    min_size = n * precision
     if size < min_size:
-        raise SystemError(
-            f"Warning, filesize too small ({size} vs. {min_size})")
+        raise SystemError(f"Filesize too small ({size} < {min_size})")
 
     if sep:
         # use text (csv) files because binary files are not platform independent
@@ -739,8 +738,6 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
             open_func, mode = archive.open, 'r'
 
         with open_func(filename, mode) as f:
-            # print(archive)
-            # with archive.open(filename, 'rb') as f:
             data = np.frombuffer(f.read(n * precision),
                                  dtype=f'<f{precision}', count=n)
 
@@ -754,48 +751,31 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
     params = []
     data = {k: [] for k in 'xyzuvw'}
     with zipfile.ZipFile(os.path.join(dir, zipfilename)) as z:
-        # print(type(z.infolist()))
-        # print(z.infolist())
-        # print(type(z.infolist()[0]))
-        # print(z.infolist()[0].file_size)
         filename = prefix + '.json'
         with z.open(filename, 'r') as f:
             for line in f:
                 if line:
                     params.append(json.loads(line))
 
-        # filename = prefix + '.dat'
-        # TODO read from zip?
-        # with z.open(os.path.join(dir, filename), 'r') as f:
-        # f = os.path.join(dir, filename)
         for i, p in enumerate(params):
             print(i, p)
             # TODO try read, if fail then clear params[i]
-            print(p['phasor'] + '_amp.dat', 'x_amp.dat',
-                  p['phasor'] + '_amp.dat' == 'x_amp.dat')
-            with z.open('x_amp.dat') as f:
-                pass
-
+            k1 = p['phasor'][:1]
+            k2 = p['pos'][:1]
             try:
-                # size = z.infolist()[k].file_size
-                k = p['phasor'] + '_amp.dat'
-                # info = next(filter(lambda x: x.filename == k, z.infolist()))
-                # print(info)
-                # size = info.file_size
-                # print(size)
-                amp = _parse_doubles(p['phasor'] + '_amp.dat',
-                                     p['len'], p['precision'], archive=z)
-                phase = _parse_doubles(os.path.join(dir, p['phasor'] + '_phase.dat'),
-                                       p['len'], p['precision'])
-                pos = _parse_doubles(os.path.join(dir, p['pos'] + '.dat'),
-                                     p['len'] * p['dims'], p['precision'])
+                amp = _parse_doubles(p['phasor'] + '_amp.dat', p['len'],
+                                     p['precision'], archive=z)
+                phase = _parse_doubles(p['phasor'] + '_phase.dat', p['len'],
+                                       p['precision'], archive=z)
+                pos = _parse_doubles(p['pos'] + '.dat', p['len'] * p['dims'],
+                                     p['precision'], archive=z)
 
-                k1 = p['phasor'][:1]
-                k2 = p['pos'][:1]
                 data[k1].append(np.array([amp, phase]).T)
                 data[k2].append(pos.reshape(-1, DIMS))
 
-            except SystemError:
+            except SystemError as e:
+                print(f'Warning, missing data for keys: {k1}, {k2}')
+                print(e)
                 p['len'] = 0
 
     for k in unique_keys:
