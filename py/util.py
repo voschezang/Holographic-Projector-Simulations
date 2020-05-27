@@ -1,6 +1,8 @@
 import numpy as np
 import sys
 import os
+# import struct
+import functools
 import json
 import zipfile
 import matplotlib.pyplot as plt
@@ -643,6 +645,10 @@ def solve_xy_is_a(n: int, ratio=1.):
     return x, y
 
 
+def fileinfo(archive: zipfile.ZipFile, filename: str):
+    return next(filter(lambda x: x.filename == filename, archive.infolist()))
+
+
 def get_flag(name: str):
     return get_arg(name, False, True)
 
@@ -700,31 +706,44 @@ def parse_line(data: dict, k: str, content: str):
 
 
 def _parse_complex(filename: str, n: int, precision=8):
-    re, im = _parse_double(filename, n, precision).reshape((-1, 2))
+    re, im = _parse_doubles(filename, n, precision).reshape((-1, 2))
     return re + im * 1j
 
 
-def _parse_double(filename: str, n: int, precision=8, sep=','):
+def _parse_doubles(filename: str, n: int, precision=8, sep='',
+                   archive: zipfile.ZipFile = None):
     if precision not in (8, 16):
         raise NotImplementedError
 
+    if archive is None:
+        size = os.path.getsize(filename)
+    else:
+        size = fileinfo(archive, filename).file_size
+
     # TODO use sep length in bytes
-    print('len diff: ', os.path.getsize(filename), 'vs', n * precision,
-          os.path.getsize(filename) / (n * precision + len(sep)))
-    if os.path.getsize(filename) < n * precision:
-        print("Warning, filesize too small")
-        raise SystemError
+    min_size = n * precision * len(sep) - 1
+    if size < min_size:
+        raise SystemError(
+            f"Warning, filesize too small ({size} vs. {min_size})")
 
-    # TODO use packed data (standard internal data repr), no need for
-    # scientific notation
-    # with open() as f:
-    #   np.frombuffer(f.read(), 'f8', count=n, offset=0)
+    if sep:
+        # use text (csv) files because binary files are not platform independent
+        # but it does allow for scientific notation with arbitrary precision
+        # comma separator results in more data but is required for correct output
+        data = np.fromfile(filename, count=n, sep=sep, dtype=f"<f{precision}")
+    else:
+        # interpret as packed binary data
+        if archive is None:
+            open_func, mode = open, 'rb'
+        else:
+            open_func, mode = archive.open, 'r'
 
-    # use text (csv) files because binary files are not platform independent
-    # but it does allow for scientific notation with arbitrary precision
-    # comma separator results in more data but is required for correct output
-    data = np.fromfile(filename, count=n, sep=sep, offset=0,
-                       dtype=f"<f{precision}")
+        with open_func(filename, mode) as f:
+            # print(archive)
+            # with archive.open(filename, 'rb') as f:
+            data = np.frombuffer(f.read(n * precision),
+                                 dtype=f'<f{precision}', count=n)
+
     assert data.size == n, \
         f"{filename}\tsize is {data.size} but should've been {n}"
     return data
@@ -735,7 +754,10 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
     params = []
     data = {k: [] for k in 'xyzuvw'}
     with zipfile.ZipFile(os.path.join(dir, zipfilename)) as z:
-        # with open(fn, 'rb') as f:
+        # print(type(z.infolist()))
+        # print(z.infolist())
+        # print(type(z.infolist()[0]))
+        # print(z.infolist()[0].file_size)
         filename = prefix + '.json'
         with z.open(filename, 'r') as f:
             for line in f:
@@ -749,13 +771,24 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
         for i, p in enumerate(params):
             print(i, p)
             # TODO try read, if fail then clear params[i]
+            print(p['phasor'] + '_amp.dat', 'x_amp.dat',
+                  p['phasor'] + '_amp.dat' == 'x_amp.dat')
+            with z.open('x_amp.dat') as f:
+                pass
+
             try:
-                amp = _parse_double(os.path.join(dir, p['phasor'] + '_amp.dat'),
-                                    p['len'], p['precision'])
-                phase = _parse_double(os.path.join(dir, p['phasor'] + '_phase.dat'),
-                                      p['len'], p['precision'])
-                pos = _parse_double(os.path.join(dir, p['pos'] + '.dat'),
-                                    p['len'] * p['dims'], p['precision'])
+                # size = z.infolist()[k].file_size
+                k = p['phasor'] + '_amp.dat'
+                # info = next(filter(lambda x: x.filename == k, z.infolist()))
+                # print(info)
+                # size = info.file_size
+                # print(size)
+                amp = _parse_doubles(p['phasor'] + '_amp.dat',
+                                     p['len'], p['precision'], archive=z)
+                phase = _parse_doubles(os.path.join(dir, p['phasor'] + '_phase.dat'),
+                                       p['len'], p['precision'])
+                pos = _parse_doubles(os.path.join(dir, p['pos'] + '.dat'),
+                                     p['len'] * p['dims'], p['precision'])
 
                 k1 = p['phasor'][:1]
                 k2 = p['pos'][:1]
@@ -764,13 +797,6 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
 
             except SystemError:
                 p['len'] = 0
-
-            # print(k1, data[k1][0].shape)
-            # print(k2, data[k2][0].shape)
-            # print(amp.shape, phase.shape, pos.shape)
-            # print(data[p['phasor'][:1]][-1].shape)
-            # print(data[p['pos'][:1]][-1].shape)
-            # print(amp.min(), amp.max())
 
     for k in unique_keys:
         data[k] = data[k][0]
