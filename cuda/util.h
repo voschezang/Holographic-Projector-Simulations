@@ -191,15 +191,20 @@ std::vector<int> range(size_t len) {
 std::vector<double> linspace(size_t len, double min, double max) {
   // similar to Armadillo linspace
   assert(len > 0);
-  assert(len > 1 || min == max);
-  assert(max >= min);
   auto values = std::vector<double>(len, min); // init to `min`
-  const auto range = max - min;
-  const auto delta = range / len;
-  for (size_t i = 1; i < len; ++i)
+  if (len == 1)
+    return values;
+
+  const auto
+    range = max - min,
+    delta = range / (len - 1.0);
+
+  // start at 0 to maintain alignment
+  for (size_t i = 0; i < len; ++i)
     values[i] += delta * i;
 
-  assert(values[len - 1] - max < 0.001);
+  // check relative error
+  assert(values[len - 1] - max < 1e-03 * max);
   return values;
 }
 
@@ -207,14 +212,10 @@ std::vector<double> logspace(size_t len, double a, double b) {
   // Returns a sequence from 10^a to 10^b
   assert(len > 0);
   assert(len > 1 || a == b);
-  auto values = std::vector<double>(len);
-  const double
-    base = 10.,
-    range = b - a,
-    delta = range / len;
-
+  const auto base = 10.0;
+  auto values = linspace(len, a, b);
   for (size_t i = 0; i < len; ++i)
-    values[i] = pow(base, a + delta * i);
+    values[i] = pow(base, values[i]);
 
   return values;
 }
@@ -288,15 +289,20 @@ void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, s
 
 template<typename T>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
-  // TODO partially unroll loop, i.e. for (i;;i+=8) { for (;j<8;) { copy(j, j + 64, ) } }
-  std::ostream_iterator<unsigned char> out_iterator (out, "");
-  for (size_t i = 0; i < x.size(); ++i) {
-    const double b = cuCabs(x[i]);
-    // interpret data as bytes
-    const unsigned char *a = (unsigned char *) &b;
-    // std::copy( x, &x[4], out_it );
-    std::copy( a, &a[sizeof(double)], out_iterator );
-    /* std::copy( a, a + sizeof(WTYPE), out_iterator ); */
+  // use buffer for large arrays to allow vectorization of inner loop
+  const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
+  double buffer[buffer_size];
+
+  assert(x.size() == (x.size() / buffer_size) * buffer_size);
+
+  const auto bytes = (unsigned char *) &buffer;
+  auto iter = std::ostream_iterator<unsigned char>(out, "");
+
+  for (size_t i = 0; i < x.size(); i+=buffer_size) {
+    for (size_t j = 0; j < buffer_size; ++j) {
+      buffer[j] = f(x[i+j]);
+    }
+    std::copy(bytes, &bytes[buffer_size * sizeof(double)], iter);
   }
 }
 
@@ -377,11 +383,6 @@ void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
   out.open(dir + "out.json", mode);
   write_metadata(k1, k2, p, x.size(), out);
   out.close();
-
-  /* out.open(dir + k1 + ".dat", mode); */
-  /* out << std::scientific; // to allow e.g. 1.0e-50 */
-  /* out << std::setprecision(IO_PRECISION); */
-  /* write_complex_array(x, ',', out); */
 
   /* out << std::scientific; // to allow e.g. 1.0e-50 */
   out << std::fixed;

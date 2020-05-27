@@ -58,8 +58,8 @@ Params params(const Variable var, const size_t n_planes, const bool hd) {
     }
     else if (var == Variable::Width) {
       // TODO logspace/geomspace
-      if (n_planes <= 2) {
-        auto values = linspace(n_planes, width * 1.5, width * 6);
+      if (n_planes <= 4) {
+        auto values = linspace(n_planes, width * 1.5, width * n_planes * n_planes);
         for (auto& i : range(n_planes))
           projections[i].width = values[i];
       } else {
@@ -250,12 +250,13 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
     auto
       radius = width / 2.0,
       /* circumference = TWO_PI * pow(radius, 2), */
-      d_phase = TWO_PI / (double) (n-1);
+      d_phase = TWO_PI / (double) (n-1),
+      arbitrary_offset = 0.1125;
 
     // TODO randomize slightly?
     for (unsigned int i = 1; i < n; ++i) {
-      u[i * DIMS] = sin(i * d_phase) * radius;
-      u[i * DIMS + 1] = cos(i * d_phase) * radius;
+      u[i * DIMS] = sin(i * d_phase + arbitrary_offset) * radius;
+      u[i * DIMS + 1] = cos(i * d_phase + arbitrary_offset) * radius;
     }
 
     break;

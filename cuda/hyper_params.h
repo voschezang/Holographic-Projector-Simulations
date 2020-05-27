@@ -2,7 +2,7 @@
 #define HYPER_PARAMS
 
 #ifndef N_PLANES
-#define N_PLANES 1
+#define N_PLANES 3
 #endif
 
 /* #define DEBUG */
