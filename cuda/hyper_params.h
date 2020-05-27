@@ -1,15 +1,19 @@
 #ifndef HYPER_PARAMS
 #define HYPER_PARAMS
 
+#ifndef N_PLANES
+#define N_PLANES 1
+#endif
+
 /* #define DEBUG */
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
-/* #define N_sqrt 128 */
+#define N_sqrt 128
 /* #define N_sqrt 256 */
-#define N_sqrt 512
+/* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 /* #define N (N_sqrt * N_sqrt) */

@@ -48,9 +48,9 @@ inline __device__ WTYPE single(const size_t i, const size_t j,
   // TODO __ddiv_rd, __dmul_ru
 
   if (direction == Direction::Forward)
-    return polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
-  else
     return polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
+  else
+    return polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
 }
 
 template<Direction direction, bool add_constant_source>

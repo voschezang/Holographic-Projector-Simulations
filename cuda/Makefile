@@ -2,26 +2,31 @@ C := nvcc # e.g. /usr/local/cuda-10.2/bin/nvcc
 EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
-HyperParams = EXAMPLE='"text"'
+REL_OUTPUT_FILES := *.dat
+HyperParams = KERNEL_SIZE='2'
 # TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE)
 
 build:
 	# -ftz=true // flush dernormal to zero
 	#  -ftz=true -prec-div=false -prec-sqrt=false
+	# TODO check -O2 vs. -O3 performance
 	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams)
 
 build-run:
 	make build && make run
 
 run:
+	make cleanup-output
 	./$(EXE)
 	make zip
 
-
 zip:
 	rm -f $(ZIP)
-	cd $(DIR) && zip $(ZIP) out.json x_amp.dat x_phase.dat u.dat
+	cd $(DIR) && zip $(ZIP) out.json $(REL_OUTPUT_FILES)
+
+cleanup-output:
+	rm -rf $(DIR)/$(REL_OUTPUT_FILES)
 
 # CUDA
 init-path:

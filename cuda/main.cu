@@ -31,14 +31,15 @@
 
 
 int main() {
-  const struct {size_t x,y,z;} n = {x: 1,
+  const struct {size_t x,y,z;} n = {x: 4,
                                     y: N_sqrt * N_sqrt,
                                     z: N_sqrt * N_sqrt};
-  const size_t n_planes = 1;
-  const bool hd = false;
-  // const bool hd = true;
-  // const auto shape = Shape::DottedCircle;
-  const auto shape = Shape::Line;
+  // TODO add cmd line args
+  const size_t n_planes = N_PLANES;
+  // const bool hd = false;
+  const bool hd = true;
+  const auto shape = Shape::DottedCircle;
+  // const auto shape = Shape::Line;
   const Params params = init::params(Variable::Width, n_planes, hd);
   // const Params params = init::params(Variable::Offset, n_planes);
   const Geometry p = init::geometry(n.y);

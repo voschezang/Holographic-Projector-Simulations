@@ -38,15 +38,15 @@ namespace init {
 
 Params params(const Variable var, const size_t n_planes, const bool hd) {
   // TODO allow multiple x planes
-  const double z_offset = 0.1; // 0.1 gives fresnel zone plate pttn, but lab setup is 0.4
-  const bool randomize = true;
-  /* const bool randomize = false; */
+  const double z_offset = 0.2; // 0.1 gives fresnel zone plate pttn, but lab setup is 0.4
+  /* const bool randomize = true; */
+  const bool randomize = false;
   auto projections = std::vector<Plane>{};
   const double width = 1.344e-3; // = 1920 x 7e-6
   /* const double width = 5e-4; */
   // Note that the projection params slightly differ from the projector params
   for (auto& i : range(n_planes))
-    projections.push_back({name: 'z', width: width * 2, z_offset: 0.0, randomize: randomize, hd: false});
+    projections.push_back({name: 'z', width: width * 4, z_offset: 0.0, randomize: randomize, hd: false});
 
   // Setup the independent variable for the experiment
   if (n_planes > 1) {
@@ -58,9 +58,15 @@ Params params(const Variable var, const size_t n_planes, const bool hd) {
     }
     else if (var == Variable::Width) {
       // TODO logspace/geomspace
-      auto values = logspace(n_planes, -1, -4.5);
-      for (auto& i : range(n_planes))
-        projections[i].width = values[i];
+      if (n_planes <= 2) {
+        auto values = linspace(n_planes, width * 1.5, width * 6);
+        for (auto& i : range(n_planes))
+          projections[i].width = values[i];
+      } else {
+        auto values = logspace(n_planes, -1, -4.5);
+        for (auto& i : range(n_planes))
+          projections[i].width = values[i];
+      }
     }
   }
 
@@ -240,13 +246,13 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
     break;
   }
   case Shape::DottedCircle: {
-    // TODO randomize slightly
     // (using polar coordinates)
     auto
       radius = width / 2.0,
       /* circumference = TWO_PI * pow(radius, 2), */
       d_phase = TWO_PI / (double) (n-1);
 
+    // TODO randomize slightly?
     for (unsigned int i = 1; i < n; ++i) {
       u[i * DIMS] = sin(i * d_phase) * radius;
       u[i * DIMS + 1] = cos(i * d_phase) * radius;

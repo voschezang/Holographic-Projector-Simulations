@@ -9,6 +9,7 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <iterator>     // std::ostream_iterator
 /* #include <type_traits> */
 
 #include "macros.h"
@@ -276,7 +277,7 @@ void print_complex(WTYPE x, std::ofstream& out) {
 }
 
 /**
- * (With lazy evaluation) Map function `f` to array and write the result to file `out`.
+ * (With lazy evaluation) Map/apply function `f` to each array element and write the result to file `out`.
  */
 template<typename T>
 void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, std::ofstream& out) {
@@ -286,11 +287,32 @@ void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, s
 }
 
 template<typename T>
+void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
+  // TODO partially unroll loop, i.e. for (i;;i+=8) { for (;j<8;) { copy(j, j + 64, ) } }
+  std::ostream_iterator<unsigned char> out_iterator (out, "");
+  for (size_t i = 0; i < x.size(); ++i) {
+    const double b = cuCabs(x[i]);
+    // interpret data as bytes
+    const unsigned char *a = (unsigned char *) &b;
+    // std::copy( x, &x[4], out_it );
+    std::copy( a, &a[sizeof(double)], out_iterator );
+    /* std::copy( a, a + sizeof(WTYPE), out_iterator ); */
+  }
+}
+
+template<typename T>
 void write_array(std::vector<T> &x, const char sep, std::ofstream& out) {
   // TODO optimize
   out << x[0];
   for (size_t i = 1; i < x.size(); ++i)
     out << sep << x[i];
+}
+
+template<typename T>
+void write_bytes(std::vector<T> &x, std::ofstream& out) {
+  std::ostream_iterator<unsigned char> out_iterator (out, "");
+  const unsigned char *a = (unsigned char *) &x[0];
+  std::copy( a, &a[sizeof(double) * x.size()], out_iterator );
 }
 
 void write_complex_array(std::vector<WTYPE> &x, const char sep, std::ofstream& out) {
@@ -361,19 +383,23 @@ void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
   /* out << std::setprecision(IO_PRECISION); */
   /* write_complex_array(x, ',', out); */
 
-  out << std::scientific; // to allow e.g. 1.0e-50
+  /* out << std::scientific; // to allow e.g. 1.0e-50 */
+  out << std::fixed;
   out << std::setprecision(IO_PRECISION);
 
   out.open(dir + k1 + "_amp.dat", std::ofstream::binary);
-  map_to_and_write_array(x, cuCabs, ',', out);
+  /* map_to_and_write_array(x, cuCabs, ',', out); */
+  map_to_and_write_bytes(x, cuCabs, out);
   out.close();
 
   out.open(dir + k1 + "_phase.dat", std::ofstream::binary);
-  map_to_and_write_array(x, angle, ',', out);
+  /* map_to_and_write_array(x, angle, ',', out); */
+  map_to_and_write_bytes(x, angle, out);
   out.close();
 
   out.open(dir + k2 + ".dat", std::ofstream::binary);
-  write_array(u, ',', out);
+  /* write_array(u, ',', out); */
+  write_bytes(u, out);
   out.close();
 }
 
