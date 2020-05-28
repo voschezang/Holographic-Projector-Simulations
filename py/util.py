@@ -2,19 +2,20 @@ import numpy as np
 import sys
 import os
 # import struct
-import functools
+# import functools
+import itertools
 import json
 import zipfile
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import scipy.optimize
 import scipy.linalg
-import scipy.fftpack as spfft
+# import scipy.fftpack as spfft
 # import scipy.ndimage as spimg
-from scipy.spatial.transform import Rotation as R
+# from scipy.spatial.transform import Rotation as R
 # import cvxpy as cvx
 import halton
 from numba import jit
-from typing import Tuple, Union
+from typing import Tuple
 from multiprocessing import Pool
 from itertools import repeat
 
@@ -746,18 +747,23 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
     return data
 
 
-def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
-               unique_keys='xyuv') -> {}:
-    params = []
+def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out') -> Tuple[dict, dict]:
+    """ Returns two tuples params and data """
+    # TODO use better datastructure
+    params = {k: [] for k in 'xyzuvw'}
     data = {k: [] for k in 'xyzuvw'}
     with zipfile.ZipFile(os.path.join(dir, zipfilename)) as z:
         filename = prefix + '.json'
         with z.open(filename, 'r') as f:
             for line in f:
                 if line:
-                    params.append(json.loads(line))
+                    p = json.loads(line)
+                    k = p['phasor'][:1]
+                    assert k in 'xyz'
+                    params[k].append(p)
+                    # params.append(json.loads(line))
 
-        for i, p in enumerate(params):
+        for i, p in enumerate(itertools.chain.from_iterable(params.values())):
             print(i, p)
             # TODO try read, if fail then clear params[i]
             k1 = p['phasor'][:1]
@@ -777,8 +783,5 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
                 print(f'Warning, missing data for keys: {k1}, {k2}')
                 print(e)
                 p['len'] = 0
-
-    for k in unique_keys:
-        data[k] = data[k][0]
 
     return params, data

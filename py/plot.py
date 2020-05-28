@@ -89,6 +89,7 @@ def hist_2d_multiple(phasor, pos, title='', filename=None, ybins=100, ratio=1.,
     xbins, ybins : horizontal and vertical bins (respectively) and relate to
     the plot/image; not to the phasor.
     """
+    assert ratio != 0
     Nx, Ny = util.solve_xy_is_a(pos.shape[0], ratio)
     ybins = util.find_nearest_denominator(Ny, ybins, bin_threshold)
     if Nx == Ny:
@@ -254,6 +255,7 @@ def save_fig(filename, ext='pdf', dpi='figure',
     # plt.axis('off') # this only affects the current subplot
     plt.savefig(f'{IMG_DIR}/{filename}.{ext}', dpi=dpi, transparent=True,
                 interpolation=interpolation, bbox_inches=bbox_inches)
+    plt.close()
 
 
 ###############################################################################

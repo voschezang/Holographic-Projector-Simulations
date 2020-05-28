@@ -15,7 +15,7 @@ def run():
 
 
 if __name__ == '__main__':
-    n_z_plots = 3
+    n_z_plots = 10
     if util.get_flag("-r") or util.get_flag("--rerun"):
         out = run()
 
@@ -28,32 +28,13 @@ if __name__ == '__main__':
     size = os.path.getsize(os.path.join(dir, fn))
     print(f'Input file size: {size * 1e-6:0.5f} MB')
     if size > 1e6:
-        print(f'WARNING, file too large: {size*1e-6:0.4f} MB')
+        print(f'Warning, file too large: {size*1e-6:0.4f} MB')
 
     params, data = util.parse_file(dir, fn, 'out')
+    print('uu', data['u'])
 
-    # if util.get_flag("-scatter"):
-    #     plot.matrix_multiple(data['x'], 'x', filename='x')
-    #     # plot.scatter_multiple(data['x'], data['u'], 'x', filename='x')
-    #     plot.scatter_multiple(data['y'], data['v'], 'y', filename='y', s=1)
-    #     k = 'z'
-    #     if k in data.keys():
-    #         plot.scatter_multiple(data['z'], data['w'], k, filename=k)
-    # else:
-    #     plot.matrix_multiple(data['x'], 'x', filename='x')
-    #     plot.matrix_multiple(data['y'], 'y', filename='y')
-    #
-    #     k = 'z'
-    #     if k in data.keys():
-    #         plot.matrix_multiple(data[k], k, filename=k)
-
-    # n = 100
-    # plot.scatter_multiple(data['x'][:n], data['u'][:n],
-    #                       'x', filename='x-scatter-sub', s=1)
-
-    # plot subset
-    N = data['y'].shape[0]
-    ratio = 1920. / 1080. if params[1]['hd'] else 1.
+    N = data['y'][0].shape[0]
+    ratio = 1920. / 1080. if params['y'][0]['hd'] else 1.
     Nx, Ny = util.solve_xy_is_a(N, ratio)
     Nxy = Nx * Ny
     for k in 'yv':
@@ -65,56 +46,57 @@ if __name__ == '__main__':
     N_sqrt = int(np.sqrt(N))
     print(f'N sqrt (y): {N_sqrt}')
 
+    i = 0
     bins = min(1080, Ny)
     print(f'bw plots ({bins}/1080 ybins)')
     print('y,v pos ranges:',
-          f"{data['v'][:, 0].max() - data['v'][:, 0].min():.4E}",
-          f"{data['v'][:, 1].max() - data['v'][:, 1].min():.4E}")
-    plot.hist_2d_hd(data['y'], data['v'],
-                    cmap='gray', filename='y-hist2d', ybins=bins, ratio=ratio)
+          f"{data['v'][i][:, 0].max() - data['v'][i][:, 0].min():.4E}",
+          f"{data['v'][i][:, 1].max() - data['v'][i][:, 1].min():.4E}")
+    plot.hist_2d_hd(data['y'][i], data['v'][i],
+                    cmap='gray', filename=f'y-hist2d', ybins=bins, ratio=ratio)
 
-    plot.hist_2d_hd(data['y'], data['v'],
-                    cmap='gray', filename='y-hist2d-lo', ybins=bins / 4, ratio=ratio)
+    plot.hist_2d_hd(data['y'][i], data['v'][i],
+                    cmap='gray', filename=f'y-hist2d-lo', ybins=bins / 4,
+                    ratio=ratio)
 
     print('sample scatters')
     n = int(1e4)
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
-    plot.scatter_multiple(data['x'][:n], data['u'][:n],
-                          f"x (offset: {params[0]['z_offset']} m)",
-                          filename='x-scatter-sub')
+    for i in range(len(data['x'])):
+        title = f"$x_{{{i}}}$ (offset: {params['x'][i]['z_offset']} m)"
+        plot.scatter_multiple(data['x'][i][:n], data['u'][i][:n],
+                              title, filename=f'x-scatter-sub-{i}')
 
-    indices = np.random.randint(0, Nxy, n)
-    plot.scatter_multiple(data['y'][indices], data['v'][indices],
-                          f"y (offset: {params[1]['z_offset']} m)",
-                          filename='y-scatter-sub', s=1)
+    for i in range(len(data['y'])):
+        indices = np.random.randint(0, Nxy, n)
+        title = f"$y_{{{i}}}$ (offset: {params['y'][i]['z_offset']} m)"
+        plot.scatter_multiple(data['y'][i][indices], data['v'][i][indices],
+                              title, filename=f'y-scatter-sub-{i}', s=1)
 
-    for i in range(min(n_z_plots, len(data['z']))):
-        N = data['z'][i].shape[0]
-        N_sqrt = np.sqrt(N).astype(int)
-        print(f'N sqrt (z_{i}): {N_sqrt}')
-        indices = np.random.randint(0, N, n)
-        title = f"$z_{i}$ (offset: {params[2]['z_offset']} m)"
-        plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
-                              title, filename=f'z-scatter-sub-{i}', s=1)
-
-    # gridsize = round(max(25, N / 5e2))
-    # bins = int(round(N_sqrt / 2))
-    # print(f'hexbin: N^2: {n}, grid: {gridsize}')
-    # plot.hexbin_multiple(data['y'], data['v'], 'y',
-    #                      filename=f'y-hexbin', bins=bins)
-    # # plot.hexbin_multiple(data['z'][indices], data['w'][indices], 'z',
-    # #                      filename=f'z-hexbin', gridsize=gridsize)
-
-    plot.hist_2d_multiple(data['y'], data['v'],
-                          f"y (offset: {params[1]['z_offset']} m)",
-                          filename='y-hist2d', ybins=bins / 2, ratio=ratio)
+    for i in range(len(data['y'])):
+        title = f"$y_{{{i}}}$ (offset: {params['y'][i]['z_offset']} m)"
+        plot.hist_2d_multiple(data['y'][i], data['v'][i], title,
+                              filename=f'y-hist2d-{i}', ybins=bins / 2,
+                              ratio=ratio)
 
     bins = int(min(N_sqrt, 1000))
     for i in range(min(n_z_plots, len(data['z']))):
-        title = f"$z_{i}$ (offset: {params[2]['z_offset']} m)"
+        major = i // len(data['x'])
+        minor = i % len(data['x'])
+        title = f"$z_{{({major})}} ^ {{({minor})}}$ " + \
+            f"(offset: {params['z'][i]['z_offset']} m)"
+
+        N = data['z'][i].shape[0]
+        N_sqrt = np.sqrt(N).astype(int)
+        indices = np.random.randint(0, N, n)
+        fn = f'z-scatter-sub-{major}-{minor}'
+        plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
+                              title, filename=fn, s=1)
+
+        fn = f'z-hist2d-{major}-{minor}'
         plot.hist_2d_multiple(data['z'][i], data['w'][i], title,
-                              filename=f'z-hist2d-{i}', ybins=bins,
+                              filename=fn, ybins=bins,
                               ratio=1.)
 
     # animate.multiple(data['z'], data['w'], prefix='z-ani', bins=bins,
-    #                  offsets=[p['z_offset'] for p in params[2:]])
+    #                  offsets=[p['z_offset'] for p in params['z']])
