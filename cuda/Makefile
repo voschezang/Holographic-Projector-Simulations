@@ -1,4 +1,5 @@
-C := nvcc # e.g. /usr/local/cuda-10.2/bin/nvcc
+# full abs path is required for ssh
+C := /usr/local/cuda-10.2/bin/nvcc
 EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
