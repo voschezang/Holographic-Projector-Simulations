@@ -2,6 +2,7 @@
 #define ALGEBRA
 
 #include <stdlib.h>
+#include <limits.h>
 #include <numeric>
 
 /**
@@ -46,6 +47,7 @@ inline double variance(std::vector<T> x) {
 
 std::vector<int> range(size_t len) {
   // similar to numpy.arrange
+  assert(len < INT_MAX);
   auto values = std::vector<int>(len);
   std::iota(values.begin(), values.end(), 0);
   return values;

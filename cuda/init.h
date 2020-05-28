@@ -37,43 +37,45 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-Params params(const Variable var, const size_t n_planes, const bool hd) {
+Params params(const Variable var, const size_t n_z_planes, const bool hd) {
   // TODO allow multiple x planes
-  const double z_offset = 0.2; // 0.1 gives fresnel zone plate pttn, but lab setup is 0.4
+  const double z_offset = 0.4; // 0.1 gives fresnel zone plate pttn, but lab setup is 0.4
   /* const bool randomize = true; */
   const bool randomize = false;
   auto projections = std::vector<Plane>{};
+
   const double width = 1.344e-3; // = 1920 x 7e-6
   /* const double width = 5e-4; */
+
   // Note that the projection params slightly differ from the projector params
-  for (auto& i : range(n_planes))
+  for (auto& i : range(n_z_planes))
     projections.push_back({name: 'z', width: width * 4, z_offset: 0.0, randomize: randomize, hd: false});
 
-  // Setup the independent variable for the experiment
-  if (n_planes > 1) {
+  if (n_z_planes > 1) {
     if (var == Variable::Offset) {
       const double delta = 0.01;
-      auto values = linspace(n_planes, 0.0, delta * n_planes);
-      for (auto& i : range(n_planes))
+      auto values = linspace(n_z_planes, 0.0, delta * n_z_planes);
+      for (auto& i : range(n_z_planes))
         projections[i].z_offset = values[i];
     }
     else if (var == Variable::Width) {
       // TODO logspace/geomspace
-      if (n_planes <= 4) {
-        auto values = linspace(n_planes, width * 1.5, width * n_planes * n_planes);
-        for (auto& i : range(n_planes))
+      if (n_z_planes <= 4) {
+        auto values = linspace(n_z_planes, width * 1.5, width * n_z_planes * n_z_planes);
+        for (auto& i : range(n_z_planes))
           projections[i].width = values[i];
       } else {
-        auto values = logspace(n_planes, -1, -4.5);
-        for (auto& i : range(n_planes))
+        auto values = logspace(n_z_planes, -1, -4.5);
+        for (auto& i : range(n_z_planes))
           projections[i].width = values[i];
       }
     }
   }
 
+  // TODO use width var for x width
   return
-    {   input       : {name: 'x', width: 5e-3, z_offset : 0.0,
-          randomize : randomize, hd: false},
+    {   input       : {name: 'x', width: 5e-3, z_offset: 0.0,
+          randomize: randomize, hd: false},
         projector   : {name: 'y', width: width, z_offset : z_offset,
           randomize : randomize, hd: hd},
         projections : projections};
@@ -199,19 +201,24 @@ std::vector<STYPE> plane(size_t n, Plane p) {
   return v;
 }
 
-std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
+std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width, double rel_x_offset) {
   // each plane x,u y,v z,w is a set of points in 3d space
   /* const double dS = width * SCALE / (double) N_sqrt; // actually dS^(1/DIMS) */
   /* const double offset = 0.5 * width; */
+  const double x_offset = rel_x_offset * width;
   auto u = std::vector<STYPE>(n * DIMS, 0.0);
   assert(n != 0);
-  if (n == 1) return u;
+  if (n == 1) {
+    u[0] = x_offset / 4.;
+    u[1] = x_offset;
+    return u;
+  }
 
   switch (shape) {
   case Shape::Line: {
     // Distribute datapoints over a line
     auto
-      du = width / (double) n, // TODO use SCALE?
+      du = width / (double) (n-1), // TODO use SCALE?
       half_width = width / 2.0;
 
     for (unsigned int i = 0; i < n; ++i)
@@ -222,7 +229,7 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
   case Shape::Cross: {
     const size_t half_n = n / 2;
     const auto
-      du = width * width / (double) n, // TODO use SCALE?
+      du = width * width / (double) (n-1), // TODO use SCALE?
       half_width = width / 2.0;
 
     // if n is even, skip the center
@@ -251,7 +258,8 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
     auto
       radius = width / 2.0,
       /* circumference = TWO_PI * pow(radius, 2), */
-      d_phase = TWO_PI / (double) (n-1),
+      /* don't include end; divide by n */
+      d_phase = TWO_PI / (double) n,
       arbitrary_offset = 0.1125;
 
     // TODO randomize slightly?
@@ -263,6 +271,15 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width) {
     break;
   }
   }
+
+  if (rel_x_offset != 0) {
+    const double x_offset = rel_x_offset * width;
+    for (unsigned int i = 0; i < n; ++i) {
+      u[i * DIMS + 0] += x_offset / 4.;
+      u[i * DIMS + 1] += x_offset;
+    }
+  }
+
   return u;
 }
 

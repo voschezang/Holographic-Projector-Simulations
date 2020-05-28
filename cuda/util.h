@@ -60,6 +60,7 @@ struct Plane {
 /* Plane() : width(1), z_offset(0), randomize(false) {}; */
   char name;
   double width;
+  /* double offset[DIMS]; // TODO */
   double z_offset;
   bool randomize;
   bool hd; // TODO
@@ -69,8 +70,9 @@ struct Plane {
 struct Params {
   // Simulation parameters, used to init plane distributions
   Plane input; // ground truth
+  /* std::vector<Plane> inputs; // ground truth */
   Plane projector;
-  std::vector<Plane> projections;
+  std::vector<Plane> projections; // approximation of input
   /* Geometry g; */
 };
 
@@ -187,6 +189,7 @@ void print_result(std::vector<double> dt, size_t n, size_t m) {
   printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
          flops(mu, n, m), FLOP_PER_POINT);
   // TODO correct bandwidth datasize
+  // TODO multiply dt.size() with n,m inside func instead of outside?
   printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(mu, n, m, false));
   printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(mu, n, m, true));
   if (dt.size() > 1)
@@ -262,7 +265,6 @@ void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, s
 
 template<typename T>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
-  // use buffer for large arrays to allow vectorization of inner loop
   const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
   double buffer[buffer_size];
 
@@ -272,6 +274,7 @@ void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& ou
   auto iter = std::ostream_iterator<unsigned char>(out, "");
 
   for (size_t i = 0; i < x.size(); i+=buffer_size) {
+    // split inner loop to allow vectorization
     for (size_t j = 0; j < buffer_size; ++j) {
       buffer[j] = f(x[i+j]);
     }
@@ -344,15 +347,17 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
 
 template <FileType type>
 void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
-                  std::string k1, std::string k2, bool overwrite, Plane p) {
+                  std::string k1, std::string k2, Plane p) {
   if (type != FileType::TXT) return;
-  // TODO use local static instead of overwrite bool
+  static bool overwrite = true;
+  std::cout << "overwrite: " << overwrite << '\n';
   if (overwrite)
     print("Save results as txt");
 
   auto dir = std::string{"../tmp/"};
   auto mode = overwrite ? std::ofstream::binary : std::ofstream::app;
   std::ofstream out;
+
   out.open(dir + "out.json", mode);
   write_metadata(k1, k2, p, x.size(), out);
   out.close();
@@ -375,6 +380,7 @@ void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
   /* write_array(u, ',', out); */
   write_bytes(u, out);
   out.close();
+  overwrite = false;
 }
 
 double diff(struct timespec t0, struct timespec t1) {

@@ -24,7 +24,7 @@ run:
 
 zip:
 	rm -f $(ZIP)
-	cd $(DIR) && zip $(ZIP) out.json $(REL_OUTPUT_FILES)
+	cd $(DIR) && zip -v $(ZIP) out.json $(REL_OUTPUT_FILES)
 
 cleanup-output:
 	rm -rf $(DIR)/$(REL_OUTPUT_FILES)
