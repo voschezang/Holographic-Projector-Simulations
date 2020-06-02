@@ -4,6 +4,18 @@ from util import *
 
 
 class Test(unittest.TestCase):
+    def test_pendulum(self):
+        def f(*args): return list(pendulum(*args))
+        args = (3,)
+        assert f(*args) == [0, 1, 2, 1, 0], f"f{(*args,)}: {f(*args)}"
+
+    def test_pendulum_range(self):
+        def f(*args): return list(pendulum_range(*args))
+        args = (0, 2, 1)
+        assert f(*args) == [0, 1, 0], f"f{(*args,)}: {f(*args)}"
+        args = (3, 0, -1)
+        assert f(*args) == [3, 2, 1, 2, 3], f"f{(*args,)}: {f(*args)}"
+
     def test_find_nearest_denominator(self):
         for n, x, M in [(2, 1.1, 1),
                         (2, 1.9, 2),
@@ -29,9 +41,9 @@ class Test(unittest.TestCase):
                                    (11, 2, 0.01, 1),
                                    (11, 6, 0.091, 5)]:
             res = find_nearest_denominator(n, x, threshold)
-            assert res == M,  \
-                {'n': n, 'x': x, 'M': M, 'm': res,
-                 'n % M': n % M, 'n % m': n % res, 'threshold': threshold}
+            assert res == M, {'n': n, 'x': x, 'M': M, 'm': res,
+                              'n % M': n % M, 'n % m': n % res,
+                              'threshold': threshold}
 
 
 if __name__ == '__main__':

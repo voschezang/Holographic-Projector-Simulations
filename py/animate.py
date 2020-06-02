@@ -9,21 +9,25 @@ import util
 from util import DIMS
 
 
-def single(X, U, plot_func, matrix_func, color_func, title='', filename=None,
-           fps=20, upsampling=10, repetitions=1, offsets=[],  **matrix_func_args):
+def single(X, U, matrix_func, color_func,
+           title='', filename=None, fps=20, upsampling=10, repetitions=1,
+           offsets=[], plot_kwargs={}, **matrix_func_kwargs):
     # sample_rate = number of samples per wave cycle
     # T = 1/f
     dt = 1e3 / fps * 10
 
     assert(len(X) == len(U))
-    if 'cmap' not in matrix_func_args:
+    if 'cmap' not in matrix_func_kwargs:
         global cmap
-        matrix_func_args['cmap'] = cmap
+        matrix_func_kwargs['cmap'] = cmap
 
-    cmap = matrix_func_args['cmap']
-    fig, ax, im = plot_func(
-        matrix_func(X[0], U[0], color_func, **matrix_func_args),
-        cmap=cmap)
+    cmap = matrix_func_kwargs['cmap']
+    fig, ax, im = plot_matrix(
+        matrix_func(X[0], U[0], color_func, **matrix_func_kwargs),
+        cmap=cmap, **plot_kwargs)
+
+    # force aspect ratio
+    ax.set_aspect(1.0 / ax.get_data_ratio() / (1920 / 1080))
 
     if offsets:
         ax.set_title(f'z (offset: {offsets[0]} m)')
@@ -37,7 +41,7 @@ def single(X, U, plot_func, matrix_func, color_func, title='', filename=None,
             im.set_array(matrix_func(
                 X[i], U[i],
                 color_func,
-                **matrix_func_args))
+                **matrix_func_kwargs))
 
         return im,
 
@@ -50,6 +54,7 @@ def single(X, U, plot_func, matrix_func, color_func, title='', filename=None,
     if filename is not None:
         # Save a copy of the object
         # (saving may affect the video playback in jupyter)
+        # , bitrate=256
         ani.save(f'{IMG_DIR}/{filename}.mp4',
                  fps=fps, extra_args=['-vcodec', 'libx264'])
 
@@ -58,33 +63,61 @@ def single(X, U, plot_func, matrix_func, color_func, title='', filename=None,
     # return HTML(ani.to_html5_video())
 
 
-def multiple(X: list, U: list, prefix='', bins=100, offsets=[]):
+def multiple(X: list, U: list, prefix='',
+             matrix_func=None, **kwargs):
+    # TODO simplify interface
     titles = ['Amplitude', 'Phase', 'Irradiance']
     color_funcs = [lambda x: x[:, 0],
                    lambda x: x[:, 1],
                    lambda x: util.irradiance(util.to_polar(*x.T))]
     cmaps = [plot.cmap, plot.cyclic_cmap, plot.cmap]
+    if matrix_func is None:
+        matrix_func = histogram
+
     for i in range(2):
-        single(X, U, plot_func=heatmap, matrix_func=histogram,
-               color_func=color_funcs[i], title=titles[i],
-               filename=f'{prefix}-{titles[i]}', bins=bins, cmap=cmaps[i],
-               offsets=offsets)
+        Xi = [x[:, i] for x in X]
+        single(Xi, U, matrix_func, color_func=color_funcs[i],
+               title=titles[i], filename=f'{prefix}-{titles[i]}',
+               cmap=cmaps[i],  **kwargs)
+
+
+def multiple_hd(ratio, *args, **kwargs):
+    multiple(*args, matrix_func=plot.hist_2d_hd,
+             plot_kwargs={'markup': False, 'ratio': ratio},
+             **kwargs)
 
 ###############################################################################
 # Helper functions
 ###############################################################################
 
 
-def heatmap(h: np.ndarray, title='z', **kwargs):
-    fig = plt.figure(figsize=(5, 4))
+def plot_matrix(h: np.ndarray, title='z', fig=None, markup=True, ratio=None,
+                **kwargs):
+    if fig is None:
+        fig = plt.figure(figsize=(5, 4))
+
+    print('plot_matrix', h.shape, markup, ratio)
+
     ax = plt.gca()
     im = plt.imshow(h, origin='lower', **kwargs)
-    plot.scatter_markup(ax)
-    # TODO print z-offset
+    if markup:
+        plot.markup(ax)
+        # TODO print z-offset
+    else:
+        # fullscreen mode
+        plt.axis('off')
+        plt.subplots_adjust(top=1, bottom=0, right=1, left=0,
+                            hspace=0, wspace=0)
+
+    if ratio is not None:
+        # force aspect ratio
+        ax.set_aspect(1.0 / ax.get_data_ratio() / ratio)
+
     return fig, ax, im
 
 
 def histogram(x, u, color_func, **kwargs) -> np.ndarray:
+    # matrix func
     # Returns a histogram matrix
     colors = color_func(x)
     assert(u[:, 0].size == colors.size)
