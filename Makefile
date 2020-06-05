@@ -20,6 +20,9 @@ run:
 plot:
 	make -C py plot
 
+animate:
+	make -C py animate
+
 init:
 	make -C py init
 
@@ -27,6 +30,8 @@ remote-run:
 	sh remote_run.sh
 
 remote-run-plot:
+	# TODO check if remote dir is mounted; check if dir exists and is nonempty
+	# if [ ! -d "$(MNT_DIR)" ]; then echo "Remote dir is not mounted" ; exit 1; fi
 	make remote-run plot
 
 ssh:

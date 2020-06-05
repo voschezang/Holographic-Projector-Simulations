@@ -346,9 +346,9 @@ def matrix_multiple(y, title='y', prefix='', m=2, HD=0, filename=None, **kwargs)
         # matrix(a * np.cos(phi), '%s (a*)' % prefix)
         matrix(irradiance(to_polar(a, phi), normalize=0), '%s I' %
                prefix, fig=fig, **kwargs)
-        plt.subplot(m, n_subplots // m, 6)
-        matrix(a * np.cos(phi * 2 * np.pi), r'%s A cos $\phi$' %
-               prefix, fig=fig, **kwargs)
+        # plt.subplot(m, n_subplots // m, 6)
+        # matrix(a * np.cos(phi * 2 * np.pi), r'%s A cos $\phi$' %
+        #        prefix, fig=fig, **kwargs)
         # matrix(a, '%s A cos phi' % prefix, fig=fig, **kwargs)
         # matrix(np.cos(phi * np.pi), '%s A cos phi' % prefix, fig=fig, **kwargs)
 

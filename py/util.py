@@ -157,11 +157,13 @@ def HD_sample_grid(width=1, z_offset=0, scale=0.1, center=1, rotate_axis=None, d
 @jit(nopython=True)
 def to_polar(a: np.ndarray, phi: np.ndarray):
     # Convert polar coordinates (a,phi) to complex number
+    # TODO rename from_polar
     return a * np.exp(phi * 1j)
 
 
 @jit(nopython=True)
 def from_polar(c: np.ndarray, distance: int = 1):
+    # TODO rename to_polar
     # Extract polar coordinates from complex number c
     # polar \in C \to (amplitude, phase)
     # sum wave superposition components
@@ -240,8 +242,11 @@ def sum_kernel(x, w, v, direction=1, weighted=0, plane_wave_intensity=0):
 
     c = np.sum(f(x[:, 0], x[:, 1], w, v,
                  direction=direction, weighted=weighted))
-    if c > 0:
-        c += f(plane_wave_intensity, 0, 0, np.ones(3).reshape(1, -1))
+    # TODO why if c > 0 ?
+    # if c > 0:
+    #     c += f(plane_wave_intensity, 0, 0, np.ones(3).reshape(1, -1))
+    if abs(plane_wave_intensity) > 0:
+        c += plane_wave_intensity + 0j
     return c
 
 

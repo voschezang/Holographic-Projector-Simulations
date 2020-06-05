@@ -64,51 +64,60 @@ if __name__ == '__main__':
     for i, j in enumerate(util.pendulum(len(data['y']))):
         amp = data['y'][j][:, 0]
         # print(i, amp.mean(), amp[0])
-        plot.hist_2d_hd(amp, data['v'][j],
+        plot.hist_2d_hd(amp ** 2, data['v'][j],
                         filename=f'{sequence_dir}y/{i:06}', ybins=bins,
                         ratio=ratio, verbose=0)
 
     print('sample scatters')
-    n = int(1e4)
+    n = int(5e3)
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
     m = len(data['x'])
     args = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
     for i in range(*args):
-        title = f"$x_{{{i}}}$ (offset: {params['x'][i]['z_offset']} m)"
+        title = f"$x_{{{i}}}$ (offset: {params['x'][i]['z_offset']:04f} m)"
         plot.scatter_multiple(data['x'][i][:n], data['u'][i][:n],
                               title, filename=f'x-scatter-sub-{i}')
 
-    for i in range(*args):
         indices = np.random.randint(0, Nxy, n)
-        title = f"$y_{{{i}}}$ (offset: {params['y'][i]['z_offset']} m)"
         plot.scatter_multiple(data['y'][i][indices], data['v'][i][indices],
                               title, filename=f'y-scatter-sub-{i}', s=1)
 
-    for i in range(*args):
-        title = f"$y_{{{i}}}$ (offset: {params['y'][i]['z_offset']} m)"
-        plot.hist_2d_multiple(data['y'][i], data['v'][i], title,
-                              filename=f'y-hist2d-{i}', ybins=bins / 2,
-                              ratio=ratio)
+        plot.hist_2d_multiple(data['y'][i], data['v'][i],
+                              title, filename=f'y-hist2d-{i}',
+                              ybins=bins / 2, ratio=ratio)
 
-    #
-    # bins = int(min(N_sqrt, 1000))
+    bins = int(min(N_sqrt, 1000))
+    n_z_per_y = len(data['z']) // len(data['y'])
     # for i in range(min(n_z_plots, len(data['z']))):
     #     major = i // len(data['x'])
     #     minor = i % len(data['x'])
-    #     title = f"$z_{{({major})}} ^ {{({minor})}}$ " + \
-    #         f"(offset: {params['z'][i]['z_offset']} m)"
-    #
-    #     N = data['z'][i].shape[0]
-    #     N_sqrt = np.sqrt(N).astype(int)
-    #     indices = np.random.randint(0, N, n)
-    #     fn = f'z-scatter-sub-{major}-{minor}'
-    #     plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
-    #                           title, filename=fn, s=1)
-    #
-    #     fn = f'z-hist2d-{major}-{minor}'
-    #     plot.hist_2d_multiple(data['z'][i], data['w'][i], title,
-    #                           filename=fn, ybins=bins,
-    #                           ratio=1.)
+    for major in range(*args):
+        for minor in range(n_z_per_y):
+            i = major * n_z_per_y + minor
+            title = f"$z_{{{major}, {minor}}}$ " + \
+                f"(offset: {params['z'][i]['z_offset']:04f} m)"
+
+            N = data['z'][i].shape[0]
+            N_sqrt = np.sqrt(N).astype(int)
+            indices = np.random.randint(0, N, n)
+            fn = f'z-scatter-sub-{major}-{minor}'
+            plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
+                                  title, filename=fn, s=1)
+
+            fn = f'z-hist2d-{major}-{minor}'
+            plot.hist_2d_multiple(data['z'][i], data['w'][i], title,
+                                  filename=fn, ybins=bins,
+                                  ratio=1.)
+
+    bins = int(min(N_sqrt, 1000))
+    minors = list(util.pendulum(n_z_per_y))
+    for major in range(len(data['y'])):
+        for i, minor in enumerate(minors):
+            j = major * len(minors) + minor
+            amp = data['z'][j][:, 0]
+            plot.hist_2d_hd(amp ** 2, data['w'][j],
+                            filename=f'{sequence_dir}z/{i:06}', ybins=bins,
+                            ratio=1., verbose=0)
 
     # print('animation')
     # bins = min(1080, Ny)
