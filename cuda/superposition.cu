@@ -25,6 +25,7 @@ enum class Direction {Forward, Backward};
 //   else return double{-1.0};
 // }
 
+
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 namespace superposition {
@@ -48,9 +49,9 @@ inline __device__ WTYPE single(const size_t i, const size_t j,
   // TODO __ddiv_rd, __dmul_ru
 
   if (direction == Direction::Forward)
-    return polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
+    return from_polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
   else
-    return polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
+    return from_polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
 }
 
 template<Direction direction, bool add_constant_source>
@@ -80,7 +81,7 @@ inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
   // assume threadIdx.x is a runtime constant
   if (add_constant_source)
     if (blockDim.x >= KERNEL_SIZE && idx < KERNEL_SIZE)
-      y_local[idx] = polar(1, ARBITRARY_PHASE);
+      y_local[idx] = from_polar(1., ARBITRARY_PHASE);
 
   // for each y-datapoint in current batch
   // outer loop for batch, inner loop for index is faster than vice versa

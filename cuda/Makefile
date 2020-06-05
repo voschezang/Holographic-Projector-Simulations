@@ -4,7 +4,7 @@ EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
-HyperParams = KERNEL_SIZE='2'
+HyperParams := KERNEL_SIZE='8'
 # TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE)
 
@@ -13,6 +13,10 @@ build:
 	#  -ftz=true -prec-div=false -prec-sqrt=false
 	# TODO check -O2 vs. -O3 performance
 	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams)
+
+debug:
+	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams) -g
+	make run
 
 build-run:
 	make build && make run
@@ -24,7 +28,7 @@ run:
 
 zip:
 	rm -f $(ZIP)
-	cd $(DIR) && zip -v $(ZIP) out.json $(REL_OUTPUT_FILES)
+	cd $(DIR) && zip -v $(ZIP) out.json $(REL_OUTPUT_FILES) &> /dev/null
 
 cleanup-output:
 	rm -rf $(DIR)/$(REL_OUTPUT_FILES)

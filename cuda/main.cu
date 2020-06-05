@@ -31,23 +31,26 @@
 
 
 int main() {
-  const struct {size_t x,y,z;} n = {x: 2,
+  const struct {size_t x,y,z;} n = {x: 1,
                                     y: N_sqrt * N_sqrt,
-                                    z: N_sqrt * N_sqrt};
+                                    // z: N_sqrt * N_sqrt};
+                                    z: 256};
   // TODO add cmd line args
+  // TODO struct n_planes .x .y. z
   const size_t
-    n_x_planes = 3,
-    n_z_planes = 3;
+    n_x_planes = 1,
+    n_z_planes = 6;
 
-  // const bool hd = false;
-  const bool hd = true;
+  const bool hd = false;
+  // const bool hd = true;
   // const auto shape = Shape::DottedCircle;
-  const auto shape = Shape::Line;
-  const Params params = init::params(Variable::Width, n_z_planes, hd);
+  const auto shape = Shape::Circle;
+  Params params = init::params(Variable::Offset, n_z_planes, hd);
   const Geometry p = init::geometry(n.y);
   // const double mean_amplitude = params.projector.z_offset / (double) n.x;
   const double mean_amplitude = 1.;
   print_info(p, n.x, n.y, n.z);
+
   struct timespec t0, t1, t2;
   // auto dt = std::vector<double>(n_x_planes * n_z_planes); // TODO
   auto dt = std::vector<double>(n_z_planes);
@@ -59,7 +62,8 @@ int main() {
   // s.t. sum of irradiance/power/amp is 1
   // i.e. n A/d = 1
   // TODO make this optimization optional, as it introduces some error
-  auto x = std::vector<WTYPE>(n.x, {mean_amplitude, 0.0});
+  from_polar(mean_amplitude, 0.51);
+  auto x = std::vector<WTYPE>(n.x, from_polar(mean_amplitude, 0.0));
   auto v = init::plane(n.y, params.projector);
 
   summarize_double('v', v); // TODO edit in case hd == true
@@ -67,10 +71,13 @@ int main() {
   printf("Runtime init: \t%0.3f\n", diff(t0, t1));
   cudaProfilerStart();
 
-  auto offsets = linspace(n_x_planes, 0, 0.6);
+  // change offset in first dim
+  // note that x,z now correspond to the spatial dims
+  auto x_offsets = linspace(n_x_planes, 0., 0.);
+  auto z_offsets = geomspace(n_x_planes, 0.4, 0.1);
   for (auto& i : range(n_x_planes)) {
-    // change offset in first dim
-    auto u = init::sparse_plane(x.size(), shape, params.input.width, offsets[i]);
+    printf("x plane #%i\n", i);
+    auto u = init::sparse_plane(x.size(), shape, params.input.width, x_offsets[i]);
 
     if (i == 0)
       summarize_double('u', u);
@@ -82,17 +89,22 @@ int main() {
     // The projector distribution is obtained by doing a single backwards transformation
     // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
 
+
+    params.projector.z_offset = z_offsets[i];
+    v = init::plane(n.y, params.projector);
+
     // dt[0] will be overwritten
     auto y = time_transform<Direction::Backward, true>(x, u, v, p, &t1, &t2, &dt[0], true);
     check_cvector(y);
     if (i == 0)
       summarize_c('y', y);
 
-    write_arrays<FileType::TXT>(y, v, "y", "v", params.projector);
+    write_arrays<FileType::TXT>(y, v, "y" + x_suffix, "v" + x_suffix, params.projector);
 
     // The projection distributions at various locations are obtained using forward transformations
+    auto p = init::geometry(n.z);
     for (auto& j : range(params.projections.size())) {
-      auto p = init::geometry(n.z);
+      printf(" z plane #%i\n", j);
       auto w = init::plane(n.z, params.projections[j]);
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WTYPE>(n.z);
@@ -106,7 +118,7 @@ int main() {
       write_arrays<FileType::TXT>(z, w, "z" + z_suffix, "w" + z_suffix, params.projections[j]);
     }
 
-    print_result(dt, n_z_planes * y.size(), n_z_planes * n.z);
+    print_result(dt, y.size(), n.z);
   }
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   printf("done\n");

@@ -105,6 +105,10 @@ struct Params {
 /*   n_streams = n; */
 /* } */
 
+/* WTYPE from_polar(double amp, double phase) { */
+/*   if (phase == 0.0) return {amp, 0.0}; */
+/*   return {amp * cos(phase), amp * sin(phase)}; */
+/* } */
 
 double flops(double runtime, size_t n, size_t m) {
   // Tera or Giga FLOP/s
@@ -165,11 +169,11 @@ double memory_in_MB(size_t n) {
 void print_info(Geometry p, size_t Nx, size_t Ny, size_t Nz) {
   printf("\nHyperparams:");
   printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
-  printf("\t(%fk threads)", p.gridSize * p.blockSize * 1e-3);
+  printf("\t(%.3fk threads)", p.gridSize * p.blockSize * 1e-3);
 
   printf("\n Input size (datapoints): x: %i, y: %i, z: %i", Nx, Ny, Nz);
-  printf("\n E[N_x / thread]: %6fk", Nx / (double) p.gridSize * p.blockSize * 1e-3);
-  printf("\tE[N_y / thread]: %6fk", Ny / (double) p.gridSize * p.blockSize * 1e-3);
+  printf("\n E[N_x / thread]: %.4fk", Nx / (double) p.gridSize * p.blockSize * 1e-3);
+  printf("\tE[N_y / thread]: %.4fk", Ny / (double) p.gridSize * p.blockSize * 1e-3);
 
   printf("\n n streams: %4i", p.n_streams);
   printf("\tbatch size: \t%6i", p.stream_size);
@@ -184,7 +188,7 @@ void print_info(Geometry p, size_t Nx, size_t Ny, size_t Nz) {
 }
 
 void print_result(std::vector<double> dt, size_t n, size_t m) {
-  // n,m : number of input, output datapoints
+  // n,m : number of input, output datapoints per transformation
   const double mu = mean(dt);
   printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
          flops(mu, n, m), FLOP_PER_POINT);
@@ -192,8 +196,10 @@ void print_result(std::vector<double> dt, size_t n, size_t m) {
   // TODO multiply dt.size() with n,m inside func instead of outside?
   printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(mu, n, m, false));
   printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(mu, n, m, true));
-  if (dt.size() > 1)
-    printf("Var[dt]: %0.5f\n", variance(dt));
+  if (dt.size() > 1) {
+    double var = variance(dt);
+    printf("Var[dt]: %e, Var[dt]/E[dt]: %e\n", var, var / mu);
+  }
 }
 
 bool abs_of_is_positive(WTYPE x) {
@@ -206,7 +212,7 @@ void summarize_c(char name, std::vector<WTYPE> &x) {
   for (size_t i = 0; i < x.size(); ++i) {
     max_amp = fmax(max_amp, cuCabs(x[i]));
     min_amp = fmin(min_amp, cuCabs(x[i]));
-    max_phase = fmax(max_phase , angle(x[i]));
+    max_phase = fmax(max_phase, angle(x[i]));
     sum += cuCabs(x[i]);
   }
   double mean = sum / (double) x.size();
@@ -345,12 +351,11 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
   fclose(out);
 }
 
-template <FileType type>
+template <FileType type> // TODO rm
 void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
                   std::string k1, std::string k2, Plane p) {
   if (type != FileType::TXT) return;
   static bool overwrite = true;
-  std::cout << "overwrite: " << overwrite << '\n';
   if (overwrite)
     print("Save results as txt");
 

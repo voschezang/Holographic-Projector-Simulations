@@ -59,7 +59,7 @@
              2*WEIGHT    /* abs(x_i), angle(x_i) */ +                 \
              1     /* amp/distance */ +                               \
              3     /* phase - direction * distance * 2pi/lambda */ +  \
-             1+WEIGHT    /* a exp(b) */                               \
+             1+WEIGHT    /* a exp(i phase) */                         \
              )
 
 #endif

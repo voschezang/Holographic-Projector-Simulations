@@ -68,22 +68,33 @@ std::vector<double> linspace(size_t len, double min, double max) {
   for (size_t i = 0; i < len; ++i)
     values[i] += delta * i;
 
-  // check relative error
-  assert(values[len - 1] - max < 1e-03 * max);
+  // test relative error
+  if (max != 0.)
+    assert(abs((values[len - 1] - max) / max) < 1e-3);
+
   return values;
 }
 
-std::vector<double> logspace(size_t len, double a, double b) {
-  // Returns a sequence from 10^a to 10^b
+std::vector<double> logspace(size_t len, double a, double b, double base) {
+  // Return a sequence from 10^a to 10^b, spaced evenly over a logarithmic scaling.
+  // TODO change argument order to (a,b,len,base), idem for linspace, geomspace
   assert(len > 0);
-  assert(len > 1 || a == b);
-  const auto base = 10.0;
   auto values = linspace(len, a, b);
   for (size_t i = 0; i < len; ++i)
     values[i] = pow(base, values[i]);
 
   return values;
 }
+
+std::vector<double> logspace(size_t len, double a, double b) {
+  return logspace(len, a, b, 10.);
+}
+
+std::vector<double> geomspace(size_t len, double a, double b) {
+  // Return a sequence from a to b, spaced evenly over a logarithmic scale.
+  return logspace(len, log10(a), log10(b), 10.);
+}
+
 
 
 ///////////////////////////////////////////////////////////////////////////////////

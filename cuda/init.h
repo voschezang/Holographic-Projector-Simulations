@@ -53,7 +53,7 @@ Params params(const Variable var, const size_t n_z_planes, const bool hd) {
 
   if (n_z_planes > 1) {
     if (var == Variable::Offset) {
-      const double delta = 0.01;
+      const double delta = -0.1 * z_offset;
       auto values = linspace(n_z_planes, 0.0, delta * n_z_planes);
       for (auto& i : range(n_z_planes))
         projections[i].z_offset = values[i];
@@ -61,7 +61,7 @@ Params params(const Variable var, const size_t n_z_planes, const bool hd) {
     else if (var == Variable::Width) {
       // TODO logspace/geomspace
       if (n_z_planes <= 4) {
-        auto values = linspace(n_z_planes, width * 1.5, width * n_z_planes * n_z_planes);
+        auto values = linspace(n_z_planes, width * 1.01, width * n_z_planes * n_z_planes);
         for (auto& i : range(n_z_planes))
           projections[i].width = values[i];
       } else {
@@ -74,7 +74,7 @@ Params params(const Variable var, const size_t n_z_planes, const bool hd) {
 
   // TODO use width var for x width
   return
-    {   input       : {name: 'x', width: 5e-3, z_offset: 0.0,
+    {   input       : {name: 'x', width: width, z_offset: 0.0,
           randomize: randomize, hd: false},
         projector   : {name: 'y', width: width, z_offset : z_offset,
           randomize : randomize, hd: hd},
@@ -141,6 +141,7 @@ std::vector<STYPE> plane(size_t n, Plane p) {
     x = round(sqrt(n)),
     y = x;
   assert(x * y == n);
+  assert(x > 0 && y > 0);
 
   if (p.hd) {
     // assume HD dimensions, keep remaining pixels for kernel geometry compatibility
@@ -209,8 +210,9 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width, double rel_
   auto u = std::vector<STYPE>(n * DIMS, 0.0);
   assert(n != 0);
   if (n == 1) {
-    u[0] = x_offset / 4.;
-    u[1] = x_offset;
+    /* u[0] = x_offset / 4.; */
+    /* u[1] = x_offset; */
+    u[0] = x_offset;
     return u;
   }
 
@@ -241,15 +243,16 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width, double rel_
   }
   case Shape::Circle: {
     // Distribute datapoints over a circle
-    // (using polar coordinates)
+    // (using polar coordinates, s.t. $phi_i \equiv i \Delta \phi$)
     auto
       radius = width / 2.0,
       /* circumference = TWO_PI * pow(radius, 2), */
-      d_phase = TWO_PI / (double) n;
+      d_phase = TWO_PI / (double) n,
+      arbitrary_offset = 0.1125;
 
     for (unsigned int i = 0; i < n; ++i) {
-      u[i * DIMS] = sin(i * d_phase) * radius;
-      u[i * DIMS + 1] = cos(i * d_phase) * radius;
+      u[i * DIMS] = sin(i * d_phase + arbitrary_offset) * radius;
+      u[i * DIMS + 1] = cos(i * d_phase + arbitrary_offset) * radius;
     }
     break;
   }
@@ -275,8 +278,9 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double width, double rel_
   if (rel_x_offset != 0) {
     const double x_offset = rel_x_offset * width;
     for (unsigned int i = 0; i < n; ++i) {
-      u[i * DIMS + 0] += x_offset / 4.;
-      u[i * DIMS + 1] += x_offset;
+      /* u[i * DIMS + 0] += x_offset / 4.; */
+      /* u[i * DIMS + 1] += x_offset; */
+      u[i * DIMS] += x_offset;
     }
   }
 

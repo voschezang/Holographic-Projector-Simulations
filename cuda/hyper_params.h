@@ -7,9 +7,9 @@
 /* #define N_sqrt 8 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
-#define N_sqrt 128
+/* #define N_sqrt 128 */
 /* #define N_sqrt 256 */
-/* #define N_sqrt 512 */
+#define N_sqrt 512
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 /* #define N (N_sqrt * N_sqrt) */
@@ -27,7 +27,7 @@
 /* #define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch */
 // TODO compute optimal batch size as function of N
 
-#define N_STREAMS 4 // TODO single stream results in incorrect output
+#define N_STREAMS 8 // TODO single stream results in incorrect output
 /* #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream */
 /* #define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE) */
 /* #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM) */
@@ -44,17 +44,25 @@
 #define BLOCKDIM 16
 #elif (N_sqrt <= 128)
 #define BLOCKDIM 64 // TODO blocksize >32 causes matrix-bug (in combination with PARALLEL_INTRA_WARP_AGG?)
+#elif (N_sqrt <= 256)
+#define BLOCKDIM 64
 #elif (N_sqrt <= 512)
 #define BLOCKDIM 128
 #else
-#define BLOCKDIM 256
+#define BLOCKDIM 128
 #endif
 /* #define BLOCKDIM 8 */
 /* #define BLOCKDIM 128 */
 /* #define BLOCKDIM 256 */
 /* #define GRIDDIM 256 */
 /* #define GRIDDIM (2 * BLOCKDIM) */
-#define GRIDDIM (2 * BLOCKDIM)
+/* #define GRIDDIM (2 * BLOCKDIM) */
+
+#if (N_sqrt <= 256)
+#define GRIDDIM (BLOCKDIM)
+#else
+#define GRIDDIM (BLOCKDIM / 2)
+#endif
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
 
 #define CACHE_BATCH 1 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
