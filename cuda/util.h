@@ -262,14 +262,14 @@ void print_complex(WTYPE x, std::ofstream& out) {
 /**
  * (With lazy evaluation) Map/apply function `f` to each array element and write the result to file `out`.
  */
-template<typename T>
+template<typename T = WTYPE>
 void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, std::ofstream& out) {
   out << f(x[0]);
   for (size_t i = 1; i < x.size(); ++i)
     out << sep << f(x[i]);
 }
 
-template<typename T>
+template<typename T = WTYPE>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
   const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
   double buffer[buffer_size];
@@ -288,7 +288,7 @@ void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& ou
   }
 }
 
-template<typename T>
+template<typename T = double>
 void write_array(std::vector<T> &x, const char sep, std::ofstream& out) {
   // TODO optimize
   out << x[0];
@@ -296,7 +296,7 @@ void write_array(std::vector<T> &x, const char sep, std::ofstream& out) {
     out << sep << x[i];
 }
 
-template<typename T>
+template<typename T = double>
 void write_bytes(std::vector<T> &x, std::ofstream& out) {
   std::ostream_iterator<unsigned char> out_iterator (out, "");
   const unsigned char *a = (unsigned char *) &x[0];

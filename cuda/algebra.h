@@ -12,18 +12,18 @@
 
 // Statistics
 
-template<typename T>
+template<typename T = double>
 inline T sum(std::vector<T> x) {
   return std::accumulate(x.begin(), x.end(), (T) 0);
 }
 
-template<typename T>
+template<typename T = double>
 inline double mean(std::vector<T> x) {
   // note that mean of int vector is a double
   return sum(x) / (double) x.size();
 }
 
-template<typename T>
+template<typename T = double>
 inline double sample_variance(std::vector<T> x) {
   // Return the (uncorrected) sample variance = E[(x - E[x])^2]
   assert(x.size() > 1);
@@ -36,7 +36,7 @@ inline double sample_variance(std::vector<T> x) {
   return acc / (double) x.size();
 }
 
-template<typename T>
+template<typename T = double>
 inline double variance(std::vector<T> x) {
   // Estimate population variance based on sample.
   // Defined as n/(n-1) Var[x]

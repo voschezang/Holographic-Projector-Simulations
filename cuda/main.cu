@@ -33,8 +33,7 @@
 int main() {
   const struct {size_t x,y,z;} n = {x: 1,
                                     y: N_sqrt * N_sqrt,
-                                    // z: N_sqrt * N_sqrt};
-                                    z: 256};
+                                    z: N_sqrt * N_sqrt};
   // TODO add cmd line args
   // TODO struct n_planes .x .y. z
   const size_t

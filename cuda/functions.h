@@ -207,7 +207,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 /**
  * Time the transform operation over the full input.
  */
-template<Direction direction, bool add_constant_source>
+template<Direction direction, bool add_constant_source = false>
 std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                                   const std::vector<STYPE> &u,
                                   const std::vector<STYPE> &v,
