@@ -187,7 +187,7 @@ void print_info(Geometry p, size_t Nx, size_t Ny, size_t Nz) {
   }
 }
 
-void print_result(std::vector<double> dt, size_t n, size_t m) {
+void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
   // n,m : number of input, output datapoints per transformation
   const double mu = mean(dt);
   printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \

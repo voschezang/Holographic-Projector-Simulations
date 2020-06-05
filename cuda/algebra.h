@@ -53,7 +53,7 @@ std::vector<int> range(size_t len) {
   return values;
 }
 
-std::vector<double> linspace(size_t len, double min, double max) {
+std::vector<double> linspace(size_t len, double min = 0., double max = 1.) {
   // similar to Armadillo linspace
   assert(len > 0);
   auto values = std::vector<double>(len, min); // init to `min`
@@ -75,7 +75,7 @@ std::vector<double> linspace(size_t len, double min, double max) {
   return values;
 }
 
-std::vector<double> logspace(size_t len, double a, double b, double base) {
+std::vector<double> logspace(size_t len, double a, double b, double base = 10.) {
   // Return a sequence from 10^a to 10^b, spaced evenly over a logarithmic scaling.
   // TODO change argument order to (a,b,len,base), idem for linspace, geomspace
   assert(len > 0);
@@ -84,10 +84,6 @@ std::vector<double> logspace(size_t len, double a, double b, double base) {
     values[i] = pow(base, values[i]);
 
   return values;
-}
-
-std::vector<double> logspace(size_t len, double a, double b) {
-  return logspace(len, a, b, 10.);
 }
 
 std::vector<double> geomspace(size_t len, double a, double b) {
