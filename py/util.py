@@ -555,6 +555,47 @@ def semilog(x):
     return np.log(np.clip(np.abs(x), 1e-12, None))
 
 
+def pendulum(n: int):
+    """ Returns a back-and-forth iterator.
+    E.g. `list(pendulum_range(3)) = [0,1,2,3,2,1,0]`
+    """
+    # iterate forwards
+    for i in range(n):
+        yield i
+    for i in range(n - 2, -1, -1):
+        yield i
+
+
+def pendulum_range(*args):
+    """ Returns a back-and-forth version of `range` (or vice versa).
+    Accepts the same arguments: `[start], stop[, step]`
+    E.g. `list(pendulum_range(3)) = [0,1,2,3,2,1,0]`
+    """
+    # Derive all args from (start, stop, step)
+    if len(args) == 1:
+        args = (0,) + args + (1,)
+    elif len(args) == 2:
+        args += (1,)
+
+    # flip sign if counting backwards
+    pm = +1 if args[2] < 0 else -1
+
+    # iterate forwards
+    for i in range(*args):
+        yield i
+
+    # iterate backwards
+    for i in range(args[1] + pm * 2, args[0] + pm, -args[2]):
+        yield i
+
+
+def regular_bins(minima=[], maxima=[], n_bins=[]):
+    n = len(n_bins)
+    assert (n == len(minima)) and (n == len(maxima))
+    return [np.linspace(minima[i], maxima[i], n_bins[i] + 1)[1:-1]
+            for i in range(n)]
+
+
 def find_nearest_denominator(n: int, x: float, threshold=0):
     """ Return min_m (x - m) under the constraint n % m == 0
     e.g. for n = 10, x = 5.1 return 5
