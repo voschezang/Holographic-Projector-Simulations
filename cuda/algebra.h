@@ -12,18 +12,18 @@
 
 // Statistics
 
-template<typename T>
+template<typename T = double>
 inline T sum(std::vector<T> x) {
   return std::accumulate(x.begin(), x.end(), (T) 0);
 }
 
-template<typename T>
+template<typename T = double>
 inline double mean(std::vector<T> x) {
   // note that mean of int vector is a double
   return sum(x) / (double) x.size();
 }
 
-template<typename T>
+template<typename T = double>
 inline double sample_variance(std::vector<T> x) {
   // Return the (uncorrected) sample variance = E[(x - E[x])^2]
   assert(x.size() > 1);
@@ -36,7 +36,7 @@ inline double sample_variance(std::vector<T> x) {
   return acc / (double) x.size();
 }
 
-template<typename T>
+template<typename T = double>
 inline double variance(std::vector<T> x) {
   // Estimate population variance based on sample.
   // Defined as n/(n-1) Var[x]
@@ -53,7 +53,7 @@ std::vector<int> range(size_t len) {
   return values;
 }
 
-std::vector<double> linspace(size_t len, double min, double max) {
+std::vector<double> linspace(size_t len, double min = 0., double max = 1.) {
   // similar to Armadillo linspace
   assert(len > 0);
   auto values = std::vector<double>(len, min); // init to `min`
@@ -75,7 +75,7 @@ std::vector<double> linspace(size_t len, double min, double max) {
   return values;
 }
 
-std::vector<double> logspace(size_t len, double a, double b, double base) {
+std::vector<double> logspace(size_t len, double a, double b, double base = 10.) {
   // Return a sequence from 10^a to 10^b, spaced evenly over a logarithmic scaling.
   // TODO change argument order to (a,b,len,base), idem for linspace, geomspace
   assert(len > 0);
@@ -84,10 +84,6 @@ std::vector<double> logspace(size_t len, double a, double b, double base) {
     values[i] = pow(base, values[i]);
 
   return values;
-}
-
-std::vector<double> logspace(size_t len, double a, double b) {
-  return logspace(len, a, b, 10.);
 }
 
 std::vector<double> geomspace(size_t len, double a, double b) {
