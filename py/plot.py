@@ -108,7 +108,6 @@ def hist_2d_multiple(phasor, pos, title='', filename=None, ybins=100, ratio=1.,
     bins = util.regular_bins([x.min(), y.min()],
                              [x.max(), y.max()],
                              [xbins, ybins])
-    # TODO set ticks
     amp_phase_irradiance(_hist2d_wrapper, phasor, pos, title=title,
                          filename=filename, bins=bins, ratio=ratio,
                          density3=False, **kwargs)
@@ -209,7 +208,7 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
         del kwargs['density']
 
     markup(ax, unit='m')
-    plt.title('log Irradiance')
+    plt.title('Log Irradiance')
 
     # ax = plt.subplot(132)
 
@@ -245,7 +244,7 @@ def sci_labels(ax, decimals=1, y=True, z=False, unit=''):
 
 
 def markup(ax, unit=''):
-    sci_labels(ax)
+    sci_labels(ax, unit=unit)
     plt.xlabel("Space dimension 1")
     plt.ylabel("Space dimension 2")
     # plt.colorbar(fraction=0.052, pad=0.05,
