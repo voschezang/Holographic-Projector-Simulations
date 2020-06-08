@@ -2,8 +2,8 @@ PY := python3
 IMG_DIR := ../img
 # SEQUENCE_DIR is relative to IMG_DIR
 SEQUENCE_DIR := sequence-
-OUTPUT_NAME_Y := $(IMG_DIR)/y.mp4
-OUTPUT_NAME_Z := $(IMG_DIR)/z.mp4
+OUTPUT_NAME_Y := $(IMG_DIR)/ani-y.mp4
+OUTPUT_NAME_Z := $(IMG_DIR)/ani-z.mp4
 
 jupyter:
 	jupyter notebook

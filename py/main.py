@@ -61,20 +61,20 @@ if __name__ == '__main__':
     #                 filename=f'y-hist2d-lo', ybins=bins / 4,
     #                 ratio=ratio)
 
+    print('plot sequence y')
     for i, j in enumerate(util.pendulum(len(data['y']))):
         amp = data['y'][j][:, 0]
-        # print(i, amp.mean(), amp[0])
         plot.hist_2d_hd(amp ** 2, data['v'][j],
                         filename=f'{sequence_dir}y/{i:06}', ybins=bins,
                         ratio=ratio, verbose=0)
 
-    print('sample scatters')
+    print('plot various y')
     n = int(5e3)
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
     m = len(data['x'])
     args = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
     for i in range(*args):
-        title = f"$x_{{{i}}}$ (offset: {params['x'][i]['z_offset']:04f} m)"
+        title = f"$x_{{{i}}}$ (offset: {params['x'][i]['z_offset']:03f} m)"
         plot.scatter_multiple(data['x'][i][:n], data['u'][i][:n],
                               title, filename=f'x-scatter-sub-{i}')
 
@@ -86,16 +86,21 @@ if __name__ == '__main__':
                               title, filename=f'y-hist2d-{i}',
                               ybins=bins / 2, ratio=ratio)
 
+    print('plot various z')
     bins = int(min(N_sqrt, 1000))
     n_z_per_y = len(data['z']) // len(data['y'])
     # for i in range(min(n_z_plots, len(data['z']))):
     #     major = i // len(data['x'])
     #     minor = i % len(data['x'])
-    for major in range(*args):
-        for minor in range(n_z_per_y):
+    m = len(data['y'])
+    args1 = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
+    m = n_z_per_y
+    args2 = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
+    for major in range(*args1):
+        for minor in range(*args2):
             i = major * n_z_per_y + minor
             title = f"$z_{{{major}, {minor}}}$ " + \
-                f"(offset: {params['z'][i]['z_offset']:04f} m)"
+                f"(offset: {params['z'][i]['z_offset']:03f} m)"
 
             N = data['z'][i].shape[0]
             N_sqrt = np.sqrt(N).astype(int)
@@ -109,17 +114,18 @@ if __name__ == '__main__':
                                   filename=fn, ybins=bins,
                                   ratio=1.)
 
+    print('plot sequence z')
     bins = int(min(N_sqrt, 1000))
     minors = list(util.pendulum(n_z_per_y))
     for major in range(len(data['y'])):
         for i, minor in enumerate(minors):
-            j = major * len(minors) + minor
+            j = major * n_z_per_y + minor  # idx in data['z']
+            frame_idx = major * len(minors) + i
             amp = data['z'][j][:, 0]
-            plot.hist_2d_hd(amp ** 2, data['w'][j],
-                            filename=f'{sequence_dir}z/{i:06}', ybins=bins,
+            plot.hist_2d_hd(amp, data['w'][j],
+                            filename=f'{sequence_dir}z/{frame_idx:06}', ybins=bins,
                             ratio=1., verbose=0)
 
-    # print('animation')
     # bins = min(1080, Ny)
     # animate.multiple_hd(
     #     ratio, data['y'], data['v'], prefix='y-ani', ybins=bins)

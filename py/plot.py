@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from matplotlib.ticker import EngFormatter
+from matplotlib.ticker import EngFormatter, LogLocator, LogFormatter, LogFormatterSciNotation
 
 from _img_dir import IMG_DIR
 import util
@@ -81,7 +81,7 @@ def hist_2d_multiple(phasor, pos, title='', filename=None, ybins=100, ratio=1.,
 
     Params
     ------
-    phasor : complex array
+    phasor : array of (amp, phase)
         (e.g. x,y,z as used in other funcs)
     pos : flattened 3d array
         (e.g. u,v,w of corresponding positions)
@@ -108,8 +108,10 @@ def hist_2d_multiple(phasor, pos, title='', filename=None, ybins=100, ratio=1.,
     bins = util.regular_bins([x.min(), y.min()],
                              [x.max(), y.max()],
                              [xbins, ybins])
+    # TODO set ticks
     amp_phase_irradiance(_hist2d_wrapper, phasor, pos, title=title,
-                         filename=filename, bins=bins, ratio=ratio, **kwargs)
+                         filename=filename, bins=bins, ratio=ratio,
+                         density3=False, **kwargs)
 
 
 def hexbin_multiple(x, u, title='', filename=None,  bins=10, **kwargs):
@@ -144,12 +146,12 @@ def _scatter_wrapper(x, y, z, **kwargs):
             plt.ylim(a, b)
 
 
-def _hist2d_wrapper(x, y, z, **kwargs):
-    return plt.hist2d(x, y, weights=z, density=True, **kwargs)[0]
+def _hist2d_wrapper(x, y, z, density=True, **kwargs):
+    return plt.hist2d(x, y, weights=z, density=density, **kwargs)[0]
 
 
 def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
-                         ratio=1., **kwargs):
+                         ratio=1., density3=None, **kwargs):
     """ Triple plot of amplitude, phase, irradiance
 
     Params
@@ -187,7 +189,7 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     v1 = v[:, 0]
     v2 = v[:, 1]
     plot_func(v1, v2, a, **kwargs)
-    markup(ax)
+    markup(ax, unit='m')
     plt.title('Amplitude')
 
     # change subplot order to allow cmap to be changed later
@@ -197,9 +199,17 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     else:
         ax = plt.subplot(313)
 
-    plot_func(v1, v2, irradiance(to_polar(a, phi), normalize=False), **kwargs)
-    markup(ax)
-    plt.title('Irradiance')
+    log_irradiance = np.log(irradiance(to_polar(a, phi), normalize=False))
+    if density3 is not None:
+        # hack to allow optional 3rd param for histogram plot func
+        kwargs['density'] = density3
+
+    plot_func(v1, v2, standardize(log_irradiance), **kwargs)
+    if density3 is not None:
+        del kwargs['density']
+
+    markup(ax, unit='m')
+    plt.title('log Irradiance')
 
     # ax = plt.subplot(132)
 
@@ -211,18 +221,21 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = cyclic_cmap
     plot_func(v1, v2, phi, **kwargs)
-    markup(ax)
+    markup(ax, unit='m')
     plt.title('Phase')
 
-    plt.tight_layout()
-    if filename is not None:
-        save_fig(filename, ext='png')
+    try:
+        plt.tight_layout()
+        if filename is not None:
+            save_fig(filename, ext='png')
 
+    except ValueError as e:
+        print(e)
     return fig
 
 
-def sci_labels(ax, decimals=1, y=True, z=False):
-    formatter = EngFormatter(places=decimals, sep=u"\N{THIN SPACE}")
+def sci_labels(ax, decimals=1, y=True, z=False, unit=''):
+    formatter = EngFormatter(places=decimals, sep=u"\N{THIN SPACE}", unit=unit)
     ax.xaxis.set_major_formatter(formatter)
     if y:
         ax.yaxis.set_major_formatter(formatter)
@@ -231,10 +244,12 @@ def sci_labels(ax, decimals=1, y=True, z=False):
         ax.zaxis.set_major_formatter(formatter)
 
 
-def markup(ax):
+def markup(ax, unit=''):
     sci_labels(ax)
-    plt.xlabel("Space dim1 (m)")
-    plt.ylabel("Space dim2 (m)")
+    plt.xlabel("Space dimension 1")
+    plt.ylabel("Space dimension 2")
+    # plt.colorbar(fraction=0.052, pad=0.05,
+    #              ticks=LogLocator(subs='all'), format=LogFormatterSciNotation())
     plt.colorbar(fraction=0.052, pad=0.05)
 
 

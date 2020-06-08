@@ -19,7 +19,8 @@ from typing import Tuple
 from multiprocessing import Pool
 from itertools import repeat
 
-LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
+# LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
+LAMBDA = 0.650e-6
 # LAMBDA = 1
 SCALE = LAMBDA / 0.6328e-6
 DIMS = 3
@@ -414,7 +415,7 @@ def irradiance(E, normalize=True):
 
     Params
     ------
-    E : array of complex float
+    E : array of phasors (complex float)
     """
     if normalize:
         a, phi = np.abs(E), np.angle(E)
@@ -437,6 +438,7 @@ def PSD(E):
 
 @jit()
 def normalize_amplitude(x):
+    # x : array of polar coordinates (amp, phase)
     x[:, 0] /= np.max(x[:, 0])
 
 
@@ -445,6 +447,16 @@ def standardize_amplitude(x):
     width = x[:, 0].max() - x[:, 0].min()
     x[:, 0] = (x[:, 0] - x[:, 0].min()) / width
     return x
+
+
+def standardize(x):
+    # normalize x and map it to the range [0, 1]
+    min = x.min()
+    range = x.max() - min
+    if range == 0:
+        return np.clip(x, 0, 1)
+
+    return (x - min) / range
 
 
 def energy_dist(a, r, xi_0, xi_r, phi_0, phi_r, theta_0, theta_r):
