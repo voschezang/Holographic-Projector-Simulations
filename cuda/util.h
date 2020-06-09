@@ -219,27 +219,6 @@ void summarize_c(char name, std::vector<WTYPE> &x) {
   printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f, mean: %f\n", name, min_amp, max_amp, max_phase, mean);
 }
 
-void normalize_amp(std::vector<WTYPE> &x, bool log_normalize) {
-  double max_amp = 0;
-  for (size_t i = 0; i < x.size(); ++i)
-    max_amp = fmax(max_amp, cuCabs(x[i]));
-
-  if (max_amp < 1e-6)
-    printf("WARNING, max_amp << 1\n");
-
-  if (max_amp > 1e-6)
-    for (size_t i = 0; i < x.size(); ++i) {
-      x[i].x /= max_amp;
-      x[i].y /= max_amp;
-    }
-
-  if (log_normalize)
-    for (size_t i = 0; i < x.size(); ++i) {
-      if (x[i].x > 0) x[i].x = -log(x[i].x);
-      if (x[i].y > 0) x[i].y = -log(x[i].y);
-    }
-}
-
 void summarize_double(char name, std::vector<double> &x) {
   double max = DBL_MIN, min = DBL_MAX;
   for (size_t i = 0; i < x.size(); ++i) {

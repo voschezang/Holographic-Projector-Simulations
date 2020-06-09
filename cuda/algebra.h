@@ -9,38 +9,20 @@
  * Simple math & linear algebra functions, vector operations (not fully optimized)
  */
 
-
-// Statistics
+// Vector operations
 
 template<typename T = double>
-inline T sum(std::vector<T> x) {
-  return std::accumulate(x.begin(), x.end(), (T) 0);
+void add(std::vector<T> &x, T value) {
+  // add constant to vector (in place)
+  for (unsigned int i = 0; i < x.size(); ++i)
+    x[i] += value;
 }
 
-template<typename T = double>
-inline double mean(std::vector<T> x) {
-  // note that mean of int vector is a double
-  return sum(x) / (double) x.size();
-}
-
-template<typename T = double>
-inline double sample_variance(std::vector<T> x) {
-  // Return the (uncorrected) sample variance = E[(x - E[x])^2]
-  assert(x.size() > 1);
-  const double mu = mean(x);
-  double acc = 0.0;
-
-  for (auto& value : x)
-    acc += (value - mu) * (value - mu);
-
-  return acc / (double) x.size();
-}
-
-template<typename T = double>
-inline double variance(std::vector<T> x) {
-  // Estimate population variance based on sample.
-  // Defined as n/(n-1) Var[x]
-  return x.size() / (x.size() - 1.) * sample_variance(x);
+template<typename T = WTYPE>
+void add_complex(std::vector<T> &x, T value) {
+  // add constant to vector (in place)
+  for (unsigned int i = 0; i < x.size(); ++i)
+    x[i] = cuCadd(x[i], value);
 }
 
 // Generate vectors
@@ -91,6 +73,39 @@ std::vector<double> geomspace(size_t len, double a, double b) {
   return logspace(len, log10(a), log10(b), 10.);
 }
 
+
+// Statistics
+
+template<typename T = double>
+inline T sum(const std::vector<T> &x) {
+  return std::accumulate(x.begin(), x.end(), (T) 0);
+}
+
+template<typename T = double>
+inline double mean(const std::vector<T> &x) {
+    // note that mean of int vector is a double
+    return sum(x) / (double) x.size();
+  }
+
+template<typename T = double>
+inline double sample_variance(const std::vector<T> &x) {
+  // Return the (uncorrected) sample variance = E[(x - E[x])^2]
+  assert(x.size() > 1);
+  const double mu = mean(x);
+  double acc = 0.0;
+
+  for (auto& value : x)
+    acc += (value - mu) * (value - mu);
+
+  return acc / (double) x.size();
+}
+
+template<typename T = double>
+inline double variance(const std::vector<T> &x) {
+  // Estimate population variance based on sample.
+  // Defined as n/(n-1) Var[x]
+  return x.size() / (x.size() - 1.) * sample_variance(x);
+}
 
 
 ///////////////////////////////////////////////////////////////////////////////////

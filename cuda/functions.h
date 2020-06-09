@@ -26,11 +26,11 @@ inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
 #define SuperpositionPerBlock(size) {                                   \
     /* const size_t local_memory_size = p.kernel_size * sizeof(WTYPE);  */ \
     /* TODO add SHARED_MEMORY_SIZE * sizeof(WTYPE) */                   \
-    superposition::per_block<direction, add_constant_source, size><<< p.gridSize, p.blockSize, 0, stream >>> \
+    superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
       (p, d_x, Nx, d_u, &d_y_block[j], &d_v[k * DIMS] );                 \
   }
 
-template<const Direction direction, bool add_constant_source>
+template<Direction direction>
 inline void partial_superposition_per_block(const Geometry p, const size_t Nx,
                                             const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
                                             cudaStream_t stream, double *d_y_block)
@@ -88,6 +88,32 @@ inline void agg_batch(const Geometry p, WTYPE *y, cudaStream_t stream,
                       cudaMemcpyDeviceToHost, stream ) );
 }
 
+template<bool add_constant = false>
+  void normalize_amp(std::vector<WTYPE> &c, bool log_normalize = false) {
+  const WTYPE constant = from_polar(1., ARBITRARY_PHASE);
+  double max_amp = 0;
+  for (size_t i = 0; i < c.size(); ++i)
+    max_amp = fmax(max_amp, cuCabs(c[i]));
+
+  if (max_amp < 1e-6) {
+    printf("WARNING, max_amp << 1\n");
+    return;
+  }
+  if (add_constant)
+    max_amp *= 2.;
+
+  for (size_t i = 0; i < c.size(); ++i) {
+    c[i].x = c[i].x / max_amp + constant.x / 2.;
+    c[i].y = c[i].y / max_amp + constant.y / 2.;
+  }
+
+  if (log_normalize)
+    for (size_t i = 0; i < c.size(); ++i) {
+      if (c[i].x > 0) c[i].x = -log(c[i].x);
+      if (c[i].y > 0) c[i].y = -log(c[i].y);
+    }
+}
+
 /**
    d_x, d_u are stored in normal (non-pinned) GPU memory
    d_y, d_v are stored partially, and copied back to CPU on the fly
@@ -113,10 +139,11 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
   const size_t n = v.size() / DIMS;
+#ifdef DEBUG
   assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
+#endif
   if (x.size() < p.gridSize * p.blockSize)
     print("Warning, suboptimal input size");
-
 
   auto y = std::vector<WTYPE>(n);
 
@@ -157,7 +184,7 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
       cp_batch_data_to_device(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
                               streams[i_stream]);
 
-      partial_superposition_per_block<direction, add_constant_source>(p, x.size(), d_x_ptr, d_u_ptr,
+      partial_superposition_per_block<direction>(p, x.size(), d_x_ptr, d_u_ptr,
                                                  d_v[i_stream].data,
                                                  streams[i_stream], d_y_block[i_stream]);
     }
@@ -199,8 +226,12 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   cu( cudaFreeHost(d_v_ptr       ) );
 
   size_t len = min(100, (unsigned int) y.size());
+#ifdef DEBUG
   assert(std::any_of(y.begin(), y.begin() + len, abs_of_is_positive));
-  normalize_amp(y, false);
+#endif
+
+  // add single far away light source, with arbitrary (but constant) phase
+  normalize_amp<add_constant_source>(y);
   return y;
 }
 

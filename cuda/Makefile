@@ -6,16 +6,17 @@ ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
 HyperParams := KERNEL_SIZE='8'
 # TODO add stream size, kernel size, x distribution, Ny, Nz
-.PHONY: $(EXE)
+.PHONY: $(EXE) test
 
 build:
 	# -ftz=true // flush dernormal to zero
 	#  -ftz=true -prec-div=false -prec-sqrt=false
 	# TODO check -O2 vs. -O3 performance
+	# -g debug
 	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams)
 
 debug:
-	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams) -g
+	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams)
 	make run
 
 build-run:
@@ -40,6 +41,10 @@ init-path:
 profile:
 	make build
 	nvprof ./$(EXE)
+
+test:
+	$(C) -o test test.cu -l curand -std=c++11 && ./test
+	rm -f test;
 
 vprofile:
 	make build

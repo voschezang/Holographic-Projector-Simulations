@@ -11,7 +11,8 @@
 /* #define VOL(type, x) *((type *) &x) */
 
 #define HD (1920 * 1080)
-#define LAMBDA (1 * 0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser)
+/* #define LAMBDA (0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser) */
+#define LAMBDA (0.650e-6) // 650 nm
 #define TWO_PI (2 * M_PI)
 #define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
 /* #define SCALE (1 / LAMBDA) */
