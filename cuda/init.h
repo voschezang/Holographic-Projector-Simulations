@@ -44,24 +44,23 @@ Params params(const Variable var, const size_t n_z_planes, const bool hd) {
   const bool randomize = false;
   auto projections = std::vector<Plane>{};
 
-  const double width = 1.344e-3; // = 1920 x 7e-6
+  const double width = 1.344e-2; // = 1920 x 7e-6
   /* const double width = 5e-4; */
 
   // Note that the projection params slightly differ from the projector params
   for (auto& i : range(n_z_planes))
-    projections.push_back({name: 'z', width: width * 4, z_offset: 0.0, randomize: randomize, hd: false});
+    projections.push_back({name: 'z', width: width * 1.5, z_offset: 0.0, randomize: randomize, hd: false});
 
   if (n_z_planes > 1) {
     if (var == Variable::Offset) {
-      const double delta = -0.1 * z_offset;
+      const double delta = -0.5 * z_offset / (n_z_planes - 1.0);
       auto values = linspace(n_z_planes, 0.0, delta * n_z_planes);
       for (auto& i : range(n_z_planes))
         projections[i].z_offset = values[i];
     }
     else if (var == Variable::Width) {
-      // TODO logspace/geomspace
-      if (n_z_planes <= 4) {
-        auto values = linspace(n_z_planes, width * 1.01, width * n_z_planes * n_z_planes);
+      if (n_z_planes <= 5) {
+        auto values = linspace(n_z_planes, width * 0.01, width * 2.);
         for (auto& i : range(n_z_planes))
           projections[i].width = values[i];
       } else {
@@ -74,7 +73,7 @@ Params params(const Variable var, const size_t n_z_planes, const bool hd) {
 
   // TODO use width var for x width
   return
-    {   input       : {name: 'x', width: width, z_offset: 0.0,
+    {   input       : {name: 'x', width: width * 0.1, z_offset: 0.0,
           randomize: randomize, hd: false},
         projector   : {name: 'y', width: width, z_offset : z_offset,
           randomize : randomize, hd: hd},
@@ -159,7 +158,7 @@ std::vector<STYPE> plane(size_t n, Plane p) {
     dy = p.width * SCALE / ((double) y * ratio),
     x_half = 0.5 * p.width,
     y_half = 0.5 * p.width / ratio,
-    rel_margin = p.randomize ? 0.01 : 0.0,
+    rel_margin = p.randomize ? 0.05 : 0.0,
     x_margin = rel_margin * dx, // TODO min space between projector pixels
     y_margin = rel_margin * dy,
     x_random_range = dx - 0.5 * x_margin,

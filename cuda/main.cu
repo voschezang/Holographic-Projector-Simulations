@@ -37,17 +37,15 @@ int main() {
   // TODO add cmd line args
   // TODO struct n_planes .x .y. z
   const size_t
-    n_x_planes = 1,
-    n_z_planes = 6;
+    n_x_planes = 2,
+    n_z_planes = 5;
 
   const bool hd = false;
   // const bool hd = true;
   // const auto shape = Shape::DottedCircle;
   const auto shape = Shape::Circle;
-  Params params = init::params(Variable::Offset, n_z_planes, hd);
+  Params params = init::params(Variable::Width, n_z_planes, hd);
   const Geometry p = init::geometry(n.y);
-  // const double mean_amplitude = params.projector.z_offset / (double) n.x;
-  const double mean_amplitude = 1.;
   print_info(p, n.x, n.y, n.z);
 
   struct timespec t0, t1, t2;
@@ -61,8 +59,7 @@ int main() {
   // s.t. sum of irradiance/power/amp is 1
   // i.e. n A/d = 1
   // TODO make this optimization optional, as it introduces some error
-  from_polar(mean_amplitude, 0.51);
-  auto x = std::vector<WTYPE>(n.x, from_polar(mean_amplitude, 0.0));
+  auto x = std::vector<WTYPE>(n.x, from_polar(1.0, 0.0));
   auto v = init::plane(n.y, params.projector);
 
   summarize_double('v', v); // TODO edit in case hd == true
@@ -73,21 +70,16 @@ int main() {
   // change offset in first dim
   // note that x,z now correspond to the spatial dims
   auto x_offsets = linspace(n_x_planes, 0., 0.);
-  auto z_offsets = geomspace(n_x_planes, 0.4, 0.1);
+  auto z_offsets = geomspace(n_x_planes, 0.1, 0.4);
   for (auto& i : range(n_x_planes)) {
     printf("x plane #%i\n", i);
     auto u = init::sparse_plane(x.size(), shape, params.input.width, x_offsets[i]);
-
-    if (i == 0)
-      summarize_double('u', u);
-
     const auto x_suffix = std::to_string(i);
     write_arrays<FileType::TXT>(x, u, "x" + x_suffix, "u" + x_suffix, params.input);
     printf("--- --- ---   --- --- ---  --- --- --- \n");
 
     // The projector distribution is obtained by doing a single backwards transformation
     // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
-
 
     params.projector.z_offset = z_offsets[i];
     v = init::plane(n.y, params.projector);
@@ -107,7 +99,7 @@ int main() {
       auto w = init::plane(n.z, params.projections[j]);
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WTYPE>(n.z);
-      auto z = time_transform<Direction::Forward, false>(y, v, w, p, &t1, &t2, &dt[j], false);
+      auto z = time_transform<Direction::Forward>(y, v, w, p, &t1, &t2, &dt[j], false);
       check_cvector(z);
       if (i == 0 && j == 0)
         summarize_c('z', z);

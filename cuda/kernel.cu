@@ -82,17 +82,22 @@ inline __device__ void warp_reduce_complex(WTYPE *s, const unsigned int i) {
   // __threadfence();
 }
 
-inline __host__ __device__ double angle(cuDoubleComplex  z) {
-  return atan2(cuCreal(z), cuCimag(z));
+inline __host__ __device__ void cos_sin(double x, double *cos, double *sin) {
+  // Save cosine(x), sine(x) to &cos, &sin.
+  // Flipped arguments for readability.
+  sincos(x, sin, cos);
 }
 
-inline __host__ __device__ cuDoubleComplex from_polar(double amp, double phi) {
-  // Convert polar coordinates (a,phi) to complex number a * e^(phi I)
-  cuDoubleComplex res;
-  sincos(phi, &res.x, &res.y);
-  // return cuCmul(make_cuDoubleComplex(a, 0), res);
-  // return make_cuDoubleComplex(amp * res.x, amp * res.y);
-  return {amp * res.x, amp * res.y};
+inline __host__ __device__ double angle(cuDoubleComplex c) {
+  return atan2(c.y, c.x);
+}
+
+inline __host__ __device__ cuDoubleComplex from_polar(double r, double phi) {
+  // Convert polar coordinates (r,phi) to Cartesian coordinates (re, im)
+  // Using `r * e^(phi I) = r (cos phi + I sin phi)`
+  cuDoubleComplex result;
+  cos_sin(phi, &result.x, &result.y);
+  return {r * result.x, r * result.y};
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

@@ -3,6 +3,8 @@ PROJECT_DIR := /project/detrd/markv
 MNT_DIR := tmp
 REMOTE_DIR := nikhef:/project/detrd/markv/Holographic-Projector/tmp
 
+.PHONY: matlab test
+
 jupyter:
 	make -C py jupyter
 
@@ -26,6 +28,10 @@ animate:
 init:
 	make -C py init
 
+test:
+	make -C cuda test
+	make -C py test
+
 remote-run:
 	sh remote_run.sh
 
@@ -40,6 +46,16 @@ ssh:
 
 deps:
 	make -C py deps
+
+matlab:
+	# ./../../matlab/R2016b/bin/matlab -nodisplay -nosplash -nodesktop -r matlab/holostatistics.m
+	# cd matlab && ./../../../matlab/R2016b/bin/matlab -nodisplay -nosplash -nodesktop -r holostatistics.m
+	# cd matlab && ./../../../matlab/R2016b/bin/matlab -nodisplay -nosplash -nodesktop -r holofunctions.m
+	cd matlab && ./../../../matlab/R2016b/bin/matlab -nodisplay -nosplash -nodesktop
+
+matlab-gui:
+	./../../matlab/R2016b/bin/matlab
+
 
 mount:
 	# note the `/` at the end of my_dir/
