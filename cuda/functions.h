@@ -114,6 +114,14 @@ void normalize_amp(std::vector<WTYPE> &c, bool log_normalize = false) {
     }
 }
 
+void square_amp(std::vector<WTYPE> &c, bool rm_phase = true, bool normalize = true) {
+  for (size_t i = 0; i < c.size(); ++i) {
+    const double amp = cuCabs(c[i]);
+    // Set phase to zero, exp(phi I) == 0
+    c[i] = {amp * amp, 0.};
+  }
+}
+
 /**
    d_x, d_u are stored in normal (non-pinned) GPU memory
    d_y, d_v are stored partially, and copied back to CPU on the fly
@@ -125,7 +133,7 @@ void normalize_amp(std::vector<WTYPE> &c, bool log_normalize = false) {
 
    type& X is used to reference X instead of copying it (similar to a pointer *x, which would require later dereferencing)
 */
-template<Direction direction, bool add_constant_source>
+template<Direction direction>
 inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
                                     const std::vector<STYPE> &u,
                                     const std::vector<STYPE> &v,
@@ -229,24 +237,26 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 #ifdef DEBUG
   assert(std::any_of(y.begin(), y.begin() + len, abs_of_is_positive));
 #endif
-
-  // add single far away light source, with arbitrary (but constant) phase
-  normalize_amp<add_constant_source>(y);
   return y;
 }
 
 /**
  * Time the transform operation over the full input.
  */
-template<Direction direction, bool add_constant_source = false>
+template<Direction direction, bool add_const_source = false>
 std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                                   const std::vector<STYPE> &u,
                                   const std::vector<STYPE> &v,
                                   const Geometry p,
-                                  struct timespec *t1, struct timespec *t2,
-                                  double *dt, bool verbose) {
+                                  struct timespec *t1, struct timespec *t2, double *dt,
+                                  bool verbose = false) {
+
   clock_gettime(CLOCK_MONOTONIC, t1);
-  auto y = transform<direction, add_constant_source>(x, u, v, p);
+  auto y = transform<direction>(x, u, v, p);
+
+  // add single far away light source, with arbitrary (but constant) phase
+  // adding the planar wave should happen before squaring the amplitude
+  normalize_amp<add_const_source>(y);
   clock_gettime(CLOCK_MONOTONIC, t2);
   *dt = diff(*t1, *t2);
   if (verbose)

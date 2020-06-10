@@ -101,6 +101,7 @@ inline __host__ __device__ double angle(cuDoubleComplex c) {
 inline __host__ __device__ cuDoubleComplex from_polar(double r, double phi) {
   // Convert polar coordinates (r,phi) to Cartesian coordinates (re, im)
   // Using `r * e^(phi I) = r (cos phi + I sin phi)`
+  // Note that result = {amp,0} if phase = 0, but adding such a branch may slow down performance
   cuDoubleComplex result;
   cos_sin(phi, &result.x, &result.y);
   return {r * result.x, r * result.y};

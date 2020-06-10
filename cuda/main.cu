@@ -40,12 +40,16 @@ int main() {
     n_x_planes = 1,
     n_z_planes = 2;
 
+  // const Transformation projector = Transformation::Full;
+  const auto transformation = Transformation::Amplitude2;
   const bool hd = false;
   // const bool hd = true;
   // const auto shape = Shape::DottedCircle;
   const auto shape = Shape::Circle;
+
   Params params = init::params(Variable::Width, n_z_planes, hd);
   const Geometry p = init::geometry(n.y);
+  const bool add_const_source = transformation == Transformation::Amplitude2;
   print_info(p, n.x, n.y, n.z);
 
   struct timespec t0, t1, t2;
@@ -86,13 +90,16 @@ int main() {
     v = init::plane(n.y, params.projector);
 
     // dt[0] will be overwritten
-    auto y = time_transform<Direction::Backward, true>(x, u, v, p, &t1, &t2, &dt[0], true);
-    // auto y = time_transform<Direction::Backward, false>(x, u, v, p, &t1, &t2, &dt[0], true);
+    auto y = time_transform<Direction::Backwards, add_const_source>(x, u, v, p, &t1, &t2, &dt[0], true);
     check_cvector(y);
+
     if (i == 0)
       summarize_c('y', y);
 
     write_arrays<FileType::TXT>(y, v, "y" + x_suffix, "v" + x_suffix, params.projector);
+    // square amp and rm phase after saving
+    if (transformation == Transformation::Amplitude2)
+      square_amp(y);
 
     // The projection distributions at various locations are obtained using forward transformations
     auto p = init::geometry(n.z);
@@ -101,7 +108,7 @@ int main() {
       auto w = init::plane(n.z, params.projections[j], x_offset);
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WTYPE>(n.z);
-      auto z = time_transform<Direction::Forward>(y, v, w, p, &t1, &t2, &dt[j], false);
+      auto z = time_transform<Direction::Forwards>(y, v, w, p, &t1, &t2, &dt[j]);
       check_cvector(z);
       if (i == 0 && j == 0)
         summarize_c('z', z);

@@ -16,7 +16,7 @@
 
 
 // a transformation from projector to projection is forwards, vice versa is backwards
-enum class Direction {Forward, Backward};
+enum class Direction {Forwards, Backwards};
 
 // template<Direction dir>
 // inline __device__ double value() {
@@ -48,7 +48,7 @@ inline __host__ __device__ WTYPE single(const size_t i, const size_t j,
 #endif
   // TODO __ddiv_rd, __dmul_ru
 
-  if (direction == Direction::Forward)
+  if (direction == Direction::Forwards)
     return from_polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
   else
     return from_polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
