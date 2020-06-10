@@ -81,7 +81,7 @@ Params params(const Variable var, const size_t n_z_planes, const bool hd) {
         projections : projections};
 }
 
-void derive_secondary_geometry(const size_t n, Geometry p) {
+void derive_secondary_geometry(const size_t n, Geometry &p) {
   p.stream_size = n / (p.n_streams * p.batch_size * p.kernel_size);
 
   assert(p.blockSize   > 0); assert(p.gridSize   > 0);

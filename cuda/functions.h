@@ -246,7 +246,7 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                                   struct timespec *t1, struct timespec *t2,
                                   double *dt, bool verbose) {
   clock_gettime(CLOCK_MONOTONIC, t1);
-  auto y = transform<Direction::Backward, add_constant_source>(x, u, v, p);
+  auto y = transform<direction, add_constant_source>(x, u, v, p);
   clock_gettime(CLOCK_MONOTONIC, t2);
   *dt = diff(*t1, *t2);
   if (verbose)
