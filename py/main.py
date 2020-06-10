@@ -125,7 +125,7 @@ if __name__ == '__main__':
             j = major * n_z_per_y + minor  # idx in data['z']
             frame_idx = major * len(minors) + i
             amp = data['z'][j][:, 0]
-            plot.hist_2d_hd(amp, data['w'][j],
+            plot.hist_2d_hd(amp ** 2, data['w'][j],
                             filename=f'{sequence_dir}z/{frame_idx:06}', ybins=bins,
                             ratio=1., verbose=0)
 

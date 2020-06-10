@@ -25,6 +25,9 @@ plot:
 animate:
 	make -C py animate
 
+surf:
+	make -C py surf
+
 init:
 	make -C py init
 

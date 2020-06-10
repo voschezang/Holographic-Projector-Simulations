@@ -35,6 +35,10 @@ animate:
 plot-animate:
 	make plot animate
 
+surf:
+	# plot surface
+	python3 surf.py
+
 deps:
 	# make sure python, python-pip are installed
 	pip --user install -r requirements.txt

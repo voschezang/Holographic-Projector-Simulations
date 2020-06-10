@@ -119,30 +119,38 @@ def hexbin_multiple(x, u, title='', filename=None,  bins=10, **kwargs):
 
 
 def _scatter_wrapper(x, y, z, **kwargs):
-    threshold = 20
     rel_margin = 0.05
     plt.scatter(x, y, c=z, **kwargs)
     plt.axhline(0, color='0', ls='--', lw=1, alpha=0.4)
     plt.axvline(0, color='0', ls='--', lw=1, alpha=0.4)
+    width = None
     if x.shape[0] > 1:
-        a, b = x.min(), x.max()
-        if x.shape[0] < threshold:
-            margin = (b - a) * rel_margin
-            a -= margin
-            b += margin
+        for s, lim_func in [(x, plt.xlim),
+                            (y, plt.ylim)]:
+            a, b = s.min(), s.max()
+            if x.shape[0] < 20:
+                # for small datasets
+                margin = (b - a) * rel_margin
+                a -= margin
+                b += margin
+                a = min(0, a)
 
-        if a != b:
-            plt.xlim(a, b)
+            # aspect ratio is 1:1, set corresponding limits
+            # assume width >= height
+            if width is None:
+                width = b - a
+            else:
+                height = b - a
+                if height < width:
+                    a -= (height - width) / 2
+                    b += (height - width) / 2
 
-    if y.shape[0] > 1:
-        a, b = y.min(), y.max()
-        if x.shape[0] < threshold:
-            margin = (b - a) * rel_margin
-            a -= margin
-            b += margin
+            if a != b:
+                # TODO rm this?
+                # lim_func(a, b)
+                pass
 
-        if a != b:
-            plt.ylim(a, b)
+            lim_func(a, b)
 
 
 def _hist2d_wrapper(x, y, z, density=True, **kwargs):
