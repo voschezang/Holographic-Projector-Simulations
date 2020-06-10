@@ -1,4 +1,5 @@
 import unittest
+import numpy as np
 
 from util import *
 
@@ -45,6 +46,48 @@ class Test(unittest.TestCase):
                               'n % M': n % M, 'n % m': n % res,
                               'threshold': threshold}
 
+    def test_superposition(self):
+        n = 1
+        x = np.zeros((n, 2))
+        x[:, 0] = 1  # amp
+        u = np.zeros((n, 3))
+        v = u.copy()
+        v[0, 2] = LAMBDA
+        assert(norm(u - v).sum() / LAMBDA == 1.)
+
+        i = 0
+        c = np.sum(f(x[:, 0], x[:, 1], u, v[i], direction=1))
+        a, phi = from_polar(c)  # actually to polar
+        # TODO validate numbers
+        # TODO allow error margin
+        assert a == 1538461.5384615385
+        assert phi == 2.4492935982947064e-16
+        # print({'a': a, 'phi': phi})
+        # {'a': 1538461.5384615385, 'phi': 2.4492935982947064e-16}
+
+        x[0, :] = from_polar(1.31 - 2.1j)
+        # x[0, 1] = -2.1
+        v[0, 1] = 2.22e9 * LAMBDA
+        v[0, 2] = 12.1 * LAMBDA
+        distance = norm(u - v).sum()
+        phi_next = x[0, 1] + distance * 2 * np.pi / LAMBDA
+        print('amp', x[0, 0], '/', x[0, 0] / distance / LAMBDA)
+        print('distance', distance, 'phi ..', phi_next)
+        print(f'distance /// {distance / LAMBDA:e}')
+        c = np.sum(f(x[:, 0], x[:, 1], u, v[i], direction=1))
+        a, phi = from_polar(c)  # actually to polar
+        # print({'a': a, 'phi': phi})
+
+        x[0, :] = from_polar(3.33 + 4.44j)
+        c = np.sum(f(x[:, 0], x[:, 1], u, v[i], direction=1))
+        a, phi = from_polar(c)  # actually to polar
+        print({'a': a, 'phi': phi})
+        v[0, 1] = 5.51e3 * LAMBDA
+        c = np.sum(f(x[:, 0], x[:, 1], u, v[i], direction=-1))
+        a, phi = from_polar(c)  # actually to polar
+        print({'a': a, 'phi': phi})
+
 
 if __name__ == '__main__':
-    unittest.main()
+    # unittest.main()
+    Test().test_superposition()

@@ -22,7 +22,9 @@ from itertools import repeat
 # LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
 LAMBDA = 0.650e-6
 # LAMBDA = 1
-SCALE = LAMBDA / 0.6328e-6
+# SCALE = LAMBDA / 0.6328e-6
+SCALE = 1
+
 DIMS = 3
 # N = 30**(DIMS - 1)
 # N = 52**(DIMS - 1)

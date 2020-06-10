@@ -233,9 +233,10 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     return fig
 
 
-def sci_labels(ax, decimals=1, y=True, z=False, unit=''):
+def sci_labels(ax, decimals=1, y=True, z=False, unit='', rotation=30):
     formatter = EngFormatter(places=decimals, sep=u"\N{THIN SPACE}", unit=unit)
     ax.xaxis.set_major_formatter(formatter)
+    plt.xticks(rotation=rotation)
     if y:
         ax.yaxis.set_major_formatter(formatter)
     if z:

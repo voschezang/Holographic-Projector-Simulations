@@ -1,8 +1,6 @@
 import numpy as np
 import subprocess
-import zipfile
 import os
-import matplotlib.pyplot as plt
 # local
 import plot
 import animate
@@ -70,17 +68,21 @@ if __name__ == '__main__':
 
     print('plot various y')
     n = int(5e3)
+    pointsize = 0.1  # for large scatter plots
     # indices = np.arange(N).reshape((N_sqrt, N_sqrt))[:n, :n].flatten()
     m = len(data['x'])
     args = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
     for i in range(*args):
-        title = f"$x_{{{i}}}$ (offset: {params['x'][i]['z_offset']:03f} m)"
+        offset = params['x'][i]['z_offset']
+        title = f"$x_{{{i}}}$ (offset: {round(offset, 2)} m)"
         plot.scatter_multiple(data['x'][i][:n], data['u'][i][:n],
                               title, filename=f'x-scatter-sub-{i}')
 
+        offset = params['y'][i]['z_offset']
+        title = f"$y_{{{i}}}$ (offset: {round(offset, 2)} m)"
         indices = np.random.randint(0, Nxy, n)
         plot.scatter_multiple(data['y'][i][indices], data['v'][i][indices],
-                              title, filename=f'y-scatter-sub-{i}', s=1)
+                              title, filename=f'y-scatter-sub-{i}', s=pointsize)
 
         plot.hist_2d_multiple(data['y'][i], data['v'][i],
                               title, filename=f'y-hist2d-{i}',
@@ -93,21 +95,22 @@ if __name__ == '__main__':
     #     major = i // len(data['x'])
     #     minor = i % len(data['x'])
     m = len(data['y'])
-    args1 = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
+    args1 = (m,) if m <= 5 else (0, m, np.ceil(m / 5).astype(int))
     m = n_z_per_y
-    args2 = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
+    args2 = (m,) if m <= 5 else (0, m, np.ceil(m / 5).astype(int))
     for major in range(*args1):
         for minor in range(*args2):
             i = major * n_z_per_y + minor
+            offset = params['z'][i]['z_offset']
             title = f"$z_{{{major}, {minor}}}$ " + \
-                f"(offset: {params['z'][i]['z_offset']:03f} m)"
+                f"(offset: {round(offset, 2)} m)"
 
             N = data['z'][i].shape[0]
             N_sqrt = np.sqrt(N).astype(int)
             indices = np.random.randint(0, N, n)
             fn = f'z-scatter-sub-{major}-{minor}'
             plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
-                                  title, filename=fn, s=1)
+                                  title, filename=fn, s=pointsize)
 
             fn = f'z-hist2d-{major}-{minor}'
             plot.hist_2d_multiple(data['z'][i], data['w'][i], title,
