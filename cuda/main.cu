@@ -37,8 +37,8 @@ int main() {
   // TODO add cmd line args
   // TODO struct n_planes .x .y. z
   const size_t
-    n_x_planes = 2,
-    n_z_planes = 5;
+    n_x_planes = 1,
+    n_z_planes = 1;
 
   const bool hd = false;
   // const bool hd = true;
@@ -86,6 +86,7 @@ int main() {
 
     // dt[0] will be overwritten
     auto y = time_transform<Direction::Backward, true>(x, u, v, p, &t1, &t2, &dt[0], true);
+    // auto y = time_transform<Direction::Backward, false>(x, u, v, p, &t1, &t2, &dt[0], true);
     check_cvector(y);
     if (i == 0)
       summarize_c('y', y);

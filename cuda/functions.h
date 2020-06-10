@@ -89,7 +89,7 @@ inline void agg_batch(const Geometry p, WTYPE *y, cudaStream_t stream,
 }
 
 template<bool add_constant = false>
-  void normalize_amp(std::vector<WTYPE> &c, bool log_normalize = false) {
+void normalize_amp(std::vector<WTYPE> &c, bool log_normalize = false) {
   const WTYPE constant = from_polar(1., ARBITRARY_PHASE);
   double max_amp = 0;
   for (size_t i = 0; i < c.size(); ++i)

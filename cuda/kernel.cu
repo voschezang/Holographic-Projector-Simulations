@@ -34,6 +34,12 @@ cudaError_t cudaCheck(cudaError_t result, const char *file, int line)
   return result;
 }
 
+inline
+__host__ __device__ double norm3d_host(double a, double b, double c) {
+  // simplified and host & device-compatible version of norm3d from CUDA math,  without overflow protection
+  return pow(a * a + b * b + c * c, 0.5);
+}
+
 __host__ __device__ void cuCheck(cuDoubleComplex  z) {
   double a = cuCreal(z), b = cuCimag(z);
   if (isnan(a)) printf("cu found nan re\n");

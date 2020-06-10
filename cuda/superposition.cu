@@ -33,13 +33,13 @@ namespace superposition {
 //////////////////////////////////////////////////////////////////////////////////
 
 template<const Direction direction>
-inline __device__ WTYPE single(const size_t i, const size_t j,
+inline __host__ __device__ WTYPE single(const size_t i, const size_t j,
                         const WTYPE *x, const STYPE *u, const STYPE *v) {
   const size_t
     n = i * DIMS,
     m = j * DIMS;
   const double
-    distance = norm3d(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
+    distance = NORM_3D(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
     amp = cuCabs(x[i]),
     phase = angle(x[i]);
 
@@ -49,9 +49,9 @@ inline __device__ WTYPE single(const size_t i, const size_t j,
   // TODO __ddiv_rd, __dmul_ru
 
   if (direction == Direction::Forward)
-    return from_polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
-  else
     return from_polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
+  else
+    return from_polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
 }
 
 template<Direction direction>
@@ -230,7 +230,7 @@ __global__ void per_block(const Geometry p,
                           const WTYPE *__restrict__ x, const size_t N_x,
                           const STYPE *__restrict__ u,
                           double *__restrict__ y_global,
-                          STYPE *__restrict__ v) {
+                          const STYPE *__restrict__ v) {
   __shared__ WTYPE y_shared[SHARED_MEMORY_SIZE(blockSize)];
   // TODO transpose y_shared? - memory bank conflicts, but first simplify copy_result()
   // but, this would make warp redcuce more complex

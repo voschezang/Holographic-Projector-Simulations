@@ -76,40 +76,6 @@ struct Params {
   /* Geometry g; */
 };
 
-// TODO
-/* class Params { */
-/*  private: */
-/*   // hierarchy */
-/*   size_t */
-/*     n_streams; */
-/*     /\* _stream_size, *\/ */
-/*     /\* _stream_batch_size, *\/ */
-/*     /\* _batches_per_stream, *\/ */
-/*     /\* _kernel_batch_size, *\/ */
-/*     /\* _kernels_per_stream_batch; *\/ */
-
-/*   // kernel */
-/*   size_t blockSize; */
-/*   size_t gridSize; */
-
-/*  public: */
-/*   size_t N; // number of "output" datapoints */
-/*   Params(size_t N); */
-/* } */
-
-/* Params::Params(size_t n) { */
-/*   n_streams = N_STREAMS; */
-/* } */
-
-/* Params::n_streams(size_t n) { */
-/*   n_streams = n; */
-/* } */
-
-/* WTYPE from_polar(double amp, double phase) { */
-/*   if (phase == 0.0) return {amp, 0.0}; */
-/*   return {amp * cos(phase), amp * sin(phase)}; */
-/* } */
-
 double flops(double runtime, size_t n, size_t m) {
   // Tera or Giga FLOP/s
   // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache

@@ -44,12 +44,13 @@ Params params(const Variable var, const size_t n_z_planes, const bool hd) {
   const bool randomize = false;
   auto projections = std::vector<Plane>{};
 
-  const double width = 1.344e-2; // = 1920 x 7e-6
+  /* const double width = 1.344e-2; // = 1920 x 7e-6 */
+  const double width = 300 * 7e-6; // = 1920 x 7e-6
   /* const double width = 5e-4; */
 
   // Note that the projection params slightly differ from the projector params
   for (auto& i : range(n_z_planes))
-    projections.push_back({name: 'z', width: width * 1.5, z_offset: 0.0, randomize: randomize, hd: false});
+    projections.push_back({name: 'z', width: 0.002, z_offset: 0.0, randomize: randomize, hd: false});
 
   if (n_z_planes > 1) {
     if (var == Variable::Offset) {
@@ -80,21 +81,13 @@ Params params(const Variable var, const size_t n_z_planes, const bool hd) {
         projections : projections};
 }
 
-Geometry geometry (const size_t n) {
-  Geometry p;
-  p.blockSize = BLOCKDIM;
-  p.gridSize = GRIDDIM;
-  p.kernel_size = KERNEL_SIZE;
-  p.batch_size = BATCH_SIZE;
-  p.n_streams = N_STREAMS;
+void derive_secondary_geometry(const size_t n, Geometry p) {
   p.stream_size = n / (p.n_streams * p.batch_size * p.kernel_size);
 
   assert(p.blockSize   > 0); assert(p.gridSize   > 0);
   assert(p.kernel_size > 0); assert(p.batch_size > 0);
   assert(p.stream_size > 0); assert(p.n_streams  > 0);
   assert(n == p.kernel_size * p.batch_size * p.stream_size * p.n_streams);
-
-  // secondary
 
   p.n_batches = p.n_streams * p.stream_size;
   p.n_kernels = p.n_batches * p.batch_size;
@@ -124,6 +117,28 @@ Geometry geometry (const size_t n) {
     print("Warning, not all _threads_ are used");
 
   check_hyper_params(p);
+}
+
+Geometry simple_geometry(const size_t n) {
+  Geometry p;
+  p.blockSize = 1;
+  p.gridSize = 1;
+  p.kernel_size = 1;
+  p.batch_size = n;
+  p.n_streams = 1;
+  derive_secondary_geometry(n, p);
+  return p;
+}
+
+Geometry geometry(const size_t n) {
+  Geometry p;
+  p.blockSize = BLOCKDIM;
+  p.gridSize = GRIDDIM;
+  p.kernel_size = KERNEL_SIZE;
+  p.batch_size = BATCH_SIZE;
+  p.n_streams = N_STREAMS;
+
+  derive_secondary_geometry(n, p);
   return p; // copy on return is permissible
 }
 

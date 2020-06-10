@@ -1,7 +1,6 @@
 #ifndef HYPER_PARAMS
 #define HYPER_PARAMS
 
-/* #define DEBUG */
 #define DIMS 3
 // TODO use N,M
 /* #define N_sqrt 8 */
@@ -34,8 +33,6 @@
 
 #define MAX_INPUT_SIZE 0 // TODO, specific for GPU
 
-#define ARBITRARY_PHASE 0.4912 // used in superposition::per_thread
-
 #define WARP_SIZE 32
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
 #if (N_sqrt <= 32)
@@ -67,11 +64,11 @@
 
 #define CACHE_BATCH 1 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 
-#if (BLOCKDIM >= 32)
-#define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
-#else
+/* #if (BLOCKDIM >= 32) */
+/* #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor */
+/* #else */
 #define REDUCE_SHARED_MEMORY 1
-#endif
+/* #endif */
 
 #define PARALLEL_INTRA_WARP_AGG 0 // TODO reimplement
 

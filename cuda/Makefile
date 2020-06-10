@@ -43,7 +43,7 @@ profile:
 	nvprof ./$(EXE)
 
 test:
-	$(C) -o test test.cu -l curand -std=c++11 && ./test
+	$(C) -o test test.cu -l curand -std=c++11 -DNORM_3D='norm3d_host' && ./test
 	rm -f test;
 
 vprofile:

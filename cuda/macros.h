@@ -7,6 +7,7 @@
 #define CEIL(x,y) ((x + y - 1) / y) // ceil(int, int)
 
 
+/* #define DEBUG */
 #define ZERO make_cuDoubleComplex(0,0)
 /* #define VOL(type, x) *((type *) &x) */
 
@@ -16,8 +17,12 @@
 #define TWO_PI (2 * M_PI)
 #define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
 /* #define SCALE (1 / LAMBDA) */
-#define SCALE (LAMBDA / 0.6328e-6)
-#define PROJECTOR_DISTANCE
+/* #define SCALE (LAMBDA / 0.6328e-6) */
+#define SCALE (1)
+/* #define PROJECTOR_DISTANCE */
+
+/* #define ARBITRARY_PHASE 0.4912 // used in superposition::per_thread */
+#define ARBITRARY_PHASE 0. // used in superposition::per_thread
 
 #define DOUBLE_PRECISION
 
@@ -35,6 +40,9 @@
 #define STYPE float // space (coordinate) type
 #endif // DOUBLE_PRECISION
 
+#ifndef NORM_3D
+#define NORM_3D norm3d // CUDA math api
+#endif
 
 // #define Ix(i,j) i + j * N_sqrt
 // #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * N_sqrt
