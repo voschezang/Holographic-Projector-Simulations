@@ -31,14 +31,14 @@
 
 
 int main() {
-  const struct {size_t x,y,z;} n = {x: 1,
+  const struct {size_t x,y,z;} n = {x: 3,
                                     y: N_sqrt * N_sqrt,
                                     z: N_sqrt * N_sqrt};
   // TODO add cmd line args
   // TODO struct n_planes .x .y. z
   const size_t
     n_x_planes = 1,
-    n_z_planes = 1;
+    n_z_planes = 2;
 
   const bool hd = false;
   // const bool hd = true;
@@ -69,11 +69,12 @@ int main() {
 
   // change offset in first dim
   // note that x,z now correspond to the spatial dims
-  auto x_offsets = linspace(n_x_planes, 0., 0.);
-  auto z_offsets = geomspace(n_x_planes, 0.1, 0.4);
+  auto x_offsets = linspace(n_x_planes, 0.0, 0.5);
+  auto z_offsets = geomspace(n_x_planes, 0.4, 0.1);
   for (auto& i : range(n_x_planes)) {
     printf("x plane #%i\n", i);
-    auto u = init::sparse_plane(x.size(), shape, params.input.width, x_offsets[i]);
+    const double x_offset = x_offsets[i] * params.projector.width;
+    auto u = init::sparse_plane(x.size(), shape, params.input.width, x_offset);
     const auto x_suffix = std::to_string(i);
     write_arrays<FileType::TXT>(x, u, "x" + x_suffix, "u" + x_suffix, params.input);
     printf("--- --- ---   --- --- ---  --- --- --- \n");
@@ -97,7 +98,7 @@ int main() {
     auto p = init::geometry(n.z);
     for (auto& j : range(params.projections.size())) {
       printf(" z plane #%i\n", j);
-      auto w = init::plane(n.z, params.projections[j]);
+      auto w = init::plane(n.z, params.projections[j], x_offset);
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WTYPE>(n.z);
       auto z = time_transform<Direction::Forward>(y, v, w, p, &t1, &t2, &dt[j], false);

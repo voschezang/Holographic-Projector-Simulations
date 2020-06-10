@@ -19,6 +19,7 @@
 enum class FileType {TXT, DAT, GRID};
 enum class Shape {Line, Cross, Circle, DottedCircle};
 enum class Variable {Offset, Width};
+enum class Transformation {Full, Amplitude2}; // Full: keep phase+amp, Amplitude2: only keep amplitude^2
 
 /* Geometry Hierarchy (parameters)
  * thread < block < grid < kernel < batch < stream
