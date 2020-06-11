@@ -49,26 +49,31 @@
 /* #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * DIMS */
 #define I_(i,j) (j + (i) * N_sqrt)
 /* #define Ix(i,j,k) (k + (j) * DIMS + (i) * DIMS * N_sqrt) */
-#define Ix(i,j,k,n) (k + (j) * DIMS + (i) * DIMS * (n))
+/* #define Ix(i,j,k,n) (k + (j) * DIMS + (i) * DIMS * (n)) */
+#define Ix(i,j,k,n) (k + DIMS * ((j) + (i) * (n)))
 
-/* #define Matrix(type, size1, size2) std::vector<std::vector<type>>(size1, std::vector<type>(size2)) */
-/* #define Matrix(type, size1, size2) std::vector<vtype<dtype>>(size1, type(size2)) */
+// two variants: shape (DIMS, N) and (N, DIMS)
+/* #define Ix2(i,j,_) (j + i * DIMS) */
+/* #define Ix2(i,j,N) (i + j * N) */
+
+/* #define Matrix(type, size1, size2) std::vector<std::vector<type>>(size1, std::vector<type>(size2))
+/* #define Matrix(type, size1, size2) std::vector<vtype<dtype>>(size1, type(size2))
 /* #define Matrix(type, size1) std::vector<vtype<dtype>>(size1, type(size2)) */
 #define print(x) std::cout << x << '\n'
 
 
 // TODO check # operations for abs/angle etc
 // see https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
-// TODO use sincos instead of exp, and 2 muls (re, im)
-#define WEIGHT_DIV 4
+#define WEIGHT_SQRT 4
 #define WEIGHT 8 // complex operations
-#define FLOP_PER_POINT (                            \
-             3     /* (u - v) with u,v \in R^3 */ + \
-             3+(3+1)*WEIGHT_DIV /* |u| power, sum, power */ +         \
-             2*WEIGHT    /* abs(x_i), angle(x_i) */ +                 \
-             1     /* amp/distance */ +                               \
-             3     /* phase - direction * distance * 2pi/lambda */ +  \
-             1+WEIGHT    /* a exp(i phase) */                         \
-             )
+#define FLOP_PER_POINT (                                                \
+                        3     /* (u - v) with u,v \in R^3 */ +          \
+                        3+2+WEIGHT_SQRT /* power2, sum3, sqrt */ +      \
+                        2*WEIGHT    /* abs(x_i), angle(x_i) */ +        \
+                        1     /* amp / distance */ +                    \
+                        3     /* phase - direction * distance * 2pi/lambda */ + \
+                        WEIGHT    /* exp(I phase) == sincos */ +        \
+                        2    /* a * {re, im} */                         \
+                        )
 
 #endif

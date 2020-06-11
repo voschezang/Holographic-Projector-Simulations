@@ -34,10 +34,11 @@ namespace superposition {
 
 template<const Direction direction>
 inline __host__ __device__ WTYPE single(const size_t i, const size_t j,
-                        const WTYPE *x, const STYPE *u, const STYPE *v) {
+                                        const WTYPE *x, const STYPE *u, const STYPE *v) {
   const size_t
     n = i * DIMS,
     m = j * DIMS;
+  // shape (DIMS, N) for spatial data is not significantly faster
   const double
     distance = NORM_3D(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
     amp = cuCabs(x[i]),

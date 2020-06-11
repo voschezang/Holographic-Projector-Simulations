@@ -37,8 +37,8 @@ int main() {
   // TODO add cmd line args
   // TODO struct n_planes .x .y. z
   const size_t
-    n_x_planes = 4,
-    n_z_planes = 1;
+    n_x_planes = 1,
+    n_z_planes = 8;
 
   // const Transformation projector = Transformation::Full;
   const auto transformation = Transformation::Amplitude2;
