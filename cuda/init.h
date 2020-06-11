@@ -147,7 +147,7 @@ Geometry geometry(const size_t n) {
 /**
  * Distribute sampling points over a 2D plane in 3D space.
  */
-std::vector<STYPE> plane(size_t n, Plane p, double x_offset=0) {
+std::vector<STYPE> plane(size_t n, Plane p, double x_offset = 0, double y_offset = 0) {
   // TODO return ptr to device memory, copy pos data to CPU during batches
   static unsigned int seed = 1234; // TODO manage externally from this function
   auto v = std::vector<STYPE>(n * DIMS);
@@ -215,13 +215,16 @@ std::vector<STYPE> plane(size_t n, Plane p, double x_offset=0) {
     for (unsigned int j = 0; j < DIMS; ++j)
       v[i * DIMS + j] = v[j];
 
-  for (unsigned int i = 0; i < n; ++i)
-    v[i * DIMS + 0] += x_offset;
+  if (x_offset != 0 || y_offset != 0)
+    for (unsigned int i = 0; i < n; ++i) {
+      v[i * DIMS + 0] += x_offset;
+      v[i * DIMS + 1] += y_offset;
+    }
 
   return v;
 }
 
-std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width, double x_offset) {
+std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width,  double x_offset, double y_offset, double modulate = 0.) {
   // each plane x,u y,v z,w is a set of points in 3d space
   /* const double dS = width * SCALE / (double) N_sqrt; // actually dS^(1/DIMS) */
   /* const double offset = 0.5 * width; */
@@ -229,6 +232,7 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width, doub
   assert(n != 0);
   if (n == 1) {
     u[0] = x_offset;
+    u[1] = y_offset;
     return u;
   }
 
@@ -264,7 +268,7 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width, doub
       radius = object_width / 2.0,
       /* circumference = TWO_PI * pow(radius, 2), */
       d_phase = TWO_PI / (double) n,
-      arbitrary_offset = 0.1125;
+      arbitrary_offset = 0.1125 + modulate * TWO_PI;
 
     for (unsigned int i = 0; i < n; ++i) {
       u[i * DIMS] = sin(i * d_phase + arbitrary_offset) * radius;
@@ -279,7 +283,7 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width, doub
       /* circumference = TWO_PI * pow(radius, 2), */
       /* don't include end; divide by n */
       d_phase = TWO_PI / (double) n,
-      arbitrary_offset = 0.1125;
+      arbitrary_offset = 0.1125 + modulate * TWO_PI;
 
     // TODO randomize slightly?
     for (unsigned int i = 1; i < n; ++i) {
@@ -291,11 +295,10 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width, doub
   }
   }
 
-  if (x_offset != 0) {
+  if (x_offset != 0 || y_offset != 0) {
     for (unsigned int i = 0; i < n; ++i) {
-      /* u[i * DIMS + 0] += x_offset / 4.; */
-      /* u[i * DIMS + 1] += x_offset; */
-      u[i * DIMS] += x_offset;
+      u[i * DIMS + 0] += x_offset;
+      u[i * DIMS + 1] += y_offset;
     }
   }
 
