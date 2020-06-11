@@ -28,9 +28,9 @@ animate:
 	# -f force format (file extension)
 	# -crf quality, e.g. 15-25
 	# -v quiet
-	ffmpeg -v 0 -framerate 5 -i $(IMG_DIR)/$(SEQUENCE_DIR)y/%06d_amp.png -vcodec libx264 -crf 25 $(OUTPUT_NAME_Y)
+	ffmpeg -v 0 -framerate 3 -i $(IMG_DIR)/$(SEQUENCE_DIR)y/%06d_amp.png -vcodec libx264 -crf 25 $(OUTPUT_NAME_Y)
 	# ffmpeg -r 10 -s 1920x1080 -i $(IMG_DIR)/$(SEQUENCE_DIR)y/%06d_amp.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $(IMG_DIR)/y.mp4
-	ffmpeg -v 0 -framerate 5 -i $(IMG_DIR)/$(SEQUENCE_DIR)z/%06d_amp.png -vcodec libx264 -crf 25 $(OUTPUT_NAME_Z)
+	ffmpeg -v 0 -framerate 4 -i $(IMG_DIR)/$(SEQUENCE_DIR)z/%06d_amp.png -vcodec libx264 -crf 25 $(OUTPUT_NAME_Z)
 
 plot-animate:
 	make plot animate

@@ -3,6 +3,7 @@ import subprocess
 import os
 # local
 import plot
+import surf
 import animate
 import util
 from util import DIMS
@@ -116,6 +117,9 @@ if __name__ == '__main__':
             plot.hist_2d_multiple(data['z'][i], data['w'][i], title,
                                   filename=fn, ybins=bins,
                                   ratio=1.)
+
+            surf.surf_multiple(data['z'][i], data['w'][i], N_sqrt, N_sqrt,
+                               title + ' ', filename='z-surf')
 
     print('plot sequence z')
     bins = int(min(N_sqrt, 1000))

@@ -128,27 +128,29 @@ def _scatter_wrapper(x, y, z, **kwargs):
         for s, lim_func in [(x, plt.xlim),
                             (y, plt.ylim)]:
             a, b = s.min(), s.max()
+            if a == b:
+                return
             if x.shape[0] < 20:
                 # for small datasets
-                margin = (b - a) * rel_margin
+                margin = abs(b - a) * rel_margin
                 a -= margin
                 b += margin
+                # origin 0,0 should be in included
                 a = min(0, a)
+                b = max(0, b)
 
             # aspect ratio is 1:1, set corresponding limits
             # assume width >= height
             if width is None:
-                width = b - a
+                width = abs(b - a)
             else:
-                height = b - a
+                height = abs(b - a)
                 if height < width:
-                    a -= (height - width) / 2
-                    b += (height - width) / 2
+                    a -= (width - height) / 2
+                    b += (width - height) / 2
 
-            if a != b:
-                # TODO rm this?
-                # lim_func(a, b)
-                pass
+                height = abs(b - a)
+                assert abs(height - width) < 1e-2 * width
 
             lim_func(a, b)
 

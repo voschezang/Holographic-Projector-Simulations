@@ -14,10 +14,6 @@ import util
 from util import DIMS
 
 
-def run():
-    return subprocess.check_output(['make', 'build-run'])
-
-
 def surf(x, y, z, Nx: int, Ny: int, **kwargs):
     if 'cmap' not in kwargs:
         global cmap
@@ -33,8 +29,8 @@ def surf(x, y, z, Nx: int, Ny: int, **kwargs):
     return surf
 
 
-def surf_multiple(phasor, position, prefix=''):
-    labels = ['Amplitude^2', 'Phase', 'Log Irradiance']
+def surf_multiple(phasor, position, Nx: int, Ny: int, prefix='', filename=None):
+    labels = ['Amplitude$^2$', 'Phase', 'Log Irradiance']
     for i, label in enumerate(labels):
         if i == 1:
             # skip phase plots
@@ -59,19 +55,16 @@ def surf_multiple(phasor, position, prefix=''):
              z, Nx, Ny)
         plt.title(f'{prefix}{label}')
         plt.tight_layout()
-        plt.show()
+        if filename is None:
+            plt.show()
+        else:
+            plot.save_fig(f'{filename}_{i}', ext='png')
+
+        plt.close()
 
 
 if __name__ == '__main__':
-    n_z_plots = 10
     sequence_dir = util.get_arg('--sequence_dir', '', parse_func=str)
-    if util.get_flag("-r") or util.get_flag("--rerun"):
-        out = run()
-
-    log = util.get_flag("-log")
-    if log:
-        print('log abs y')
-
     dir = '../tmp'
     fn = 'out.zip'
     size = os.path.getsize(os.path.join(dir, fn))
@@ -90,12 +83,14 @@ if __name__ == '__main__':
         data[k] = data[k][:Nxy]
 
     print({'N': N, 'Nx': Nx, 'Ny': Ny, 'eq': Nx * Ny == N})
+    N_sqrt = int(np.sqrt(N))
+    print(f'N sqrt (y): {N_sqrt}')
     # max_n_plots = 2
     # m = len(data['y'])
     # args = (m,) if m <= max_n_plots else (
     #     0, m, np.ceil(m / max_n_plots).astype(int))
     # for i in range(*args):
-    #     surf_multiple(data['y'][i], data['v'][i], f'$y_{i} $')
+    #     surf_multiple(data['y'][i], data['v'][i], Nx, Ny f'$y_{i} $')
 
     m = len(data['y'])
     args1 = (m,) if m <= 2 else (0, m, np.ceil(m / 2).astype(int))
@@ -110,4 +105,4 @@ if __name__ == '__main__':
                 f"(offset: {round(offset, 2)} m)"
             print(title)
             prefix = f'$z_{{{major},{minor}}}$ '
-            surf_multiple(data['z'][i], data['w'][i], prefix)
+            surf_multiple(data['z'][i], data['w'][i], N_sqrt, N_sqrt, prefix)
