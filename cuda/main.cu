@@ -49,7 +49,7 @@ int main() {
 
   Params params = init::params(Variable::Width, n_z_planes, hd);
   const Geometry p = init::geometry(n.y);
-  const bool add_const_source = transformation == Transformation::Amplitude;
+  const bool add_reference = transformation == Transformation::Amplitude;
   const double height = params.projector.width * (hd ? 1080. / 1920. : 1.);
   print_info(p, n.x, n.y, n.z);
 
@@ -94,7 +94,7 @@ int main() {
     v = init::plane(n.y, params.projector);
 
     // dt[0] will be overwritten
-    auto y = time_transform<Direction::Backwards, add_const_source>(x, u, v, p, &t1, &t2, &dt[0], true);
+    auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, p, &t1, &t2, &dt[0], true);
     check_cvector(y);
 
     if (i == 0)

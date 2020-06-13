@@ -98,7 +98,7 @@ inline __host__ __device__ double angle(cuDoubleComplex c) {
   return atan2(c.y, c.x);
 }
 
-inline __host__ __device__ cuDoubleComplex from_polar(double r, double phi) {
+inline __host__ __device__ cuDoubleComplex from_polar(double r, double phi = 0) {
   // Convert polar coordinates (r,phi) to Cartesian coordinates (re, im)
   // Using `r * e^(phi I) = r (cos phi + I sin phi)`
   // Note that result = {amp,0} if phase = 0, but adding such a branch may slow down performance

@@ -13,9 +13,11 @@
 
 #define HD (1920 * 1080)
 /* #define LAMBDA (0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser) */
-#define LAMBDA (0.650e-6) // 650 nm
+#define LAMBDA 0.650e-6 // 650 nm
 #define TWO_PI (2 * M_PI)
 #define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
+#define DISTANCE_REFERENCE_WAVE 24e-2
+
 /* #define SCALE (1 / LAMBDA) */
 /* #define SCALE (LAMBDA / 0.6328e-6) */
 #define SCALE (1)
@@ -47,7 +49,7 @@
 // #define Ix(i,j) i + j * N_sqrt
 // #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * N_sqrt
 /* #define Ix(i,j,k) i + j * N_sqrt + k * N_sqrt * DIMS */
-#define I_(i,j) (j + (i) * N_sqrt)
+/* #define I_(i,j) (j + (i) * N_sqrt) */
 /* #define Ix(i,j,k) (k + (j) * DIMS + (i) * DIMS * N_sqrt) */
 /* #define Ix(i,j,k,n) (k + (j) * DIMS + (i) * DIMS * (n)) */
 #define Ix(i,j,k,n) (k + DIMS * ((j) + (i) * (n)))
