@@ -40,8 +40,8 @@ namespace init {
 Params params(const Variable var, const size_t n_z_planes, const bool hd) {
   // TODO allow multiple x planes
   const double
-    z_offset = 0.4, // 0.1 gives fresnel zone plate pttn, but lab setup is 0.4
-    width = 1.344e-2, // = 1920 x 7e-6
+    z_offset = 0.4,
+    width = 1.344e-2, // projector width = 1920 x 7e-6
     object_width = 0.1 * width; // max width of virtual object that is projected
   /* const bool randomize = true; */
   const bool randomize = false;
@@ -282,7 +282,7 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width,  dou
       radius = object_width / 2.0,
       /* circumference = TWO_PI * pow(radius, 2), */
       /* don't include end; divide by n */
-      d_phase = TWO_PI / (double) n,
+      d_phase = TWO_PI / (double) (n-1), // subtract center point
       arbitrary_offset = 0.1125 + modulate * TWO_PI;
 
     // TODO randomize slightly?

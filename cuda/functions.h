@@ -114,12 +114,10 @@ void normalize_amp(std::vector<WTYPE> &c, bool log_normalize = false) {
     }
 }
 
-void square_amp(std::vector<WTYPE> &c, bool rm_phase = true, bool normalize = true) {
-  for (size_t i = 0; i < c.size(); ++i) {
-    const double amp = cuCabs(c[i]);
-    // Set phase to zero, exp(phi I) == 0
-    c[i] = {amp * amp, 0.};
-  }
+void rm_phase(std::vector<WTYPE> &c) {
+  // Set phase to zero, note that `a * exp(0 I) == {a, 0}`
+  for (size_t i = 0; i < c.size(); ++i)
+    c[i] = {cuCabs(c[i]), 0.};
 }
 
 /**

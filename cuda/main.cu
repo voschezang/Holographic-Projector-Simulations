@@ -38,10 +38,10 @@ int main() {
   // TODO struct n_planes .x .y. z
   const size_t
     n_x_planes = 1,
-    n_z_planes = 8;
+    n_z_planes = 1;
 
   // const Transformation projector = Transformation::Full;
-  const auto transformation = Transformation::Amplitude2;
+  const auto transformation = Transformation::Amplitude;
   // const bool hd = false;
   const bool hd = true;
   const auto shape = Shape::DottedCircle;
@@ -49,13 +49,12 @@ int main() {
 
   Params params = init::params(Variable::Width, n_z_planes, hd);
   const Geometry p = init::geometry(n.y);
-  const bool add_const_source = transformation == Transformation::Amplitude2;
+  const bool add_const_source = transformation == Transformation::Amplitude;
   const double height = params.projector.width * (hd ? 1080. / 1920. : 1.);
   print_info(p, n.x, n.y, n.z);
 
   struct timespec t0, t1, t2;
-  // auto dt = std::vector<double>(n_x_planes * n_z_planes); // TODO
-  auto dt = std::vector<double>(n_z_planes);
+  auto dt = std::vector<double>(max(n_z_planes, 1L));
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   // TODO use cmd arg for x length
@@ -74,9 +73,9 @@ int main() {
 
   // change offset in first dim
   // note that x,z now correspond to the spatial dims
-  auto rel_x_offsets = linspace(n_x_planes, 0.2, 0.8);
-  auto rel_y_offsets = linspace(n_x_planes, 0.8, 0.2);
-  auto z_offsets = geomspace(n_x_planes, 0.4, 0.4);
+  auto rel_x_offsets = linspace(n_x_planes, 0., 0.2);
+  auto rel_y_offsets = linspace(n_x_planes, 0., 0.2);
+  auto z_offsets = geomspace(n_x_planes, 0.4, 0.1);
   for (auto& i : range(n_x_planes)) {
     printf("x plane #%i\n", i);
     params.projector.z_offset = z_offsets[i];
@@ -103,14 +102,17 @@ int main() {
 
     write_arrays<FileType::TXT>(y, v, "y" + x_suffix, "v" + x_suffix, params.projector);
     // square amp and rm phase after saving
-    if (transformation == Transformation::Amplitude2)
-      square_amp(y);
+    // TODO rename function, apply before normalization?
+    if (transformation == Transformation::Amplitude)
+      rm_phase(y);
 
     // The projection distributions at various locations are obtained using forward transformations
     auto p = init::geometry(n.z);
+    // if (n_z_planes > 0) // TODO
     for (auto& j : range(params.projections.size())) {
       // skip half of forward transformations when simulating for prototype
-      if (transformation == Transformation::Amplitude2 && n_x_planes >= 4 && j % 2 == 1) continue;
+      // TODO allow to disable forward transformation
+      if (transformation == Transformation::Amplitude && n_x_planes >= 4 && j % 2 == 1) continue;
       printf(" z plane #%i\n", j);
       auto w = init::plane(n.z, params.projections[j], x_offset, y_offset);
       // TODO mv z outside loop to avoid unnecessary mallocs
