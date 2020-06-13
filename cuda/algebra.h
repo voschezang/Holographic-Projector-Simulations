@@ -2,6 +2,7 @@
 #define ALGEBRA
 
 #include <stdlib.h>
+#include <algorithm>
 #include <limits.h>
 #include <numeric>
 
@@ -23,6 +24,22 @@ void add_complex(std::vector<T> &x, T value) {
   // add constant to vector (in place)
   for (unsigned int i = 0; i < x.size(); ++i)
     x[i] = cuCadd(x[i], value);
+}
+
+template<typename T = WTYPE>
+void add_complex(std::vector<T> &x, const std::vector<T> &y) {
+  // elementwise sum of vectors (in place)
+  assert(x.size() == y.size());
+  for (unsigned int i = 0; i < x.size(); ++i)
+    x[i] = cuCadd(x[i], y[i]);
+}
+
+template<typename T = double>
+void normalize(std::vector<T> &x, T to = 1) {
+  if (x.size() == 0) return;
+  const auto max_inv = 1 / (T) std::max_element(x.begin(), x.end())[0];
+  for (unsigned int i = 0; i < x.size(); ++i)
+    x[i] *= max_inv;
 }
 
 // Generate vectors
@@ -83,9 +100,10 @@ inline T sum(const std::vector<T> &x) {
 
 template<typename T = double>
 inline double mean(const std::vector<T> &x) {
-    // note that mean of int vector is a double
-    return sum(x) / (double) x.size();
-  }
+  assert(x.size() > 0);
+  // note that mean of int vector is a double
+  return sum(x) / (double) x.size();
+}
 
 template<typename T = double>
 inline double sample_variance(const std::vector<T> &x) {
@@ -115,8 +133,9 @@ namespace algebra {
 //////////////////////////////////////////////////////////////////////////////////
 
 void test() {
-  double a = sum(std::vector<int>{0, 1});
-  print(a);
+  // empty vector has zero sum
+  assert(sum(std::vector<int>{}) == 0);
+
   assert(sum(std::vector<int>{0, 1}) == 1);
   assert(sum(std::vector<double>{1.0, 0.5}) == 1.5);
   assert(mean(std::vector<double>{0,1}) == 0.5);

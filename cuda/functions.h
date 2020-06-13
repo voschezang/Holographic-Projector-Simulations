@@ -89,8 +89,8 @@ inline void agg_batch(const Geometry p, WTYPE *y, cudaStream_t stream,
 }
 
 template<bool add_constant = false>
-void normalize_amp(std::vector<WTYPE> &c, bool log_normalize = false) {
-  const WTYPE constant = from_polar(1., ARBITRARY_PHASE);
+void normalize_amp(std::vector<WTYPE> &c, float to = 1., bool log_normalize = false) {
+  const auto constant = from_polar(1., ARBITRARY_PHASE);
   double max_amp = 0;
   for (size_t i = 0; i < c.size(); ++i)
     max_amp = fmax(max_amp, cuCabs(c[i]));
@@ -99,6 +99,7 @@ void normalize_amp(std::vector<WTYPE> &c, bool log_normalize = false) {
     printf("WARNING, max_amp << 1\n");
     return;
   }
+  max_amp /= to;
   if (add_constant)
     max_amp *= 2.;
 
@@ -240,8 +241,9 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 
 /**
  * Time the transform operation over the full input.
+ * Do a second transformation if add_reference is true.
  */
-template<Direction direction, bool add_const_source = false>
+template<Direction direction, bool add_constant_wave = false, bool add_reference_wave = false>
 std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                                   const std::vector<STYPE> &u,
                                   const std::vector<STYPE> &v,
@@ -250,11 +252,23 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                                   bool verbose = false) {
 
   clock_gettime(CLOCK_MONOTONIC, t1);
+  auto weights = std::vector<double> {1,
+                                      add_constant_wave ? 1 : 0,
+                                      add_reference_wave ? 1 : 0};
+  normalize(weights);
   auto y = transform<direction>(x, u, v, p);
+  normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
-  // add single far away light source, with arbitrary (but constant) phase
-  // adding the planar wave should happen before squaring the amplitude
-  normalize_amp<add_const_source>(y);
+  if (add_reference_wave) {
+    // add single far away light source, with arbitrary (but constant) phase
+    // adding the planar wave should happen before squaring the amplitude
+    const auto z = v[2] + DISTANCE_REFERENCE_WAVE; // assume third dim of v is constant
+    const auto direction2 = DISTANCE_REFERENCE_WAVE < v[2] ? Direction::Forwards : Direction::Backwards;
+    auto y_reference = transform<direction>({from_polar(1.)}, {{0,0,z}}, v, p);
+    normalize_amp<false>(y_reference, weights[2]);
+    add_complex(y, y_reference);
+  }
+
   clock_gettime(CLOCK_MONOTONIC, t2);
   *dt = diff(*t1, *t2);
   if (verbose)

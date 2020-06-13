@@ -55,7 +55,7 @@ void test_complex_multiple() {
   assert(angle(c) - 1.16590 < 1e-3);
 }
 
-template<const Direction direction = Direction::Forward>
+template<const Direction direction = Direction::Forwards>
 void test_superposition_single(std::vector<WTYPE> &x, std::vector<STYPE> &u, std::vector<STYPE> &v,
                                double amp, double phi) {
   size_t n = x.size();
@@ -84,12 +84,12 @@ void test_superposition_single(std::vector<WTYPE> &x, std::vector<STYPE> &u, std
   WTYPE y0 = superposition::single<direction>(0, 0, &x[0], &u[0], &v[0]);
 
   // auto p = init::simple_geometry(1);
-  // superposition::per_block<Direction::Forward, 1><<< p.gridSize, p.blockSize, 0 >>> \
+  // superposition::per_block<Direction::Forwards, 1><<< p.gridSize, p.blockSize, 0 >>> \
   //   (p, d_x_ptr, n, d_u_ptr, d_y_ptr, d_v_ptr );
 
   // thrust::host_vector<double> y_tmp = d_y;
   // WTYPE y0 {y_tmp[0], y_tmp[1]};
-  printf("amp: %f, phase %f\n", cuCabs(y0), angle(y0));
+  // printf("amp: %f, phase %f\n", cuCabs(y0), angle(y0));
   assert(equals(amp, cuCabs(y0)));
   assert(equals(phi, angle(y0)));
   // auto a = cuCabs(y0), phi = angle(y0);
@@ -100,7 +100,7 @@ void test_superposition_single(std::vector<WTYPE> &x, std::vector<STYPE> &u, std
   // for (int i = 0; i < n; ++i) {
   //   const unsigned int j = i * p.gridSize * p.kernel_size; // * 2
   //   const unsigned int k = i * p.kernel_size;
-  //   superposition::per_block<Direction::Forward, 1><<< p.gridSize, p.blockSize, 0 >>> \
+  //   superposition::per_block<Direction::Forwards, 1><<< p.gridSize, p.blockSize, 0 >>> \
   //     (p, d_x, n, d_u, &d_y_ptr[j], &d_v[k * DIMS] );
   // }
 }
@@ -123,14 +123,15 @@ void test_superposition() {
   assert(equals(cuCabs(x[0]) / distance / LAMBDA, 2638.8357137755534));
   assert(equals(distance / LAMBDA, 2.22e9));
   assert(equals(phi_next, 13948671379.83868));
-  test_superposition_single<Direction::Backward>(x, u, v, 0.0017152432139541098, -1.0130525640725432);
+  test_superposition_single<Direction::Backwards>(x, u, v, 0.0017152432139541098, -1.0130525640725432);
   x[0].x = 3.33; x[0].y = 4.44;
-  test_superposition_single<Direction::Backward>(x, u, v, 0.003846153846153846, 0.9272970147848789);
+  test_superposition_single<Direction::Backwards>(x, u, v, 0.003846153846153846, 0.9272970147848789);
   v[1] = 5.51e3 * LAMBDA;
   test_superposition_single(x, u, v, 1549.6263067864088, 1.0107725366705158);
 }
 
 int main() {
+  algebra::test();
   test_complex_multiple();
   // TODO add lin_algebra tests
   test_superposition();
