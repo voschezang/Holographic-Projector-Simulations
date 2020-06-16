@@ -16,7 +16,7 @@
 #include "algebra.h"
 #include "kernel.cu"
 
-enum class FileType {TXT, DAT, GRID};
+/* enum class FileType {TXT, DAT, GRID}; */ // TODO rm unused file io funcs
 enum class Shape {Line, Cross, Circle, DottedCircle};
 enum class Variable {Offset, Width};
 enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
@@ -205,6 +205,52 @@ void print_complex(WTYPE x, std::ofstream& out) {
   }
 }
 
+template<typename T = double>
+std::vector<T> read_bytes(std::string fn) {
+  /* std::istream_iterator<unsigned char> in_iterator (out, ""); */
+  /* const unsigned char *a = (unsigned char *) &x[0]; */
+  /* std::copy( a, &a[sizeof(double) * x.size()], out_iterator ); */
+
+  /* auto f = std::ifstream(fn, std::ios::in | std::ios::binary); */
+  /* std::vector<uint8_t> data ((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<T>()); */
+  /* ifstream myfile ("example.txt"); */
+  std::streampos size;
+  char * memblock;
+
+  // init stream at end of stream to obtain size
+  std::ifstream file (fn, std::ios::in|std::ios::binary|std::ios::ate);
+  if (!file.is_open()) exit(1);;
+  size = file.tellg();
+  if (size == 0) exit(2);
+  /* printf("sizes: %u, %i; %i %u\n", size, (int) size, sizeof(double)); */
+  /* printf("sizes: %i / %i\n", (int) size, sizeof(double)); */
+  memblock = new char [size];
+  /* printf("memblock: %i\n", sizeof(memblock) / sizeof(char)); */
+  file.seekg (0, std::ios::beg);
+  file.read (memblock, size);
+  file.close();
+  std::cout << "the entire file content is in memory\n";
+
+  T *ptr = (T*) memblock;
+  printf("data: %f, %f \n", ptr[0], ptr[1]);
+
+  // TODO use proper memory handling
+  /* delete[] memblock; */
+  /* return unique_ptr<T>  */
+  return std::vector<T>(ptr, ptr + size / sizeof(T));
+}
+/* printf("len: %i\n", *len); */
+/* for(auto i: contents) { */
+/*   int value = i; */
+/*   std::cout << "data: " << value << std::endl; */
+/* } */
+
+/* std::cout << "file size: " << contents.size() << std::endl; */
+
+/* struct {size_t len; std::string amp, pos; } read_meta(std::string fn) { */
+/*   size_t len; */
+/*   std::string amp, pos; */
+
 /**
  * (With lazy evaluation) Map/apply function `f` to each array element and write the result to file `out`.
  */
@@ -219,15 +265,16 @@ template<typename T = WTYPE>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
   const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
   double buffer[buffer_size];
-
-  assert(x.size() == (x.size() / buffer_size) * buffer_size);
+  if (x.size() > 128)
+    assert(x.size() == (x.size() / buffer_size) * buffer_size);
 
   const auto bytes = (unsigned char *) &buffer;
   auto iter = std::ostream_iterator<unsigned char>(out, "");
 
   for (size_t i = 0; i < x.size(); i+=buffer_size) {
     // split inner loop to allow vectorization
-    for (size_t j = 0; j < buffer_size; ++j) {
+    size_t j;
+    for ( j = 0; j < buffer_size; ++j) {
       buffer[j] = f(x[i+j]);
     }
     std::copy(bytes, &bytes[buffer_size * sizeof(double)], iter);
@@ -274,12 +321,12 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, st
     sep1 = ": ",
     sep2 = ", ";
 
+  // TODO replace phasor by amp and phase
   out << "{" \
       << quote("phasor")    << sep1 << quote(phasor) << sep2 \
       << quote("pos")       << sep1 << quote(pos)    << sep2 \
       << quote("z_offset")  << sep1 << p.z_offset    << sep2 \
       << quote("len")       << sep1 << len           << sep2 \
-      << quote("precision") << sep1 << IO_PRECISION  << sep2 \
       << quote("precision") << sep1 << IO_PRECISION  << sep2 \
       << quote("dims")      << sep1 << DIMS          << sep2 \
       << quote("hd")        << sep1 << p.hd          << "}\n";
@@ -297,10 +344,8 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
   fclose(out);
 }
 
-template <FileType type> // TODO rm
 void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
                   std::string k1, std::string k2, Plane p) {
-  if (type != FileType::TXT) return;
   static bool overwrite = true;
   if (overwrite)
     print("Save results as txt");

@@ -37,12 +37,12 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-Params params(const Variable var, const size_t n_z_planes, const bool hd) {
+Params params(const Variable var, const size_t n_z_planes, const bool hd, double rel_object_width) {
   // TODO allow multiple x planes
   const double
     z_offset = 0.4,
-    width = 1.344e-2, // projector width = 1920 x 7e-6
-    object_width = 0.1 * width; // max width of virtual object that is projected
+    width = PROJECTOR_WIDTH,
+    object_width = rel_object_width * width; // max width of virtual object that is projected
   /* const bool randomize = true; */
   const bool randomize = false;
   auto projections = std::vector<Plane>{};

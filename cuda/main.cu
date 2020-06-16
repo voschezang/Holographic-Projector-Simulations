@@ -31,23 +31,52 @@
 
 
 int main() {
-  const struct {size_t x,y,z;} n = {x: 1,
-                                    y: N_sqrt * N_sqrt,
-                                    z: N_sqrt * N_sqrt};
+  /**
+   * Note there is an effective minimum distance between projected points,
+   * but that projecting point further apart requires a higher sampling density.
+   *
+   * Projecting more that ~20 points may result in a higher (and less random)
+   * noise floor.
+   */
+  struct {size_t x,y,z;} n = {x: 9,
+                              y: N_sqrt * N_sqrt,
+                              z: N_sqrt * N_sqrt};
   // TODO add cmd line args
   // TODO struct n_planes .x .y. z
   const size_t
-    n_x_planes = 1,
-    n_z_planes = 1;
+    n_x_planes = 2,
+    n_z_planes = 0;
 
   // const Transformation projector = Transformation::Full;
   const auto transformation = Transformation::Amplitude;
   // const bool hd = false;
   const bool hd = true;
+  const double rel_object_width = 0.3; // affects sampling density
+
+#ifdef READ_INPUT
+  print("Reading input files");
+  auto x = read_bytes<WTYPE>(std::string{"../tmp/x_phasor.input"});
+  auto u = read_bytes<STYPE>(std::string{"../tmp/x_pos.input"});
+  n.x = x.size();
+  printf("Number of input datapoints: %u\n", n.x);
+  printf("Number of input datapoints: %u\n", u.size() / DIMS);
+  assert(x.size() == u.size() / DIMS);
+  {
+    // scale pos, assume pos was normalized
+    const double width = rel_object_width * PROJECTOR_WIDTH;
+    for (size_t i = 0; i < x.size(); ++i) {
+      u[i * DIMS + 0] *= width;
+      u[i * DIMS + 1] *= width;
+    }
+  }
+#else
+  // TODO use cmd arg for x length
   const auto shape = Shape::DottedCircle;
   // const auto shape = Shape::Circle;
+  auto x = std::vector<WTYPE>(n.x, from_polar(1.0, 0.0));
+#endif
 
-  Params params = init::params(Variable::Width, n_z_planes, hd);
+  Params params = init::params(Variable::Width, n_z_planes, hd, rel_object_width);
   const Geometry p = init::geometry(n.y);
   const bool add_reference = transformation == Transformation::Amplitude;
   const double height = params.projector.width * (hd ? 1080. / 1920. : 1.);
@@ -57,15 +86,7 @@ int main() {
   auto dt = std::vector<double>(max(n_z_planes, 1L));
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
-  // TODO use cmd arg for x length
-
-  // TODO scale input intensity, e.g. 1/n, and also for distance: sqrt(p)/r^2
-  // s.t. sum of irradiance/power/amp is 1
-  // i.e. n A/d = 1
-  // TODO make this optimization optional, as it introduces some error
-  auto x = std::vector<WTYPE>(n.x, from_polar(1.0, 0.0));
   auto v = init::plane(n.y, params.projector);
-
   summarize_double('v', v); // TODO edit in case hd == true
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("Runtime init: \t%0.3f\n", diff(t0, t1));
@@ -73,19 +94,21 @@ int main() {
 
   // change offset in first dim
   // note that x,z now correspond to the spatial dims
-  auto rel_x_offsets = linspace(n_x_planes, 0., 0.2);
-  auto rel_y_offsets = linspace(n_x_planes, 0., 0.2);
-  auto z_offsets = geomspace(n_x_planes, 0.4, 0.1);
+  auto rel_x_offsets = linspace(n_x_planes, 0.0, 0.0);
+  auto rel_y_offsets = linspace(n_x_planes, 0.0, 0.0);
+  auto z_offsets = geomspace(n_x_planes, 0.1, 0.05);
   for (auto& i : range(n_x_planes)) {
     printf("x plane #%i\n", i);
     params.projector.z_offset = z_offsets[i];
     const double
       x_offset = rel_x_offsets[i] * params.projector.width,
-      y_offset = rel_y_offsets[i] * height,
-      modulate = i / (double) n_x_planes;
+      y_offset = rel_y_offsets[i] * height;
+#ifndef READ_INPUT
+    const double modulate = i / (double) n_x_planes;
     auto u = init::sparse_plane(x.size(), shape, params.input.width, x_offset, y_offset, modulate);
+#endif
     const auto x_suffix = std::to_string(i);
-    write_arrays<FileType::TXT>(x, u, "x" + x_suffix, "u" + x_suffix, params.input);
+    write_arrays(x, u, "x" + x_suffix, "u" + x_suffix, params.input);
     printf("--- --- ---   --- --- ---  --- --- --- \n");
 
     // The projector distribution is obtained by doing a single backwards transformation
@@ -100,7 +123,7 @@ int main() {
     if (i == 0)
       summarize_c('y', y);
 
-    write_arrays<FileType::TXT>(y, v, "y" + x_suffix, "v" + x_suffix, params.projector);
+    write_arrays(y, v, "y" + x_suffix, "v" + x_suffix, params.projector);
     // square amp and rm phase after saving
     // TODO rename function, apply before normalization?
     if (transformation == Transformation::Amplitude)
@@ -108,7 +131,6 @@ int main() {
 
     // The projection distributions at various locations are obtained using forward transformations
     auto p = init::geometry(n.z);
-    // if (n_z_planes > 0) // TODO
     for (auto& j : range(params.projections.size())) {
       // skip half of forward transformations when simulating for prototype
       // TODO allow to disable forward transformation
@@ -124,7 +146,7 @@ int main() {
 
       const auto z_suffix = x_suffix + "_" + std::to_string(j);
       // TODO write this async, next loop can start already
-      write_arrays<FileType::TXT>(z, w, "z" + z_suffix, "w" + z_suffix, params.projections[j]);
+      write_arrays(z, w, "z" + z_suffix, "w" + z_suffix, params.projections[j]);
     }
 
     print_result(dt, y.size(), n.z);
