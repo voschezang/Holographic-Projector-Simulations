@@ -59,7 +59,7 @@ def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
 
         # plt.tight_layout()
         if filename is not None:
-            save_fig(f'{filename}_{k}', ext='png')
+            save_fig(f'{filename}_{k}', ext='png', pad_inches=0)
 
     return matrix
 
@@ -123,36 +123,39 @@ def _scatter_wrapper(x, y, z, **kwargs):
     plt.scatter(x, y, c=z, **kwargs)
     plt.axhline(0, color='0', ls='--', lw=1, alpha=0.4)
     plt.axvline(0, color='0', ls='--', lw=1, alpha=0.4)
-    width = None
-    if x.shape[0] > 1:
-        for s, lim_func in [(x, plt.xlim),
-                            (y, plt.ylim)]:
-            a, b = s.min(), s.max()
-            if a == b:
-                return
-            if x.shape[0] < 20:
-                # for small datasets
-                margin = abs(b - a) * rel_margin
-                a -= margin
-                b += margin
-                # origin 0,0 should be in included
-                a = min(0, a)
-                b = max(0, b)
+    if x.shape[0] == 1:
+        return
 
-            # aspect ratio is 1:1, set corresponding limits
-            # assume width >= height
-            if width is None:
-                width = abs(b - a)
-            else:
-                height = abs(b - a)
-                if height < width:
-                    a -= (width - height) / 2
-                    b += (width - height) / 2
+    width = abs(x.max() - x.min())
+    height = abs(y.max() - y.min())
+    max_width = max(width, height)
+    args = [(x, plt.xlim), (y, plt.ylim)]
+    if width < height:
+        args.reverse()
 
-                height = abs(b - a)
-                assert abs(height - width) < 1e-2 * width
+    for s, lim_func in args:
+        a, b = s.min(), s.max()
+        width = abs(b - a)  # idem for height
+        if a == b:
+            return
 
-            lim_func(a, b)
+        # aspect ratio is 1:1, set corresponding limits
+        # assume width >= height
+        if width < max_width:
+            a -= (max_width - width) / 2
+            b += (max_width - width) / 2
+
+        if x.shape[0] < 20:
+            # for small datasets
+            margin = max_width * rel_margin
+            a -= margin
+            b += margin
+            # # origin 0,0 should be in included
+            # TODO this invalidates max_width
+            # a = min(0, a)
+            # b = max(0, b)
+
+        lim_func(a, b)
 
 
 def _hist2d_wrapper(x, y, z, density=True, **kwargs):
@@ -208,7 +211,8 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     else:
         ax = plt.subplot(313)
 
-    log_irradiance = np.log(irradiance(to_polar(a, phi), normalize=False))
+    # |E|^2 == irradiance(E)
+    log_irradiance = np.log(np.clip(a ** 2, 1e-9, None))
     if density3 is not None:
         # hack to allow optional 3rd param for histogram plot func
         kwargs['density'] = density3
@@ -276,12 +280,14 @@ def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
 
 
 def save_fig(filename, ext='pdf', dpi='figure',
-             transparent=True, bbox_inches='tight', interpolation='none'):
+             transparent=True, bbox_inches='tight', interpolation='none',
+             **kwargs):
     assert os.path.isdir(IMG_DIR), \
         '_img_dir.py/IMG_DIR is must be setup correctly'
     # plt.axis('off') # this only affects the current subplot
     plt.savefig(f'{IMG_DIR}/{filename}.{ext}', dpi=dpi, transparent=True,
-                interpolation=interpolation, bbox_inches=bbox_inches)
+                interpolation=interpolation, bbox_inches=bbox_inches,
+                **kwargs)
     plt.close()
 
 

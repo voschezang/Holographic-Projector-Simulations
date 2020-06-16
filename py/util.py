@@ -784,7 +784,8 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
     # TODO use sep length in bytes
     min_size = n * precision
     if size < min_size:
-        raise SystemError(f"Filesize too small ({size} < {min_size})")
+        raise SystemError(
+            f"Filesize too small ({size} < {min_size}) for {filename}")
 
     if sep:
         # use text (csv) files because binary files are not platform independent
