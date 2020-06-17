@@ -13,14 +13,14 @@
 // Vector operations
 
 template<typename T = double>
-void add(std::vector<T> &x, T value) {
+void add(std::vector<T> &x, const T value) {
   // add constant to vector (in place)
   for (unsigned int i = 0; i < x.size(); ++i)
     x[i] += value;
 }
 
 template<typename T = WTYPE>
-void add_complex(std::vector<T> &x, T value) {
+void add_complex(std::vector<T> &x, const T value) {
   // add constant to vector (in place)
   for (unsigned int i = 0; i < x.size(); ++i)
     x[i] = cuCadd(x[i], value);
@@ -37,7 +37,7 @@ void add_complex(std::vector<T> &x, const std::vector<T> &y) {
 template<typename T = double>
 void normalize(std::vector<T> &x, T to = 1) {
   if (x.size() == 0) return;
-  const auto max_inv = 1 / (T) std::max_element(x.begin(), x.end())[0];
+  const auto max_inv = to / (T) std::max_element(x.begin(), x.end())[0];
   for (unsigned int i = 0; i < x.size(); ++i)
     x[i] *= max_inv;
 }
@@ -126,6 +126,25 @@ inline double variance(const std::vector<T> &x) {
 }
 
 
+// Util
+
+inline double lerp(double a, double b, double ratio) {
+  // Linear interpolation of two numbers a, b. Lazy version of linspace
+  return (1 - ratio) * a + ratio * b;
+}
+inline double lerp(Range<double> x, double ratio) {
+  return lerp(x.min, x.max, ratio);
+}
+
+inline double gerp(double a, double b, double ratio) {
+  // Geometric interpolation of two numbers a, b. Lazy version of geomspace
+  return pow(10, lerp(log10(a), log10(b), ratio));
+}
+inline double gerp(Range<double> x, double ratio) {
+  return gerp(x.min, x.max, ratio);
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 namespace algebra {
@@ -140,6 +159,8 @@ void test() {
   assert(sum(std::vector<double>{1.0, 0.5}) == 1.5);
   assert(mean(std::vector<double>{0,1}) == 0.5);
   assert(sample_variance(std::vector<double>{0,1}) == 0.25);
+
+  assert(0); // TODO test lerp, gerp
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
