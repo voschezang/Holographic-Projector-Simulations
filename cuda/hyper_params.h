@@ -1,18 +1,20 @@
 #ifndef HYPER_PARAMS
 #define HYPER_PARAMS
 
-#define DIMS 3
-
+/**
+ * Macro's that can be configured with compile flags (-D)
+ */
 
 /* #define READ_INPUT */
+#define PROJECT_PHASE 1
 
 // TODO use N,M
 /* #define N_sqrt 8 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
-/* #define N_sqrt 256 */
-#define N_sqrt 512
+#define N_sqrt 256
+/* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 /* #define N (N_sqrt * N_sqrt) */
@@ -34,8 +36,6 @@
 /* #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream */
 /* #define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE) */
 /* #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM) */
-
-#define MAX_INPUT_SIZE 0 // TODO, specific for GPU
 
 #define WARP_SIZE 32
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU

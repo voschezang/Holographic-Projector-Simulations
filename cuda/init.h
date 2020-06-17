@@ -37,53 +37,7 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-Params params(const Variable var, const size_t n_z_planes, const bool hd, double rel_object_width) {
-  // TODO allow multiple x planes
-  const double
-    z_offset = 0.4,
-    width = PROJECTOR_WIDTH,
-    object_width = rel_object_width * width; // max width of virtual object that is projected
-  /* const bool randomize = true; */
-  const bool randomize = false;
-  auto projections = std::vector<Plane>{};
-
-  /* const double width = 300 * 7e-6; // = 1920 x 7e-6 */
-  /* const double width = 5e-4; */
-
-  // Note that the projection params slightly differ from the projector params
-  for (auto& i : range(n_z_planes))
-    projections.push_back({name: 'z', width: object_width * 2, z_offset: 0.0, randomize: randomize, hd: false});
-
-  if (n_z_planes > 1) {
-    if (var == Variable::Offset) {
-      const double delta = -0.5 * z_offset / (n_z_planes - 1.0);
-      auto values = linspace(n_z_planes, 0.0, delta * n_z_planes);
-      for (auto& i : range(n_z_planes))
-        projections[i].z_offset = values[i];
-    }
-    else if (var == Variable::Width) {
-      if (n_z_planes <= 5) {
-        auto values = linspace(n_z_planes, object_width * 1.5, width * pow(n_z_planes - 1, 0.5));
-        for (auto& i : range(n_z_planes))
-          projections[i].width = values[i];
-      } else {
-        auto values = logspace(n_z_planes, -1, -4.5);
-        for (auto& i : range(n_z_planes))
-          projections[i].width = values[i];
-      }
-    }
-  }
-
-  // TODO use width var for x width
-  return
-    {   input       : {name: 'x', width: object_width, z_offset: 0.0,
-          randomize: randomize, hd: false},
-        projector   : {name: 'y', width: width, z_offset : z_offset,
-          randomize : randomize, hd: hd},
-        projections : projections};
-}
-
-void derive_secondary_geometry(const size_t n, Geometry &p) {
+void derive_secondary_geometry(const size_t n, Geometry& p) {
   p.stream_size = n / (p.n_streams * p.batch_size * p.kernel_size);
 
   assert(p.blockSize   > 0); assert(p.gridSize   > 0);
@@ -147,10 +101,15 @@ Geometry geometry(const size_t n) {
 /**
  * Distribute sampling points over a 2D plane in 3D space.
  */
-std::vector<STYPE> plane(size_t n, Plane p, double x_offset = 0, double y_offset = 0) {
+void plane(std::vector<STYPE> &v, Plane p, const Cartesian<double> &offset = {0,0,0}) {
   // TODO return ptr to device memory, copy pos data to CPU during batches
   static unsigned int seed = 1234; // TODO manage externally from this function
-  auto v = std::vector<STYPE>(n * DIMS);
+  size_t n = v.size() / DIMS;
+  printf("offset: %f\n", offset.z);
+  assert(p.z_offset == offset.z); // TODO rm duplicate arg
+  for (unsigned int i = 0; i < n; ++i)
+    v[i*DIMS + 2] = offset.z;
+
   /* const size_t n_sqrt = round(sqrt(n)); */
   double ratio = 1.;
   size_t
@@ -195,9 +154,9 @@ std::vector<STYPE> plane(size_t n, Plane p, double x_offset = 0, double y_offset
       randomize(random, d_random, n_random, generator);
 
     for (unsigned int j = 0; j < y; ++j) {
-      v[Ix(i,j,0,y)] = i * dx - x_half;
-      v[Ix(i,j,1,y)] = j * dy - y_half;
-      v[Ix(i,j,2,y)] = p.z_offset;
+      v[Ix(i,j,0,y)] = i * dx - x_half + offset.x;
+      v[Ix(i,j,1,y)] = j * dy - y_half + offset.y;
+      v[Ix(i,j,2,y)] = offset.z;
 
       if (p.randomize) {
         v[Ix(i,j,0,y)] += x_random_range * (random[j*2] - 0.5);
@@ -214,34 +173,28 @@ std::vector<STYPE> plane(size_t n, Plane p, double x_offset = 0, double y_offset
   for (unsigned int i = x * y; i < n; ++i)
     for (unsigned int j = 0; j < DIMS; ++j)
       v[i * DIMS + j] = v[j];
-
-  if (x_offset != 0 || y_offset != 0)
-    for (unsigned int i = 0; i < n; ++i) {
-      v[i * DIMS + 0] += x_offset;
-      v[i * DIMS + 1] += y_offset;
-    }
-
-  return v;
 }
 
-std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width,  double x_offset, double y_offset, double modulate = 0.) {
-  // each plane x,u y,v z,w is a set of points in 3d space
-  /* const double dS = width * SCALE / (double) N_sqrt; // actually dS^(1/DIMS) */
-  /* const double offset = 0.5 * width; */
-  auto u = std::vector<STYPE>(n * DIMS, 0.0);
+std::vector<STYPE> sparse_plane(std::vector<STYPE> &u, Shape shape, double width,
+                                const Cartesian<double> &offset, double modulate = 0.) {
+  size_t n = u.size() / DIMS;
+  for (unsigned int i = 0; i < n; ++i)
+    u[i*DIMS + 2] = offset.z;
+
   assert(n != 0);
   if (n == 1) {
-    u[0] = x_offset;
-    u[1] = y_offset;
+    u[0] = offset.x;
+    u[1] = offset.y;
     return u;
   }
 
+  // set the x,y dimensions
   switch (shape) {
   case Shape::Line: {
     // Distribute datapoints over a line
     auto
-      du = object_width / (double) (n-1), // TODO use SCALE?
-      half_width = object_width / 2.0;
+      du = width / (double) (n-1), // TODO use SCALE?
+      half_width = width / 2.0;
 
     for (unsigned int i = 0; i < n; ++i)
       u[i*DIMS] = i * du - half_width;
@@ -251,8 +204,8 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width,  dou
   case Shape::Cross: {
     const size_t half_n = n / 2;
     const auto
-      du = object_width * object_width / (double) (n-1), // TODO use SCALE?
-      half_width = object_width / 2.0;
+      du = width * width / (double) (n-1), // TODO use SCALE?
+      half_width = width / 2.0;
 
     // if n is even, skip the center
     for (unsigned int i = 0; i < n / 2; ++i) {
@@ -265,7 +218,7 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width,  dou
     // Distribute datapoints over a circle
     // (using polar coordinates, s.t. $phi_i \equiv i \Delta \phi$)
     auto
-      radius = object_width / 2.0,
+      radius = width / 2.0,
       /* circumference = TWO_PI * pow(radius, 2), */
       d_phase = TWO_PI / (double) n,
       arbitrary_offset = 0.1125 + modulate * TWO_PI;
@@ -279,7 +232,7 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width,  dou
   case Shape::DottedCircle: {
     // (using polar coordinates)
     auto
-      radius = object_width / 2.0,
+      radius = width / 2.0,
       /* circumference = TWO_PI * pow(radius, 2), */
       /* don't include end; divide by n */
       d_phase = TWO_PI / (double) (n-1), // subtract center point
@@ -295,10 +248,10 @@ std::vector<STYPE> sparse_plane(size_t n, Shape shape, double object_width,  dou
   }
   }
 
-  if (x_offset != 0 || y_offset != 0) {
+  if (offset.x != 0 || offset.y != 0) {
     for (unsigned int i = 0; i < n; ++i) {
-      u[i * DIMS + 0] += x_offset;
-      u[i * DIMS + 1] += y_offset;
+      u[i * DIMS + 0] += offset.x;
+      u[i * DIMS + 1] += offset.y;
     }
   }
 

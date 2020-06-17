@@ -18,6 +18,10 @@
 #define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
 #define DISTANCE_REFERENCE_WAVE 24e-2 // in meters
 #define PROJECTOR_WIDTH 1.344e-2 // projector width = 1920 x 7e-6
+#define PROJECTOR_HEIGHT(hd) ((hd ? 1080. / 1920. : 1.) * PROJECTOR_WIDTH)
+#define DIMS 3
+
+#define MAX_INPUT_SIZE 0 // TODO, specific for GPU
 
 /* #define SCALE (1 / LAMBDA) */
 /* #define SCALE (LAMBDA / 0.6328e-6) */

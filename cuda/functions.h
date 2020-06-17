@@ -31,7 +31,7 @@ inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
   }
 
 template<Direction direction>
-inline void partial_superposition_per_block(const Geometry p, const size_t Nx,
+inline void partial_superposition_per_block(const Geometry& p, const size_t Nx,
                                             const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
                                             cudaStream_t stream, double *d_y_block)
 {
@@ -61,7 +61,7 @@ inline void partial_superposition_per_block(const Geometry p, const size_t Nx,
   }
 }
 
-inline void agg_batch_blocks(const Geometry p, cudaStream_t stream,
+inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
                              DeviceVector<double> d_y_batch,
                              double *d_y_block) {
   auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
@@ -80,7 +80,7 @@ inline void agg_batch_blocks(const Geometry p, cudaStream_t stream,
   }
 }
 
-inline void agg_batch(const Geometry p, WTYPE *y, cudaStream_t stream,
+inline void agg_batch(const Geometry& p, WTYPE *y, cudaStream_t stream,
                       WTYPE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[p.n_per_batch], p.n_per_batch, d_y_stream);
@@ -136,14 +136,8 @@ template<Direction direction>
 inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
                                     const std::vector<STYPE> &u,
                                     const std::vector<STYPE> &v,
-                                    const Geometry p) {
-  /* inline void transform(const WTYPE *x, WTYPE *y, */
-  /*                       const STYPE *u, const STYPE *v) { */
-
-  // type declarations in c make it more complex/verbose than e.g. python */
-  // c++ has even more type syntax (e.g. `std::func<>`, multiple ways of variable init) */
-  // `auto` gives simpler python-like syntax, with variable names on the right and constructors on the left */
-
+                                    const Geometry& p) {
+  assert(u[2] != v[2]);
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
   const size_t n = v.size() / DIMS;
 #ifdef DEBUG
@@ -247,10 +241,9 @@ template<Direction direction, bool add_constant_wave = false, bool add_reference
 std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                                   const std::vector<STYPE> &u,
                                   const std::vector<STYPE> &v,
-                                  const Geometry p,
+                                  const Geometry& p,
                                   struct timespec *t1, struct timespec *t2, double *dt,
                                   bool verbose = false) {
-
   clock_gettime(CLOCK_MONOTONIC, t1);
   auto weights = std::vector<double> {1,
                                       add_constant_wave ? 1 : 0,
@@ -260,11 +253,17 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
   if (add_reference_wave) {
-    // add single far away light source, with arbitrary (but constant) phase
-    // adding the planar wave should happen before squaring the amplitude
-    const auto z = v[2] + DISTANCE_REFERENCE_WAVE; // assume third dim of v is constant
-    const auto direction2 = DISTANCE_REFERENCE_WAVE < v[2] ? Direction::Forwards : Direction::Backwards;
-    auto y_reference = transform<direction>({from_polar(1.)}, {{0,0,z}}, v, p);
+    /**
+     * Add single far away light source behind the second (v) plane,
+     * with arbitrary (but constant) phase
+     * adding the planar wave should happen before squaring the amplitude
+    */
+    // TODO do this on CPU?
+    const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
+    /* const std::vector<WTYPE> x_reference = {from_polar(1.)}; */
+    /* const std::vector<STYPE> u_reference = {{0.,0., z_offset}}; */
+    /* auto y_reference = transform<Direction::Forwards>(x_reference, u_reference, v, p); */
+    auto y_reference = transform<Direction::Forwards>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
     add_complex(y, y_reference);
   }
@@ -276,4 +275,3 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
 
   return y;
 }
-

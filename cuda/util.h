@@ -13,69 +13,9 @@
 /* #include <type_traits> */
 
 #include "macros.h"
+#include "params.h"
 #include "algebra.h"
 #include "kernel.cu"
-
-/* enum class FileType {TXT, DAT, GRID}; */ // TODO rm unused file io funcs
-enum class Shape {Line, Cross, Circle, DottedCircle};
-enum class Variable {Offset, Width};
-enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
-
-/* Geometry Hierarchy (parameters)
- * thread < block < grid < kernel < batch < stream
- * (hyper parameters are defined using macro's, to avoid dynamic memory)
- *
- * note that 1 kernel computes 1 or more superpositions w.r.t all input datapoints.
- */
-struct Geometry {
-  size_t blockSize;   // prod(blockDim.x,y,z), i.e. threads per block
-  size_t gridSize;    // prod(gridDim.x,y,z), i.e. n blocks per kernel
-  size_t kernel_size; // n output datapoints per kernel
-  size_t batch_size;  // n kernels per batch
-  size_t stream_size; // n batches per stream
-  size_t n_streams;
-
-  // secondary
-  // "getters"
-  // TODO use class with lazy methods
-
-  // total number of ..
-  size_t n_batches; // total n stream batches
-  size_t n_kernels; // total n kernel calls (excl. agg)
-
-  // n datapoints per ..
-  size_t n_per_stream;
-  size_t n_per_batch;
-  size_t n_per_kernel; // i.e. per grid
-  double n_per_block;
-  double n_per_thread;
-
-  // TODO differentiate between input and output datapoints
-  /* double n_per_block; // can be < 1, i.e. not all blocks are used */
-  /* double n_per_thread; // can be < 1, i.e. not all threads are used */
-
-  size_t kernels_per_stream;
-};
-
-struct Plane {
-/* Plane() : width(1), z_offset(0), randomize(false) {}; */
-  char name;
-  double width;
-  /* double offset[DIMS]; // TODO */
-  double z_offset;
-  bool randomize;
-  bool hd; // TODO
-  /* size_t x, y; // effective width, height, upperbounded by .size() */
-};
-
-struct Params {
-  // Simulation parameters, used to init plane distributions
-  Plane input; // ground truth
-  /* std::vector<Plane> inputs; // ground truth */
-  Plane projector;
-  std::vector<Plane> projections; // approximation of input
-  /* Geometry g; */
-};
 
 double flops(double runtime, size_t n, size_t m) {
   // Tera or Giga FLOP/s
