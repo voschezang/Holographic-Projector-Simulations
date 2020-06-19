@@ -133,7 +133,7 @@ class MyCanvas(app.Canvas):
     def on_timer(self, event):
         # self.theta += .11
         # self.phi += .13
-        self.xi += .02
+        self.xi += .05
         # self.model = np.dot(rotate(self.theta, (0, 0, 1)),
         #                     rotate(self.phi, (0, 1, 0)))
         if self.xi > 1:
@@ -186,9 +186,10 @@ if __name__ == '__main__':
     # fn = 'out.zip'
     fn = 'out_offset_line_1.zip'
     data = util.parse_file(dir, fn, 'out.txt')
-    viewtype = 2
+    print(data['u'])
+    viewtype = 1
     if viewtype == 0:
-        n = 100000
+        n = 1000000
         pos = data['v'][:n]
         colors = data['y'][:n, 0]
         print(colors.min(), colors.max(), colors.mean())
@@ -202,7 +203,7 @@ if __name__ == '__main__':
             pos[:, i] /= pos[:, i].max()
 
     elif viewtype == 1:
-        n = 1000000
+        n = 10000000
         colors = [z[:n, 0] for z in data['z']]
         max_color = max((c.max() for c in colors))
         pos = [w[:n] for w in data['w']]
@@ -216,8 +217,8 @@ if __name__ == '__main__':
                 p[:, i] /= p[:, i].max()
 
     elif viewtype == 2:
-        n = 100000
-        m = 10
+        n = 1000000
+        m = 20
         # normalize z_offset
         max_z_offset = max((np.abs(w[:, -1]).max() for w in data['w'][:m]))
         if max_z_offset > 0:

@@ -38,7 +38,8 @@ if __name__ == '__main__':
     Nx, Ny = util.solve_xy_is_a(N, ratio)
     Nxy = Nx * Ny
     for k in 'yv':
-        data[k] = data[k][:Nxy]
+        for i in range(len(data[k])):
+            data[k][i] = data[k][i][:Nxy]
 
     print({'N': N, 'Nx': Nx, 'Ny': Ny, 'eq': Nx * Ny == N})
     # print(N, Nx, Ny, f'equal: {Nx * Ny == N}')
@@ -74,23 +75,40 @@ if __name__ == '__main__':
     m = len(data['x'])
     args = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
     for i in range(*args):
-        offset = params['x'][i]['z_offset']
-        title = f"$x_{{{i}}}$ (offset: {round(offset, 2)} m)"
+        # offset = params['x'][i]['z_offset']
+        # title = f"$x_{{{i}}}$ (distance: {round(offset, 2)} m)"
+        # title = plot.format_title('x', i, offset)
+        # title = format_title('x', i, params['x'][i]['z_offset'])
+        subtitle = f"(distance: {round(params['x'][i]['z_offset'], 2)} m)"
         plot.scatter_multiple(data['x'][i][:n], data['u'][i][:n],
-                              title, filename=f'x-scatter-sub-{i}')
+                              f'Object ({i})', subtitle, filename=f'x-scatter-sub-{i}')
 
-        offset = params['y'][i]['z_offset']
-        title = f"$y_{{{i}}}$ (offset: {round(offset, 2)} m)"
-        indices = np.random.randint(0, Nxy, n)
-        plot.scatter_multiple(data['y'][i][indices], data['v'][i][indices],
-                              title, filename=f'y-scatter-sub-{i}', s=pointsize)
+        # offset = params['y'][i]['z_offset']
+        # title = f"$y_{{{i}}}$ (distance: {round(offset, 2)} m)"
+        subtitle = f"(distance: {params['y'][i]['z_offset']:0.2f} m)"
+        # title = format_title('y', i, params['y'][i]['z_offset'])
+        # indices = np.random.randint(0, Nxy, n)
+        # plot.scatter_multiple(data['y'][i][indices], data['v'][i][indices],
+        #                       title, filename=f'y-scatter-sub-{i}', s=pointsize)
 
         plot.hist_2d_multiple(data['y'][i], data['v'][i],
-                              title, filename=f'y-hist2d-{i}',
-                              ybins=bins / 2, ratio=ratio)
+                              f'Projector ({i})', subtitle,
+                              filename=f'y-hist2d-{i}',
+                              ybins=bins, ratio=ratio)
 
     print('plot various z')
-    bins = int(min(N_sqrt, 1000))
+    N = data['z'][0].shape[0]
+    ratio = 1920. / 1080. if params['z'][0]['hd'] else 1.
+    Nx, Ny = util.solve_xy_is_a(N, ratio)
+    Nxy = Nx * Ny
+    for k in 'yv':
+        for i in range(len(data[k])):
+            data[k][i] = data[k][i][:Nxy]
+    if 'z' in params.keys() and params['z'][0]['hd']:
+        ratio = 1920. / 1080.
+    else:
+        ratio = 1.
+    bins = int(min(N_sqrt, 1080))
     n_z_per_y = len(data['z']) // len(data['y'])
     # for i in range(min(n_z_plots, len(data['z']))):
     #     major = i // len(data['x'])
@@ -102,24 +120,31 @@ if __name__ == '__main__':
     for major in range(*args1):
         for minor in range(*args2):
             i = major * n_z_per_y + minor
-            offset = params['z'][i]['z_offset']
-            title = f"$z_{{{major}, {minor}}}$ " + \
-                f"(offset: {round(offset, 2)} m)"
+            # offset = params['z'][i]['z_offset']
+            title = f"Projection {minor} (Object {major})"
+            # title = f"$z_{{{major}, {minor}}}$ " + \
+            #     f"(distance: {round(offset, 2)} m)"
+            # title = format_title('z', f"{major, minor}",
+            #                      params['z'][i]['z_offset'])
+            subtitle = f"(distance: {round(params['z'][i]['z_offset'], 2)} m)"
 
             N = data['z'][i].shape[0]
             N_sqrt = np.sqrt(N).astype(int)
-            indices = np.random.randint(0, N, n)
-            fn = f'z-scatter-sub-{major}-{minor}'
-            plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
-                                  title, filename=fn, s=pointsize)
+            # indices = np.random.randint(0, N, n)
+            # fn = f'z-scatter-sub-{major}-{minor}'
+            # plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
+            #                       title, filename=fn, s=pointsize)
 
             fn = f'z-hist2d-{major}-{minor}'
-            plot.hist_2d_multiple(data['z'][i], data['w'][i], title,
+            plot.hist_2d_multiple(data['z'][i], data['w'][i],
+                                  title, subtitle,
                                   filename=fn, ybins=bins,
-                                  ratio=1.)
+                                  ratio=ratio)
 
+            fn = f'z-surf-{major}-{minor}'
+            # TODO add suptitle, title
             surf.surf_multiple(data['z'][i], data['w'][i], N_sqrt, N_sqrt,
-                               title + ' ', filename='z-surf')
+                               f'{title}\n{subtitle}\n', filename=fn)
 
     print('plot sequence z')
     bins = int(min(N_sqrt, 1000))
@@ -131,7 +156,7 @@ if __name__ == '__main__':
             amp = data['z'][j][:, 0]
             plot.hist_2d_hd(amp ** 2, data['w'][j],
                             filename=f'{sequence_dir}z/{frame_idx:06}', ybins=bins,
-                            ratio=1., verbose=0)
+                            ratio=ratio, verbose=0)
 
     # bins = min(1080, Ny)
     # animate.multiple_hd(

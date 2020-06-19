@@ -19,7 +19,7 @@ def surf(x, y, z, Nx: int, Ny: int, **kwargs):
         global cmap
         kwargs['cmap'] = plot.cmap
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(9, 7))
     ax = fig.gca(projection='3d')
     X = x.reshape((Nx, Ny))
     Y = y.reshape((Nx, Ny))
@@ -31,6 +31,7 @@ def surf(x, y, z, Nx: int, Ny: int, **kwargs):
 
 def surf_multiple(phasor, position, Nx: int, Ny: int, prefix='', filename=None):
     labels = ['Amplitude$^2$', 'Phase', 'Log Irradiance']
+    suffix = ['amp', 'phi', 'irr']
     for i, label in enumerate(labels):
         if i == 1:
             # skip phase plots
@@ -58,7 +59,7 @@ def surf_multiple(phasor, position, Nx: int, Ny: int, prefix='', filename=None):
         if filename is None:
             plt.show()
         else:
-            plot.save_fig(f'{filename}_{i}', ext='png')
+            plot.save_fig(f'{filename}_{suffix[i]}', ext='png')
 
         plt.close()
 

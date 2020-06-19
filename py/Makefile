@@ -31,8 +31,6 @@ animate:
 	ffmpeg -v 0 -framerate 3 -i $(IMG_DIR)/$(SEQUENCE_DIR)y/%06d_amp.png -vcodec libx264 -crf 25 $(OUTPUT_NAME_Y)
 	# ffmpeg -r 10 -s 1920x1080 -i $(IMG_DIR)/$(SEQUENCE_DIR)y/%06d_amp.png -vcodec libx264 -crf 25  -pix_fmt yuv420p $(IMG_DIR)/y.mp4
 	ffmpeg -v 0 -framerate 4 -i $(IMG_DIR)/$(SEQUENCE_DIR)z/%06d_amp.png -vcodec libx264 -crf 25 $(OUTPUT_NAME_Z)
-	# TODO set adding to 0,0
-	# "pad=width=640:height=480:x=0:y=120:color=black"
 
 plot-animate:
 	make plot animate

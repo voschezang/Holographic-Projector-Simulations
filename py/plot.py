@@ -51,6 +51,7 @@ def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
         # ax = plt.gca()
         ax = plt.subplot()
         color = phasor if len(phasor.shape) == 1 else phasor[:, i]
+        # TODO use imshow for nonrand?
         matrix = _hist2d_wrapper(x, y, color, bins=bins, cmap=cmap, **kwargs)
         plt.axis('off')
 
@@ -64,32 +65,34 @@ def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
     return matrix
 
 
-def scatter_multiple(x, u=None, title='', filename=None, **kwargs):
+def scatter_multiple(x, u=None, title='', subtitle='', filename=None, **kwargs):
     if 's' not in kwargs:
         # set point size
         n = x.shape[0]
         kwargs['s'] = max(1, 10 - n / 2.)
 
-    amp_phase_irradiance(_scatter_wrapper, x, u, title=title,
+    amp_phase_irradiance(_scatter_wrapper, x, u,
+                         title=title, subtitle=subtitle,
                          filename=filename, **kwargs)
 
 
-def hist_2d_multiple(phasor, pos, title='', filename=None, ybins=100, ratio=1.,
-                     bin_threshold=0.1, **kwargs):
+def hist_2d_multiple(phasor, pos, title='', subtitle='', filename=None,
+                     ybins=100, ratio=1., bin_threshold=0.1, **kwargs):
     """
     Plot 2d histogram
 
     Params
     ------
-    phasor : array of (amp, phase)
+    phasor : array of (amp, phase) (for each datapoint)
         (e.g. x,y,z as used in other funcs)
-    pos : flattened 3d array
+    pos : flattened 3d array with 3D positions for each datapoint
         (e.g. u,v,w of corresponding positions)
 
     xbins, ybins : horizontal and vertical bins (respectively) and relate to
     the plot/image; not to the phasor.
     """
     assert ratio != 0
+    # TODO fix bins
     Nx, Ny = util.solve_xy_is_a(pos.shape[0], ratio)
     ybins = util.find_nearest_denominator(Ny, ybins, bin_threshold)
     if Nx == Ny:
@@ -108,14 +111,17 @@ def hist_2d_multiple(phasor, pos, title='', filename=None, ybins=100, ratio=1.,
     bins = util.regular_bins([x.min(), y.min()],
                              [x.max(), y.max()],
                              [xbins, ybins])
-    amp_phase_irradiance(_hist2d_wrapper, phasor, pos, title=title,
+
+    amp_phase_irradiance(_hist2d_wrapper, phasor, pos,
+                         title=title, subtitle=subtitle,
                          filename=filename, bins=bins, ratio=ratio,
                          density3=False, **kwargs)
 
-
-def hexbin_multiple(x, u, title='', filename=None,  bins=10, **kwargs):
-    amp_phase_irradiance(plt.hexbin, x, u, title=title,
-                         filename=filename, gridsize=bins, **kwargs)
+    # if not randomized:
+    # amp_phase_irradiance(_imshow_wrapper, phasor, pos,
+    #                      title=title, subtitle=subtitle,
+    #                      filename=filename, ratio=ratio,
+    #                      **kwargs)
 
 
 def _scatter_wrapper(x, y, z, **kwargs):
@@ -162,8 +168,17 @@ def _hist2d_wrapper(x, y, z, density=True, **kwargs):
     return plt.hist2d(x, y, weights=z, density=density, **kwargs)[0]
 
 
-def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
-                         ratio=1., density3=None, **kwargs):
+def _imshow_wrapper(x, _y, _z, ratio=1., **kwargs):
+    # TODO use imshow for nonrand planes to avoid unnecessary computation
+    # TODO fix return type to be fully compatible with _hist2d_wrapper?
+    hd = ratio > 1.
+    # return plt.imshow(x, y, weights=z, density=density, **kwargs)
+    # vmin, vmax
+    plt.imshow(reshape(z[:, 0], hd), origin='lower', aspect='auto', **kwargs)
+
+
+def amp_phase_irradiance(plot_func, x, v, title='', subtitle='', filename=None,
+                         ratio=1., density3=None, large=True, **kwargs):
     """ Triple plot of amplitude, phase, irradiance
 
     Params
@@ -181,17 +196,21 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
         kwargs['cmap'] = cmap
 
     n_subplots = 3
-    horizontal = ratio < 1.1
+    horizontal = ratio < 1.1  # distribute subplots horizontally
     # h = 15, w = 4
     if horizontal:
-        w = n_subplots * ratio * 5
-        h = 4
+        if large:
+            w = n_subplots * ratio * 7
+            h = 6
+        else:
+            w = n_subplots * ratio * 5
+            h = 4
     else:
         h = n_subplots * ratio * 2 + 1
         w = 8
 
     fig = plt.figure(figsize=(round(w), h))
-    plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
+    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
 
     if horizontal:
         ax = plt.subplot(131)
@@ -202,7 +221,7 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     v2 = v[:, 1]
     plot_func(v1, v2, a, **kwargs)
     markup(ax, unit='m')
-    plt.title('Amplitude')
+    plt.title('Amplitude', fontsize=16)
 
     # change subplot order to allow cmap to be changed later
     # ax = plt.subplot(133)
@@ -222,7 +241,7 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
         del kwargs['density']
 
     markup(ax, unit='m')
-    plt.title('Log Irradiance')
+    plt.title('Log Irradiance', fontsize=16)
 
     # ax = plt.subplot(132)
 
@@ -235,10 +254,27 @@ def amp_phase_irradiance(plot_func, x, v, title='', filename=None,
     kwargs['cmap'] = cyclic_cmap
     plot_func(v1, v2, phi, **kwargs)
     markup(ax, unit='m')
-    plt.title('Phase')
+    plt.title('Phase', fontsize=16)
 
+    # if horizontal:
+    plt.text(0.5, 1.15, subtitle, {'fontsize': 12},
+             horizontalalignment='center', verticalalignment='center',
+             transform=ax.transAxes)
+
+    if not horizontal:
+        print('TODO')
+        # plt.text(0., 0.0, subtitle, {'fontsize': 14})
+
+    # plt.text(0., 0.0015, 'abc', {'fontsize': 14})
     try:
         plt.tight_layout()
+
+        # add custom subtitle after tightening layout
+        # plt.text(0.5, 0, 'sec', {'fontsize': 14})
+        # plt.text(0.5, 0, 'subtitle\nab\nasb\nasldkfjasldjfskdf asdfasdf',
+        #          {'fontsize': 18})
+        # plt.text(0.5, 0.5, 'subtitle\nab\nasb\nasldkfjasldjfskdf asdfasdf', {
+        #          'fontsize': 18})
         if filename is not None:
             save_fig(filename, ext='png')
 
@@ -265,6 +301,15 @@ def markup(ax, unit=''):
     # plt.colorbar(fraction=0.052, pad=0.05,
     #              ticks=LogLocator(subs='all'), format=LogFormatterSciNotation())
     plt.colorbar(fraction=0.052, pad=0.05)
+
+
+def format_title(major, minor, info: dict = None):
+    """ e.g. `x_0 (distance: 10cm)` """
+    title = f"{major}$_{{{minor}}}$"
+    if info is not None:
+        sub = ', '.join([f"{k}: ${round(v, 2)}$" for k, v in info.items()])
+        title += f" ({sub})"
+    return title
 
 
 def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
@@ -300,7 +345,7 @@ def vectors(X, labels=('x', 'y', 'z'), title='', **kwargs):
     data = ['a', r'$\phi$', 'I']
     n_subplots = X[0].shape[1] + 1
     fig = plt.figure(figsize=(n_subplots * 5, 4))
-    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
+    plt.suptitle(title, y=1.04, fontsize=16, fontweight='bold')
     for i in range(n_subplots):
         ax = plt.subplot(1, n_subplots, i + 1)
         plt.title(data[i])
@@ -456,3 +501,53 @@ def entropy(H, w, title='H',  **kwargs):
     ax = plt.subplot(1, n_subplots,  2)
     scatter(H[:, 1], w, title='Phase', fig=fig, **kwargs)
     # scatter_markup(ax)
+
+
+if __name__ == '__main__':
+    sequence_dir = util.get_arg('--sequence_dir', '', parse_func=str)
+    dir = '../tmp'
+    fn = 'out.zip'
+    size = os.path.getsize(os.path.join(dir, fn))
+    print(f'Input file size: {size * 1e-6:0.5f} MB')
+    if size > 1e6:
+        print(f'Warning, file too large: {size*1e-6:0.4f} MB')
+
+    params, data = util.parse_file(dir, fn, 'out')
+    # print('uu', data['u'])
+
+    N = data['y'][0].shape[0]
+    ratio = 1920. / 1080. if params['y'][0]['hd'] else 1.
+    Nx, Ny = util.solve_xy_is_a(N, ratio)
+    Nxy = Nx * Ny
+    for k in 'yv':
+        data[k] = data[k][:Nxy]
+
+    print({'N': N, 'Nx': Nx, 'Ny': Ny, 'eq': Nx * Ny == N})
+    N_sqrt = int(np.sqrt(N))
+    print(f'N sqrt (y): {N_sqrt}')
+    # max_n_plots = 2
+    # m = len(data['y'])
+    # args = (m,) if m <= max_n_plots else (
+    #     0, m, np.ceil(m / max_n_plots).astype(int))
+    # for i in range(*args):
+    #     surf_multiple(data['y'][i], data['v'][i], Nx, Ny f'$y_{i} $')
+
+    m = len(data['y'])
+    args1 = (m,) if m <= 2 else (0, m, np.ceil(m / 2).astype(int))
+    n_z_per_y = len(data['z']) // len(data['y'])
+    m = n_z_per_y
+    args2 = (m,) if m <= 1 else (0, m, np.ceil(m / 2).astype(int))
+    for major in range(*args1):
+        for minor in range(*args2):
+            i = major * n_z_per_y + minor
+            offset = params['z'][i]['z_offset']
+            title = f"$z_{{{major}, {minor}}}$ " + \
+                f"(offset: {round(offset, 2)} m)"
+            print(title)
+            prefix = f'$z_{{{major},{minor}}}$ '
+            # matrix(data['z'][i], data['w'][i], N_sqrt, N_sqrt, prefix)
+            z = data['z'][i]
+            if params['z'][i]['randomized']:
+                print('Warning, plotting random points without proper discretization')
+            matrix(reshape(z[:, 0], params['x'][i]['hd']), f'z_{i} Amplitude')
+            plt.show()
