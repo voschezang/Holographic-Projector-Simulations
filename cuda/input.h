@@ -15,39 +15,45 @@ void show_help(const char *p) {
 namespace input {
 
 Params read_args(int argc, char **argv) {
-  const auto obj_z_offset = Range<double> {min: 0.4, max: 0.1};
+  const auto obj_z_offset = Range<double> {min: 0.1, max: 0.1};
   // projector z_offset is always zero
   auto p = Params
     {n_planes: {obj: 1,
                 projector: 1,
-                projection: 1},
+                projection: 3},
 
-     datapoins_per_plane: {obj: 100,
-                           projector: N_sqrt * N_sqrt,
-                           projection: N_sqrt * N_sqrt},
-     hd: true, // TODO default false
+     n_per_plane: {obj: 1,
+                   projector: N_sqrt * N_sqrt,
+                   projection: N_sqrt * N_sqrt},
+     hd: false,
+     /* hd: true, // TODO default false */
      randomize: false,
-     obj_offset: {x: {min: 0.0, max: 0.0},
+     /* randomize: true, // TODO default false */
+     obj_offset: {x: {min: 0.0, max: 0.0}, // TODO make relative
                   y: {min: 0.0, max: 0.0},
                   z: obj_z_offset},
 
-     rel_obj_width: {min: 0.3, max: 0.5},
-     rel_projection_width: {min: 1, max: 1},
+     rel_obj_width: {min: 1., max: 0.3},
+     rel_projection_width: {min: 0.005, max: 0.5},
+     /* rel_projection_width: {min: 0.005, max: 0.05}, */
+     /* rel_projection_height: {min: 0.005, max: 0.005}, */
      projection_z_offset: obj_z_offset
     };
+
+  // TODO count n non-constant ranges and static_assert result is <= 1
 
   // For all ranged params the max is set to min by default.
   int ch;
   /* while ((ch = getopt(argc, argv, "c:e:hH:i:k:L:m:M:n:N:p:t:r:")) != -1) */
-  while ((ch = getopt(argc, argv, "X:Z:x:y:z:u:U:v:V:w:W:o:O:n:N:m:M:d:r:h:")) != -1)
+  while ((ch = getopt(argc, argv, "X:Z:x:y:z:d:r:u:U:v:V:w:W:o:O:n:N:m:M:h:")) != -1)
     {
       switch(ch) {
       case 'X': p.n_planes.obj                   = strtol(optarg, 0, 10); break;
       /* 'Y': p.n_planes.projector is constant */
       case 'Z': p.n_planes.projection            = strtol(optarg, 0, 10); break;
-      case 'x': p.datapoins_per_plane.obj        = strtol(optarg, 0, 10); break;
-      case 'y': p.datapoins_per_plane.projector  = strtol(optarg, 0, 10); break;
-      case 'z': p.datapoins_per_plane.projection = strtol(optarg, 0, 10); break;
+      case 'x': p.n_per_plane.obj        = strtol(optarg, 0, 10); break;
+      case 'y': p.n_per_plane.projector  = strtol(optarg, 0, 10); break;
+      case 'z': p.n_per_plane.projection = strtol(optarg, 0, 10); break;
 
       case 'd': p.hd = true; break;
       case 'r': p.randomize = true; break;
@@ -73,6 +79,7 @@ Params read_args(int argc, char **argv) {
   assert(p.n_planes.obj >= 1);
   assert(p.n_planes.projector == 1);
   assert(p.n_planes.projection <= 10000);
+  // TODO count n non-constant ranges and assert result is <= 1
   return p;
 }
 

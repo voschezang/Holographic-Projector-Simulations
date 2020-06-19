@@ -269,6 +269,7 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, st
       << quote("len")       << sep1 << len           << sep2 \
       << quote("precision") << sep1 << IO_PRECISION  << sep2 \
       << quote("dims")      << sep1 << DIMS          << sep2 \
+      << quote("randomized")<< sep1 << p.randomize   << sep2 \
       << quote("hd")        << sep1 << p.hd          << "}\n";
 }
 

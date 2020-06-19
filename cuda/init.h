@@ -101,10 +101,10 @@ Geometry geometry(const size_t n) {
 /**
  * Distribute sampling points over a 2D plane in 3D space.
  */
-void plane(std::vector<STYPE> &v, Plane p, const Cartesian<double> &offset = {0,0,0}) {
+void plane(std::vector<STYPE> &v, const Plane p, const Cartesian<double> &offset = {0,0,0}) {
   // TODO return ptr to device memory, copy pos data to CPU during batches
   static unsigned int seed = 1234; // TODO manage externally from this function
-  size_t n = v.size() / DIMS;
+  const size_t n = v.size() / DIMS;
   printf("offset: %f\n", offset.z);
   assert(p.z_offset == offset.z); // TODO rm duplicate arg
   for (unsigned int i = 0; i < n; ++i)
@@ -177,7 +177,7 @@ void plane(std::vector<STYPE> &v, Plane p, const Cartesian<double> &offset = {0,
 
 std::vector<STYPE> sparse_plane(std::vector<STYPE> &u, Shape shape, double width,
                                 const Cartesian<double> &offset, double modulate = 0.) {
-  size_t n = u.size() / DIMS;
+  const size_t n = u.size() / DIMS;
   for (unsigned int i = 0; i < n; ++i)
     u[i*DIMS + 2] = offset.z;
 

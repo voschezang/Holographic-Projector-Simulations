@@ -39,34 +39,29 @@ int main(int argc, char** argv) {
    * Projecting more that ~20 points may result in a higher (and less random)
    * noise floor.
    */
-
-  // auto input_params = read_args(argc, argv);
   auto params = input::read_args(argc, argv);
-  // Params params = init::params(Variable::Width, n_z_planes, input_params.hd, rel_object_width);
-
-  // TODO rm aliases
-  N n = {params.datapoins_per_plane.obj,
-         params.datapoins_per_plane.projector,
-         params.datapoins_per_plane.projection};
-
-  Setup &n_planes = params.n_planes;
-  // Setup &datapoints_per_plane;
+  Setup
+    &n_planes = params.n_planes,
+    &n_per_plane = params.n_per_plane;
 
   const auto transformation = PROJECT_PHASE ? Transformation::Full : Transformation::Amplitude;
   const bool add_reference = transformation == Transformation::Amplitude;
 
+  // TODO rename non-spatial xyz,uvw to setup.obj, setup.projector etc
   auto
-    u = std::vector<STYPE>(n.x * DIMS),
-    v = std::vector<STYPE>(n.y * DIMS),
-    w = std::vector<STYPE>(n.z * DIMS);
+    u = std::vector<STYPE>(DIMS * n_per_plane.obj),
+    v = std::vector<STYPE>(DIMS * n_per_plane.projector),
+    w = std::vector<STYPE>(DIMS * n_per_plane.projection);
 
 #ifdef READ_INPUT
   print("Reading input files");
+  // overwrite x,u
   auto x = read_bytes<WTYPE>(std::string{"../tmp/x_phasor.input"});
   auto u = read_bytes<STYPE>(std::string{"../tmp/x_pos.input"});
-  n.x = params.datapoints_per_plane = x.size();
-  printf("Number of input datapoints: %u\n", n.x);
-  printf("Number of input datapoints: %u\n", u.size() / DIMS);
+  params.n_per_plane.obj = x.size();
+  assert(params.n_per_plane.obj == n_per_plane.obj);
+  printf("Number of input datapoints/plane: %u\n", x.size());
+  printf("Number of input datapoints/plane: %u\n", u.size() / DIMS);
   assert(x.size() == u.size() / DIMS);
   {
     // scale pos, assume pos was normalized
@@ -80,13 +75,13 @@ int main(int argc, char** argv) {
   // TODO use cmd arg for x length
   const auto shape = Shape::DottedCircle;
   // const auto shape = Shape::Circle;
-  auto x = std::vector<WTYPE>(n.x, from_polar(1.0, 0.0));
+  auto x = std::vector<WTYPE>(n_per_plane.obj, from_polar(1.0, 0.0));
 #endif
 
-  const auto
-    geometry_y = init::geometry(n.y),
-    geometry_z = init::geometry(n.z);
-  print_info(geometry_y, n.x, n.y, n.z);
+  const Geometry
+    projector = init::geometry(n_per_plane.projector),
+    projection = init::geometry(n_per_plane.projection);
+  print_info(projector, n_per_plane.obj, n_per_plane.projector, n_per_plane.projection);
 
   struct timespec t0, t1, t2;
   auto dt = std::vector<double>(max(n_planes.projection, 1L));
@@ -110,24 +105,24 @@ int main(int argc, char** argv) {
     const Cartesian<double> obj_offset = {x: lerp(params.obj_offset.x, di),
                                        y: lerp(params.obj_offset.y, di),
                                        z: gerp(params.obj_offset.z, di)};
-    auto plane = Plane {width: lerp(params.rel_obj_width, di) * PROJECTOR_WIDTH,
+    const auto x_plane = Plane {width: lerp(params.rel_obj_width, di) * PROJECTOR_WIDTH,
                         z_offset: obj_offset.z,
                         randomize: false,
                         hd: false};
 #ifndef READ_INPUT
     const double modulate = i / (double) n_planes.obj;
-    init::sparse_plane(u, shape, plane.width, obj_offset, modulate);
+    init::sparse_plane(u, shape, x_plane.width, obj_offset, modulate);
 #endif
 
     const auto x_suffix = std::to_string(i);
-    write_arrays(x, u, "x" + x_suffix, "u" + x_suffix, plane);
+    write_arrays(x, u, "x" + x_suffix, "u" + x_suffix, x_plane);
     printf("--- --- ---   --- --- ---  --- --- --- \n");
 
     // The projector distribution is obtained by doing a single backwards transformation
     // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
 
     // dt[0] will be overwritten
-    auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, geometry_y, &t1, &t2, &dt[0], true);
+    auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, projector, &t1, &t2, &dt[0], true);
     check_cvector(y);
 
     if (i == 0)
@@ -146,25 +141,32 @@ int main(int argc, char** argv) {
       if (transformation == Transformation::Amplitude && n_planes.obj >= 4 && j % 2 == 1) continue;
       printf(" z plane #%i\n", j);
       const auto ratio = j / (double) n_planes.projection;
-      plane = Plane {width:     lerp(params.rel_projection_width, ratio) * PROJECTOR_WIDTH,
-                     z_offset:  gerp(params.projection_z_offset, ratio),
-                     randomize: params.randomize,
-                     hd:        false};
+      // TODO use rel z offset, s.t. value corresonds to obj z offset
+      const auto z_plane = Plane {width:     gerp(params.rel_projection_width, ratio) * x_plane.width,
+                                  z_offset:  gerp(params.projection_z_offset, ratio),
+                                  randomize: params.randomize,
+                                  hd:        true}; // TODO set hd to false
 
-      init::plane(w, plane, {obj_offset.x, obj_offset.y, plane.z_offset});
+
+      const auto offset = Cartesian<double> {x: obj_offset.x + 3./8. * z_plane.width,
+                                             y: obj_offset.y + 3./8. * z_plane.width,
+                                             z: z_plane.z_offset};
+      init::plane(w, z_plane, offset);
+      // init::plane(w, z_plane, {obj_offset.x, obj_offset.y, z_plane.z_offset});
+
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WTYPE>(n.z);
-      auto z = time_transform<Direction::Forwards>(y, v, w, geometry_z, &t1, &t2, &dt[j]);
+      auto z = time_transform<Direction::Forwards>(y, v, w, projection, &t1, &t2, &dt[j]);
       check_cvector(z);
       if (i == 0 && j == 0)
         summarize_c('z', z);
 
       const auto z_suffix = x_suffix + "_" + std::to_string(j);
       // TODO write this async, next loop can start already
-      write_arrays(z, w, "z" + z_suffix, "w" + z_suffix, plane);
+      write_arrays(z, w, "z" + z_suffix, "w" + z_suffix, z_plane);
     }
 
-    print_result(dt, y.size(), n.z);
+    print_result(dt, y.size(), n_per_plane.projection);
   }
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   printf("done\n");

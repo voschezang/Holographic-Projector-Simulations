@@ -6,16 +6,16 @@
  */
 
 /* #define READ_INPUT */
-#define PROJECT_PHASE 1
+#define PROJECT_PHASE 0
 
 // TODO use N,M
 /* #define N_sqrt 8 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
-#define N_sqrt 256
+/* #define N_sqrt 256 */
 /* #define N_sqrt 512 */
-/* #define N_sqrt 1024 */
+#define N_sqrt 1024
 /* #define N_sqrt 1440 */
 /* #define N (N_sqrt * N_sqrt) */
 /* #define N2 (N_sqrt * N_sqrt) */

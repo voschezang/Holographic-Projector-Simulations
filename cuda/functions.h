@@ -250,6 +250,7 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                                       add_reference_wave ? 1 : 0};
   normalize(weights);
   auto y = transform<direction>(x, u, v, p);
+  // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
   if (add_reference_wave) {
@@ -259,6 +260,7 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
      * adding the planar wave should happen before squaring the amplitude
     */
     // TODO do this on CPU?
+    assert(v[2] == 0);
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     /* const std::vector<WTYPE> x_reference = {from_polar(1.)}; */
     /* const std::vector<STYPE> u_reference = {{0.,0., z_offset}}; */

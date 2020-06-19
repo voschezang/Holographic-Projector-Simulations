@@ -5,11 +5,7 @@
 #include "macros.h"
 
 enum class Shape {Line, Cross, Circle, DottedCircle};
-enum class Variable {Offset, Width}; // TODO rm
 enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
-
-// x: object, y: projector, z: projection plane
-struct N { size_t x,y,z; };
 
 struct Setup { size_t obj, projector, projection; };
 
@@ -22,33 +18,12 @@ template<typename T = double>
 struct Range {T min, max; };
 
 struct Plane {
-  // TODO simplify this struct
-
-/* Plane() : width(1), z_offset(0), randomize(false) {}; */
-  /* char name; */
+  // TODO simplify this struct, avoid duplicate data?
   double width;
-  /* double offset[DIMS]; // TODO */
   double z_offset;
   bool randomize;
-  bool hd; // TODO
+  bool hd;
 };
-
-/* struct Params { */
-/*   // Simulation parameters, used to init plane distributions */
-/*   Plane input; // ground truth */
-/*   /\* std::vector<Plane> inputs; // ground truth *\/ */
-/*   Plane projector; */
-/*   std::vector<Plane> projections; // approximation of input */
-/* }; */
-
-
-/* struct Params2 { */
-/*   /\* N n; *\/ */
-/*   std::vector<Plane> inputs; // ground truth */
-/*   std::vector<Plane> projectors; */
-/*   std::vector<Plane> projections; // approximation of input */
-/* }; */
-
 
 /**
  * Params for command line args, used to generate datapoints.
@@ -56,7 +31,8 @@ struct Plane {
  * It is assumed that a single parameter is changed for each plane.
  */
 struct Params {
-  Setup n_planes, datapoins_per_plane; // number of ..
+  // number of planes, number of datapoints per plane
+  Setup n_planes, n_per_plane;
   bool hd,
     randomize; // TODO add option to compute local average
 
