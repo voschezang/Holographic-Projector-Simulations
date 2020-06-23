@@ -40,12 +40,13 @@ int main(int argc, char** argv) {
    * noise floor.
    */
   auto params = input::read_args(argc, argv);
-  Setup
+  Setup<size_t>
     &n_planes = params.n_planes,
     &n_per_plane = params.n_per_plane;
 
   const auto transformation = PROJECT_PHASE ? Transformation::Full : Transformation::Amplitude;
-  const bool add_reference = transformation == Transformation::Amplitude;
+  // const bool add_reference = transformation == Transformation::Amplitude;
+  const bool add_reference = 0;
 
   // TODO rename non-spatial xyz,uvw to setup.obj, setup.projector etc
   auto
@@ -75,22 +76,24 @@ int main(int argc, char** argv) {
   // TODO use cmd arg for x length
   const auto shape = Shape::DottedCircle;
   // const auto shape = Shape::Circle;
-  auto x = std::vector<WTYPE>(n_per_plane.obj, from_polar(1.0, 0.0));
+  auto x = std::vector<WTYPE>(n_per_plane.obj, from_polar(1.0));
 #endif
 
   const Geometry
     projector = init::geometry(n_per_plane.projector),
     projection = init::geometry(n_per_plane.projection);
-  print_info(projector, n_per_plane.obj, n_per_plane.projector, n_per_plane.projection);
+  print_info(projector, n_planes, n_per_plane);
 
   struct timespec t0, t1, t2;
   auto dt = std::vector<double>(max(n_planes.projection, 1L));
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
-  const auto y_plane = Plane {width: PROJECTOR_WIDTH, z_offset: 0., randomize: params.randomize, hd: params.hd};
+  const auto y_plane = Plane {width: PROJECTOR_WIDTH, z_offset: 0.,
+                              aspect_ratio: params.aspect_ratio.projector,
+                              randomize: params.randomize};
   init::plane(v, y_plane);
 
-  summarize_double('v', v); // TODO edit in case hd == true
+  summarize_double('v', v); // TODO edit in case aspect ratio != 1
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("Runtime init: \t%0.3f\n", diff(t0, t1));
   cudaProfilerStart();
@@ -103,12 +106,12 @@ int main(int argc, char** argv) {
     // linear/geometric interpolation
     const double di = i / (double) n_planes.obj;
     const Cartesian<double> obj_offset = {x: lerp(params.obj_offset.x, di),
-                                       y: lerp(params.obj_offset.y, di),
-                                       z: gerp(params.obj_offset.z, di)};
+                                          y: lerp(params.obj_offset.y, di),
+                                          z: gerp(params.obj_offset.z, di)};
     const auto x_plane = Plane {width: lerp(params.rel_obj_width, di) * PROJECTOR_WIDTH,
-                        z_offset: obj_offset.z,
-                        randomize: false,
-                        hd: false};
+                                z_offset: obj_offset.z,
+                                aspect_ratio: 1.,
+                                randomize: false};
 #ifndef READ_INPUT
     const double modulate = i / (double) n_planes.obj;
     init::sparse_plane(u, shape, x_plane.width, obj_offset, modulate);
@@ -144,12 +147,11 @@ int main(int argc, char** argv) {
       // TODO use rel z offset, s.t. value corresonds to obj z offset
       const auto z_plane = Plane {width:     gerp(params.rel_projection_width, ratio) * x_plane.width,
                                   z_offset:  gerp(params.projection_z_offset, ratio),
-                                  randomize: params.randomize,
-                                  hd:        true}; // TODO set hd to false
+                                  aspect_ratio: params.aspect_ratio.projection,
+                                  randomize: params.randomize};
 
-
-      const auto offset = Cartesian<double> {x: obj_offset.x + 3./8. * z_plane.width,
-                                             y: obj_offset.y + 3./8. * z_plane.width,
+      const auto offset = Cartesian<double> {x: obj_offset.x + 4/9. * z_plane.width,
+                                             y: obj_offset.y + 4/9. * z_plane.width / z_plane.aspect_ratio,
                                              z: z_plane.z_offset};
       init::plane(w, z_plane, offset);
       // init::plane(w, z_plane, {obj_offset.x, obj_offset.y, z_plane.z_offset});
@@ -166,7 +168,8 @@ int main(int argc, char** argv) {
       write_arrays(z, w, "z" + z_suffix, "w" + z_suffix, z_plane);
     }
 
-    print_result(dt, y.size(), n_per_plane.projection);
+    if (n_planes.projection)
+      print_result(dt, y.size(), n_per_plane.projection);
   }
   printf("--- --- ---   --- --- ---  --- --- --- \n");
   printf("done\n");

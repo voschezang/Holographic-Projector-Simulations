@@ -12,10 +12,10 @@
 /* #define N_sqrt 8 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
-/* #define N_sqrt 128 */
+#define N_sqrt 128
 /* #define N_sqrt 256 */
 /* #define N_sqrt 512 */
-#define N_sqrt 1024
+/* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 /* #define N (N_sqrt * N_sqrt) */
 /* #define N2 (N_sqrt * N_sqrt) */
@@ -68,7 +68,9 @@
 
 #define CACHE_BATCH 1 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 
-#if (BLOCKDIM >= 32)
+#if (BLOCKDIM >= 16)
+#define REDUCE_SHARED_MEMORY 4
+#elif (BLOCKDIM >= 32)
 #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
 #else
 #define REDUCE_SHARED_MEMORY 1

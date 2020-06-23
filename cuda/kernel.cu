@@ -115,6 +115,7 @@ namespace kernel {
 
 __global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_t len, WTYPE *out) {
   // convert two arrays into array of tuples (i.e. complex numbers)
+  // i.e. transpose & flatten the matrix (a,b)
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   const size_t stride = blockDim.x * gridDim.x;
   for (size_t i = idx; i < len; i+=stride) {

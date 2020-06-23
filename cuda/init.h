@@ -58,11 +58,11 @@ void derive_secondary_geometry(const size_t n, Geometry& p) {
 
   assert(n == p.n_per_kernel * p.n_kernels);
   assert(n == p.n_per_batch * p.n_batches);
-  assert(p.n_batches > 0);
-  assert(p.n_kernels > 0);
-  assert(p.n_per_stream > 0);
-  assert(p.n_per_batch > 0);
-  assert(p.n_per_kernel > 0);
+  assert(p.n_batches >= 1);
+  assert(p.n_kernels >= 1);
+  assert(p.n_per_stream >= 1);
+  assert(p.n_per_batch >= 1);
+  assert(p.n_per_kernel >= 1);
   assert(p.n_per_block > 0.0);
   assert(p.n_per_thread > 0.0);
   assert(p.kernels_per_stream > 0);
@@ -109,32 +109,25 @@ void plane(std::vector<STYPE> &v, const Plane p, const Cartesian<double> &offset
   assert(p.z_offset == offset.z); // TODO rm duplicate arg
   for (unsigned int i = 0; i < n; ++i)
     v[i*DIMS + 2] = offset.z;
-
-  /* const size_t n_sqrt = round(sqrt(n)); */
-  double ratio = 1.;
-  size_t
-    x = round(sqrt(n)),
-    y = x;
-  assert(x * y == n);
-  assert(x > 0 && y > 0);
-
-  if (p.hd) {
-    // assume HD dimensions, keep remaining pixels for kernel geometry compatibility
-    ratio = 1920. / 1080.; // i.e. x / y
-    // solve for x: n * ratio = x * y * (x/y) = x^2
-    x = sqrt(n * ratio);
+  /*
+   * Assume HD dimensions, keep remaining pixels for kernel geometry compatibility
+   * solve for x:  `n * (ratio) = x * y * (x/y) = x^2   ->   x = sqrt(n * ratio)`
+   */
+  auto
+    x = (size_t) sqrt(n * p.aspect_ratio),
     y = n / x;
+  if (p.aspect_ratio != 1.0) {
     printf("Screen dimensions: %i x %i\t", x, y);
     printf("Remaining points: %i/%i\n", n - x*y, n);
-    assert(x * y <= n);
   }
+  assert(x * y <= n);
 
   const double
-    dx = p.width * SCALE / (double) x,
-    dy = p.width * SCALE / ((double) y * ratio),
+    dx = p.width / (double) x,
+    dy = p.width / ((double) y * p.aspect_ratio),
     x_half = 0.5 * p.width,
-    y_half = 0.5 * p.width / ratio,
-    rel_margin = p.randomize ? 0.05 : 0.0,
+    y_half = 0.5 * p.width / p.aspect_ratio,
+    rel_margin = p.randomize ? 0.00 : 0.0,
     x_margin = rel_margin * dx, // TODO min space between projector pixels
     y_margin = rel_margin * dy,
     x_random_range = dx - 0.5 * x_margin,
@@ -169,7 +162,7 @@ void plane(std::vector<STYPE> &v, const Plane p, const Cartesian<double> &offset
     cu( cudaFree( d_random ) );
   }
 
-  // fill rest of array to minimize incompatibility issues
+  // fill rest of array with semi-realistic values to minimize incompatibility issues
   for (unsigned int i = x * y; i < n; ++i)
     for (unsigned int j = 0; j < DIMS; ++j)
       v[i * DIMS + j] = v[j];
@@ -275,7 +268,8 @@ std::vector<DeviceVector<T>> pinned_malloc_matrix(T **d_ptr, size_t dim1, size_t
   // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
   // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read
   for (size_t i = 0; i < dim1; ++i)
-    matrix[i] = DeviceVector<T>{.data = *d_ptr + i * dim2, .size = dim2};
+    matrix[i] = DeviceVector<T>{data: *d_ptr + i * dim2,
+                                size: dim2};
   return matrix;
 }
 

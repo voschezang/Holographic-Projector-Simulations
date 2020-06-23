@@ -38,7 +38,7 @@ inline __host__ __device__ WTYPE single(const size_t i, const size_t j,
   const size_t
     n = i * DIMS,
     m = j * DIMS;
-  // shape (DIMS, N) for spatial data is not significantly faster
+  // transposed shape (DIMS, N) for spatial data is not significantly faster than shape (N, DIMS)
   const double
     distance = NORM_3D(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
     amp = cuCabs(x[i]),
