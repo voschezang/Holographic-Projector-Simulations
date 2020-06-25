@@ -1,6 +1,10 @@
-# full abs path is required for ssh
-C := /usr/local/cuda-10.2/bin/nvcc
+# full abs path is required for ssh # TODO not if sourcing .profile?
+# C := /usr/local/cuda-10.2/bin/nvcc
 # C := /usr/local/cuda-11.0/bin/nvcc
+# GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/8.3.0.1/x86_64-centos7/bin
+# GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/9.2.0/x86_64-centos7/bin
+#-ccbin=$(GCC)
+FLAGS := -l curand -std=c++14
 EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
@@ -14,10 +18,10 @@ build:
 	#  -ftz=true -prec-div=false -prec-sqrt=false
 	# TODO check -O2 vs. -O3 performance
 	# -g debug
-	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams)
+	nvcc -o $(EXE) main.cu $(FLAGS) -D$(HyperParams)
 
 debug:
-	$(C) -o $(EXE) main.cu -l curand -std=c++11 -D$(HyperParams)
+	nvcc -o $(EXE) main.cu $(FLAGS) -D$(HyperParams)
 	make run
 
 build-run:
@@ -38,6 +42,7 @@ cleanup-output:
 # CUDA
 init-path:
 	export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}
+	# export PATH=$(GCC)${PATH:+:${PATH}}
 
 profile:
 	make build
