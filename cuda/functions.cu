@@ -17,10 +17,11 @@
 
 // host superposition functions
 
-inline void cp_batch_data_to_device(const STYPE *v, DeviceVector<STYPE> d_v,
-                                    cudaStream_t stream) {
+template<typename T = double>
+inline void cp_batch_data_to_device(const T *v, DeviceVector<T> d_v, cudaStream_t stream) {
   // copy "v[i]" for i in batch, where v are the spatial positions belonging to the target datapoints y
-  cudaMemcpyAsync( d_v.data, v, d_v.size * sizeof(WTYPE), cudaMemcpyHostToDevice, stream );
+  cu ( cudaMemcpyAsync( d_v.data, v, d_v.size * sizeof(T),
+                        cudaMemcpyHostToDevice, stream ) );
 }
 
 #define SuperpositionPerBlock(size) {                                   \
@@ -80,7 +81,6 @@ inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
   }
 }
 
-// TODO add volitale?
 inline void agg_batch(const Geometry& p, WTYPE *y, cudaStream_t stream,
                       WTYPE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
@@ -183,13 +183,13 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   for (size_t i = 0; i < p.n_batches; i+=p.n_streams) {
     // start each distinct kernel in batches
     // TODO don't do this in case of non-uniform workloads
+    assert(p.n_streams == N_STREAMS);
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
       if (p.n_batches > 10 && i_batch % (int) (p.n_batches / 10) == 0)
         printf("\tbatch %0.3fk / %0.3fk\n", i_batch * 1e-3, p.n_batches * 1e-3);
 
-      /* printf("batch %3i stream %3i\n", i_batch, i_stream); */
       cp_batch_data_to_device(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
                               streams[i_stream]);
 
@@ -270,8 +270,6 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
      * adding the planar wave should happen before squaring the amplitude
     */
     // TODO do this on CPU?
-    assert(v[2] == 0);
-    assert(0);
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     /* const std::vector<WTYPE> x_reference = {from_polar(1.)}; */
     /* const std::vector<STYPE> u_reference = {{0.,0., z_offset}}; */

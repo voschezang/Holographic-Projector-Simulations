@@ -1,11 +1,8 @@
 #ifndef MACROS
 #define MACROS
 
-#include "macros.h"
-
 /* #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int) */
 #define CEIL(x,y) ((x + y - 1) / y) // ceil(int, int)
-
 
 /* #define DEBUG */
 #define ZERO make_cuDoubleComplex(0,0)
@@ -30,6 +27,8 @@
 
 #define ARBITRARY_PHASE 0.4912 // used in superposition::per_thread
 /* #define ARBITRARY_PHASE 0. // used in superposition::per_thread */
+/* #define ARBITRARY_PHASE2 1.321 */
+/* #define ARBITRARY_PHASE3 -0.814 */
 
 #define DOUBLE_PRECISION
 

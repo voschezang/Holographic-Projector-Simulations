@@ -239,9 +239,21 @@ __global__ void per_block(const Geometry p,
     // extern WTYPE y_local[]; // this yields; warning: address of a host variable "dynamic" cannot be directly taken in a device function
     WTYPE y_local[KERNEL_SIZE] = {}; // init to zero
     superposition::per_thread<direction>(x, N_x, u, y_local, v);
+    // printf("tid: %i \t y[0]: a: %f phi: %f (local)\n", threadIdx.x, cuCabs(y_local[0]), angle(y_local[0]));
     superposition::copy_result(y_local, y_shared);
+    // {
+    //   __syncthreads();
+    //   printf("tid: %i \t y[0]: a: %f phi: %f (shared)\n", threadIdx.x, cuCabs(y_shared[0]), angle(y_shared[0]));
+    // }
   }
   superposition::aggregate_blocks<blockSize>(y_shared, y_global);
+  // {
+  //   __syncthreads();
+  //   size_t m = gridDim.x * BATCH_SIZE * KERNEL_SIZE;
+  //   printf("N_x: %lu, m: %lu\n", N_x, m);
+  //   WTYPE c = {y_global[0], y_global[m]};
+  //   printf("tid: %i \t y[0]: a: %f phi: %f (shared)\n", threadIdx.x, cuCabs(c), angle(c));
+  // }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

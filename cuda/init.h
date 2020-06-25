@@ -122,11 +122,16 @@ void plane(std::vector<STYPE> &v, const Plane p, const Cartesian<double> &offset
   }
   assert(x * y <= n);
 
+  // distribute points over a lattice (each point in the center of a cell in a grid)
   const double
-    dx = p.width / (double) x,
-    dy = p.width / ((double) y * p.aspect_ratio),
-    x_half = 0.5 * p.width,
-    y_half = 0.5 * p.width / p.aspect_ratio,
+    height = p.width / p.aspect_ratio,
+    dx = p.width / (double) x, // excl. boundary; don't divide by (x-1)
+    dy = height / (double) y,
+    x_half = (p.width - dx) / 2., // subtract dx/2 to position points in center
+    y_half = (height - dy) / 2.;
+
+  // properties to generate random offsets
+  const double
     rel_margin = p.randomize ? 0.00 : 0.0,
     x_margin = rel_margin * dx, // TODO min space between projector pixels
     y_margin = rel_margin * dy,
@@ -253,6 +258,8 @@ std::vector<STYPE> sparse_plane(std::vector<STYPE> &u, Shape shape, double width
 
 template<typename T>
 std::vector<T*> pinned_malloc_vector(T **d_ptr, size_t dim1, size_t dim2) {
+  // Return a host vector of pointers
+  assert(dim1 >= 1); assert(dim2 >= 1);
   cu( cudaMallocHost( d_ptr, dim1 * dim2 * sizeof(T) ) );
   auto vec = std::vector<T*>(dim1);
   // for (auto&& row : matrix)
@@ -263,10 +270,12 @@ std::vector<T*> pinned_malloc_vector(T **d_ptr, size_t dim1, size_t dim2) {
 
 template<typename T>
 std::vector<DeviceVector<T>> pinned_malloc_matrix(T **d_ptr, size_t dim1, size_t dim2) {
+  // Return a host vector of DeviceVector elements
+  assert(dim1 >= 1); assert(dim2 >= 1);
   cu( cudaMallocHost( d_ptr, dim1 * dim2 * sizeof(T) ) );
   auto matrix = std::vector<DeviceVector<T>>(dim1);
   // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
-  // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read
+  // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read by host if it's located on device
   for (size_t i = 0; i < dim1; ++i)
     matrix[i] = DeviceVector<T>{data: *d_ptr + i * dim2,
                                 size: dim2};

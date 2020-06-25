@@ -14,7 +14,7 @@
 #include "util.h"
 #include "init.h"
 #include "input.h"
-#include "functions.h"
+#include "functions.cu"
 
 /**
  * Input x,u is splitted over GPU cores/threads
@@ -45,8 +45,7 @@ int main(int argc, char** argv) {
     &n_per_plane = params.n_per_plane;
 
   const auto transformation = PROJECT_PHASE ? Transformation::Full : Transformation::Amplitude;
-  // const bool add_reference = transformation == Transformation::Amplitude;
-  const bool add_reference = 0;
+  const bool add_reference = transformation == Transformation::Amplitude;
 
   // TODO rename non-spatial xyz,uvw to setup.obj, setup.projector etc
   auto
@@ -88,7 +87,9 @@ int main(int argc, char** argv) {
   auto dt = std::vector<double>(max(n_planes.projection, 1L));
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
-  const auto y_plane = Plane {width: PROJECTOR_WIDTH, z_offset: 0.,
+  const auto y_plane = Plane {width: PROJECTOR_WIDTH,
+                              offset: {x: 0., y: 0., z: 0.},
+                              z_offset: 0.,
                               aspect_ratio: params.aspect_ratio.projector,
                               randomize: params.randomize};
   init::plane(v, y_plane);
@@ -109,6 +110,7 @@ int main(int argc, char** argv) {
                                           y: lerp(params.obj_offset.y, di),
                                           z: gerp(params.obj_offset.z, di)};
     const auto x_plane = Plane {width: lerp(params.rel_obj_width, di) * PROJECTOR_WIDTH,
+                                offset: obj_offset,
                                 z_offset: obj_offset.z,
                                 aspect_ratio: 1.,
                                 randomize: false};
@@ -145,14 +147,16 @@ int main(int argc, char** argv) {
       printf(" z plane #%i\n", j);
       const auto ratio = j / (double) n_planes.projection;
       // TODO use rel z offset, s.t. value corresonds to obj z offset
+      const double width = gerp(params.rel_projection_width, ratio) * x_plane.width;
+      const auto offset = Cartesian<double> {x: obj_offset.x + 4/9. * width,
+                                             y: obj_offset.y + 4/9. * width / params.aspect_ratio.projection,
+                                             z: gerp(params.projection_z_offset, ratio)};
       const auto z_plane = Plane {width:     gerp(params.rel_projection_width, ratio) * x_plane.width,
-                                  z_offset:  gerp(params.projection_z_offset, ratio),
+                                  offset: offset,
+                                  z_offset:  offset.z,
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
 
-      const auto offset = Cartesian<double> {x: obj_offset.x + 4/9. * z_plane.width,
-                                             y: obj_offset.y + 4/9. * z_plane.width / z_plane.aspect_ratio,
-                                             z: z_plane.z_offset};
       init::plane(w, z_plane, offset);
       // init::plane(w, z_plane, {obj_offset.x, obj_offset.y, z_plane.z_offset});
 

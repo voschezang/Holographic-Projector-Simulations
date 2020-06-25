@@ -160,7 +160,8 @@ void test() {
   assert(mean(std::vector<double>{0,1}) == 0.5);
   assert(sample_variance(std::vector<double>{0,1}) == 0.25);
 
-  assert(0); // TODO test lerp, gerp
+  assert(lerp(0, 1, 0.9) == 0.9);
+  assert(gerp(1, 2, 0.5) - 1.41421 <= 1e-5);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

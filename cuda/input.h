@@ -15,13 +15,13 @@ void show_help(const char *p) {
 namespace input {
 
 Params read_args(int argc, char **argv) {
-  /* const auto obj_z_offset = Range<double> {min: 0.35, max: 0.35}; */
-  const auto obj_z_offset = Range<double> {min: 1e3 * LAMBDA, max: 0.35};
+  const auto obj_z_offset = Range<double> {min: 0.35, max: 0.35};
   // projector z_offset is always zero
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1,
                     projection: 0},
+     /* n_per_plane:  {obj: N_sqrt, */
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
