@@ -38,20 +38,20 @@
 
 #define WARP_SIZE 32
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
-/* #if (N_sqrt <= 32) */
-/* #define BLOCKDIM 1 */
-/* #elif (N_sqrt <= 64) */
-/* #define BLOCKDIM 16 */
-/* #elif (N_sqrt <= 128) */
-/* #define BLOCKDIM 64 // TODO blocksize >32 causes matrix-bug (in combination with PARALLEL_INTRA_WARP_AGG?) */
-/* #elif (N_sqrt <= 256) */
-/* #define BLOCKDIM 64 */
-/* #elif (N_sqrt <= 512) */
-/* #define BLOCKDIM 128 */
-/* #else */
-/* #define BLOCKDIM 128 */
-/* #endif */
+#if (N_sqrt <= 32)
 #define BLOCKDIM 1
+#elif (N_sqrt <= 64)
+#define BLOCKDIM 16
+#elif (N_sqrt <= 128)
+#define BLOCKDIM 64 // TODO blocksize >32 causes matrix-bug (in combination with PARALLEL_INTRA_WARP_AGG?)
+#elif (N_sqrt <= 256)
+#define BLOCKDIM 64
+#elif (N_sqrt <= 512)
+#define BLOCKDIM 128
+#else
+#define BLOCKDIM 128
+#endif
+/* #define BLOCKDIM 1 */
 
 #if (N_sqrt <= 256)
 #define GRIDDIM (BLOCKDIM)

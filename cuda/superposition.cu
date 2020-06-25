@@ -49,14 +49,6 @@ inline __host__ __device__ WTYPE single(const size_t i, const size_t j,
 #endif
   // TODO __ddiv_rd, __dmul_ru
 
-#ifdef TEST
-  return from_polar(ARBITRARY_PHASE2, ARBITRARY_PHASE3);
-#endif
-// #ifdef TEST2
-//   // assert(amp == 1.);
-//   return from_polar(amp / distance, ARBITRARY_PHASE3);
-// #endif
-
   if (direction == Direction::Forwards)
     return from_polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
   else
