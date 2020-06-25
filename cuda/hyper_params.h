@@ -1,6 +1,8 @@
 #ifndef HYPER_PARAMS
 #define HYPER_PARAMS
 
+#include "macros.h"
+
 /**
  * Macro's that can be configured with compile flags (-D)
  */
@@ -9,6 +11,7 @@
 #define PROJECT_PHASE 0
 
 // TODO use N,M
+/* #define N_sqrt 4 */
 /* #define N_sqrt 8 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
@@ -17,10 +20,6 @@
 /* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
-/* #define N (N_sqrt * N_sqrt) */
-/* #define N2 (N_sqrt * N_sqrt) */
-/* #define STREAM_BATCH_SIZE 8 // n datapoints per stream // stream batch size // TODO rename to STREAM_BATCH_SIZE? */
-/* #define KERNEL_BATCH_SIZE 8 // n datapoints per kernel, must be <= STREAM_BATCH_SIZE */
 
 #ifndef KERNEL_SIZE
 #define KERNEL_SIZE 2 // n datapoints per kernel
@@ -32,32 +31,27 @@
 /* #define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch */
 // TODO compute optimal batch size as function of N
 
-#define N_STREAMS 8 // TODO single stream results in incorrect output
+#define N_STREAMS 1 // TODO single stream results in incorrect output
 /* #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream */
 /* #define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE) */
 /* #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM) */
 
 #define WARP_SIZE 32
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
-#if (N_sqrt <= 32)
-#define BLOCKDIM 1
-#elif (N_sqrt <= 64)
-#define BLOCKDIM 16
-#elif (N_sqrt <= 128)
-#define BLOCKDIM 64 // TODO blocksize >32 causes matrix-bug (in combination with PARALLEL_INTRA_WARP_AGG?)
-#elif (N_sqrt <= 256)
-#define BLOCKDIM 64
-#elif (N_sqrt <= 512)
-#define BLOCKDIM 128
-#else
-#define BLOCKDIM 128
-#endif
-/* #define BLOCKDIM 8 */
+/* #if (N_sqrt <= 32) */
+/* #define BLOCKDIM 1 */
+/* #elif (N_sqrt <= 64) */
+/* #define BLOCKDIM 16 */
+/* #elif (N_sqrt <= 128) */
+/* #define BLOCKDIM 64 // TODO blocksize >32 causes matrix-bug (in combination with PARALLEL_INTRA_WARP_AGG?) */
+/* #elif (N_sqrt <= 256) */
+/* #define BLOCKDIM 64 */
+/* #elif (N_sqrt <= 512) */
 /* #define BLOCKDIM 128 */
-/* #define BLOCKDIM 256 */
-/* #define GRIDDIM 256 */
-/* #define GRIDDIM (2 * BLOCKDIM) */
-/* #define GRIDDIM (2 * BLOCKDIM) */
+/* #else */
+/* #define BLOCKDIM 128 */
+/* #endif */
+#define BLOCKDIM 1
 
 #if (N_sqrt <= 256)
 #define GRIDDIM (BLOCKDIM)

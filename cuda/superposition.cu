@@ -49,6 +49,14 @@ inline __host__ __device__ WTYPE single(const size_t i, const size_t j,
 #endif
   // TODO __ddiv_rd, __dmul_ru
 
+#ifdef TEST
+  return from_polar(ARBITRARY_PHASE2, ARBITRARY_PHASE3);
+#endif
+// #ifdef TEST2
+//   // assert(amp == 1.);
+//   return from_polar(amp / distance, ARBITRARY_PHASE3);
+// #endif
+
   if (direction == Direction::Forwards)
     return from_polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
   else
@@ -239,9 +247,21 @@ __global__ void per_block(const Geometry p,
     // extern WTYPE y_local[]; // this yields; warning: address of a host variable "dynamic" cannot be directly taken in a device function
     WTYPE y_local[KERNEL_SIZE] = {}; // init to zero
     superposition::per_thread<direction>(x, N_x, u, y_local, v);
+    // printf("tid: %i \t y[0]: a: %f phi: %f (local)\n", threadIdx.x, cuCabs(y_local[0]), angle(y_local[0]));
     superposition::copy_result(y_local, y_shared);
+    // {
+    //   __syncthreads();
+    //   printf("tid: %i \t y[0]: a: %f phi: %f (shared)\n", threadIdx.x, cuCabs(y_shared[0]), angle(y_shared[0]));
+    // }
   }
   superposition::aggregate_blocks<blockSize>(y_shared, y_global);
+  // {
+  //   __syncthreads();
+  //   size_t m = gridDim.x * BATCH_SIZE * KERNEL_SIZE;
+  //   printf("N_x: %lu, m: %lu\n", N_x, m);
+  //   WTYPE c = {y_global[0], y_global[m]};
+  //   printf("tid: %i \t y[0]: a: %f phi: %f (shared)\n", threadIdx.x, cuCabs(c), angle(c));
+  // }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

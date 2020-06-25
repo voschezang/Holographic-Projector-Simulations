@@ -18,6 +18,7 @@
 #include "kernel.cu"
 #include "init.h"
 #include "superposition.cu"
+#include "functions.cu"
 
 inline
 bool equals(double a, double b, double max_rel_error=1e-6) {
@@ -53,6 +54,15 @@ void test_complex_multiple() {
   auto c = cuDoubleComplex{1.8, 4.2};
   assert(cuCabs(c) - 4.56946 < 1e-3);
   assert(angle(c) - 1.16590 < 1e-3);
+}
+
+void test_normalize_amp() {
+  auto x = std::vector<WTYPE> {{1,2}, {-1,4}, {8,12}, {11,-3}};
+  for (double to = 0.5; to < 5; to*=3.14) {
+    normalize_amp<false>(x, to);
+    for (int i = 0; i < x.size(); ++i)
+      assert(cuCabs(x[i]) - to <= 1e-6);
+  }
 }
 
 template<const Direction direction = Direction::Forwards>
@@ -132,6 +142,7 @@ void test_superposition() {
 
 int main() {
   algebra::test();
+  test_normalize_amp();
   test_complex_multiple();
   // TODO add lin_algebra tests
   test_superposition();

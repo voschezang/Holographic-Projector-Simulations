@@ -85,9 +85,18 @@ void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
   printf("\n E[n objects          (per plane) / thread]: %.4fk", n_per_plane.obj / (double) p.gridSize * p.blockSize * 1e-3);
   printf("\n E[n projector pixels (per plane) / thread]: %.4fk", n_per_plane.projector / (double) p.gridSize * p.blockSize * 1e-3);
 
-  printf("\n n streams: %4i", p.n_streams);
-  printf("\tbatch size: \t%6i", p.stream_size);
-  printf("\tkernel size: \t%4i", p.kernel_size);
+  printf("\nGeometry:\n n streams: \t%6i", p.n_streams);
+  printf("\tstream size: \t%6i", p.stream_size);
+  printf("\tbatch size: \t%6i", p.batch_size);
+  printf("\n kernel size: \t%6i", p.kernel_size);
+  printf("\tgrid size: \t%6i", p.gridSize);
+  printf("\tblockSize: \t%6i", p.blockSize);
+
+  printf("\n\n (total) n batches: \t%6i", p.n_batches);
+  printf("\t n per batch: \t%6i", p.n_per_batch);
+  printf("\n (total) n kernels: \t%6i", p.n_kernels);
+  printf("\t n per kernel: \t%6i", p.n_per_kernel);
+  printf("\t kernels per stream: \t%6i", p.kernels_per_stream); printf("\n");
 
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(n_per_plane.projector));
   {
@@ -100,8 +109,8 @@ void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
 void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
   // n,m : number of input, output datapoints per transformation
   const double mu = mean(dt);
-  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT)\n",  \
-         flops(mu, n, m), FLOP_PER_POINT);
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT) \t E[runtime]: %f s\n",  \
+         flops(mu, n, m), FLOP_PER_POINT, mu);
   // TODO correct bandwidth datasize
   // TODO multiply dt.size() with n,m inside func instead of outside?
   printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(mu, n, m, false));
@@ -135,7 +144,7 @@ void summarize_double(char name, std::vector<double> &x) {
     max = fmax(max, x[i]);
     min = fmin(min , x[i]);
   }
-  printf("%c)  range: [%0.3f , %0.3f]\n", name, min, max);
+  printf("%c)  range: [%0.3e , %0.3e]\n", name, min, max);
 }
 
 void print_complex(WTYPE x, std::ofstream& out) {
@@ -268,10 +277,13 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, st
   out << "{" \
       << quote("phasor")       << sep1 << quote(phasor)  << sep2 \
       << quote("pos")          << sep1 << quote(pos)     << sep2 \
-      << quote("z_offset")     << sep1 << p.z_offset     << sep2 \
       << quote("len")          << sep1 << len            << sep2 \
       << quote("precision")    << sep1 << IO_PRECISION   << sep2 \
       << quote("dims")         << sep1 << DIMS           << sep2 \
+      << quote("x_offset")     << sep1 << p.offset.z     << sep2 \
+      << quote("y_offset")     << sep1 << p.offset.y     << sep2 \
+      << quote("z_offset")     << sep1 << p.offset.z     << sep2 \
+      << quote("width")        << sep1 << p.width        << sep2 \
       << quote("randomized")   << sep1 << p.randomize    << sep2 \
       << quote("aspect_ratio") << sep1 << p.aspect_ratio << "}\n";
 }

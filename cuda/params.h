@@ -21,7 +21,8 @@ struct Range {T min, max; };
 struct Plane {
   // TODO simplify this struct, avoid duplicate data?
   double width;
-  double z_offset;
+  Cartesian<double> offset;
+  double z_offset; // TODO replace by Cartesian<>offset
   double aspect_ratio; // image width / height
   bool randomize;
 };

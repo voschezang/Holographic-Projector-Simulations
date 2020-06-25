@@ -80,11 +80,23 @@ inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
   }
 }
 
-// TODO add volitale?
 inline void agg_batch(const Geometry& p, WTYPE *y, cudaStream_t stream,
                       WTYPE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[p.n_per_batch], p.n_per_batch, d_y_stream);
+
+#ifdef TEST
+  {
+    cudaDeviceSynchronize();
+    size_t s = p.n_per_batch;
+    // size_t n = p.n_per_batch;
+    thrust::host_vector<WTYPE> Y (d_y_stream, d_y_stream + s);
+    for (int a = 0; a < Y.size(); a++) {
+      // assert(cuCabs(Y[a]) == ARBITRARY_PHASE);
+      assert(angle(Y[a]) - ARBITRARY_PHASE3 < 1e-6);
+    }
+  }
+#endif
 	cu( cudaMemcpyAsync(y, d_y_stream, p.n_per_batch * sizeof(WTYPE),
                       cudaMemcpyDeviceToHost, stream ) );
 }
@@ -154,15 +166,19 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   if (x.size() < p.gridSize * p.blockSize)
     print("Warning, suboptimal input size");
 
+  print("transform");
   auto y = std::vector<WTYPE>(n);
 
+  print("thrust");
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   const thrust::device_vector<WTYPE> d_x = x;
   const thrust::device_vector<STYPE> d_u = u;
   // cast to pointers to allow usage in non-thrust kernels
+  print("thrust ptr");
   const auto d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
   const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
 
+  print("stream[]");
   // Note that in case x.size < GRIDDIM the remaining entries in the agg array are zero
   cudaStream_t streams[p.n_streams];
   // malloc data using pinned memory for all batches before starting streams
@@ -171,18 +187,22 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   double *d_y_block_ptr;
   double *d_y_batch_ptr;
   STYPE *d_v_ptr;
+  print("matrix");
   auto d_y_stream = init::pinned_malloc_vector<WTYPE>(&d_y_stream_ptr, p.n_streams, p.n_per_batch);
   auto d_y_block  = init::pinned_malloc_vector<double>(&d_y_block_ptr, p.n_streams, 2 * p.n_per_batch * p.gridSize);
   auto d_y_batch  = init::pinned_malloc_matrix<double>(&d_y_batch_ptr, p.n_streams, 2 * p.n_per_batch);
   auto d_v        = init::pinned_malloc_matrix<STYPE>(&d_v_ptr, p.n_streams, p.n_per_batch * DIMS);
 
+  print("streams");
   for (auto& stream : streams)
     cudaStreamCreate(&stream);
 
+  print("loop");
   // assume n_batches is divisible by n_streams
   for (size_t i = 0; i < p.n_batches; i+=p.n_streams) {
     // start each distinct kernel in batches
     // TODO don't do this in case of non-uniform workloads
+    assert(p.n_streams == N_STREAMS);
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
@@ -197,6 +217,29 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
                                                  d_v[i_stream].data,
                                                  streams[i_stream], d_y_block[i_stream]);
     }
+#ifdef TEST
+    cudaDeviceSynchronize();
+    {
+      for (auto& stream : streams) cudaStreamSynchronize(stream);
+      /* auto tmp2 = thrust::device_vector<double>(10); */
+      size_t s = p.n_per_batch * p.gridSize * 2;
+      /* auto half_n = p.n_per_batch * p.gridSize; */
+      size_t n = p.n_per_batch; // TODO rm
+      for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+        thrust::host_vector<double> Y (d_y_block[i_stream], d_y_block[i_stream] + s);
+        for (int a = 0; a < Y.size() / 2; ++a) {
+          WTYPE c = {Y[a], Y[a + s/2]};
+          if (v.size() / DIMS < 64)
+            if (a == 0) printf("size (len): %i\n", s);
+          if (v.size() / DIMS < 32)
+            printf("i: %i, a: %f phi: %f \t diff: %e\n", i, cuCabs(c), angle(c), cuCabs(c) - n * ARBITRARY_PHASE2);
+          if (x.size() == 1)
+            assert(cuCabs(c) - n * ARBITRARY_PHASE2 < 1e-6);
+          assert(angle(c) - ARBITRARY_PHASE3 < 1e-6);
+        }
+      }
+    }
+#endif
 
     // do aggregations in separate stream-loops because of imperfect async functions calls on host
     // this may yield a ~2.5x speedup
@@ -205,6 +248,24 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
                        d_y_batch[i_stream],
                        d_y_block[i_stream]);
     }
+
+#ifdef TEST
+    {
+      cudaDeviceSynchronize();
+      /* auto tmp2 = thrust::device_vector<double>(10); */
+      size_t s = 2 * p.n_per_batch;
+      /* auto half_n = p.n_per_batch * p.gridSize; */
+      size_t n = p.n_per_batch;
+      for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+        thrust::host_vector<double> Y (d_y_batch[i_stream].data, d_y_batch[i_stream].data + s);
+        for (int a = 0; a < Y.size() / 2; ++a) {
+          // WTYPE c = from_polar(Y[a], Y[a + s/2]);
+          WTYPE c = {Y[a], Y[a + s/2]};
+          if (x.size() == 1)
+            assert(cuCabs(c) - n * ARBITRARY_PHASE2 < 1e-6);
+          assert(angle(c) - ARBITRARY_PHASE3 < 1e-6);
+        }}}
+#endif
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
@@ -217,6 +278,16 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
 
   // sync all streams before returning
   cudaDeviceSynchronize();
+
+#ifdef TEST
+  for (auto& stream : streams) cudaStreamSynchronize(stream);
+  for (int a = 0; a < y.size(); ++a) {
+    if (y.size() < 10)
+      printf("y[%i]: a: %f phi: %f\n", a, cuCabs(y[a]), angle(y[a]));
+    assert(cuCabs(y[a]) - x.size() * ARBITRARY_PHASE2 < 1e-6);
+    assert(angle(y[a]) - ARBITRARY_PHASE3 < 1e-6);
+  }
+#endif
 
 #ifdef DEBUG
   printf("done, destroy streams\n");
@@ -258,6 +329,15 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
                                       add_reference_wave ? 1 : 0};
   normalize(weights);
   auto y = transform<direction>(x, u, v, p);
+
+#ifdef TEST
+  for (int i = 0; i < y.size(); ++i) {
+    assert(cuCabs(y[i]) - x.size() * ARBITRARY_PHASE2 < 1e-6);
+    assert(angle(y[i]) - ARBITRARY_PHASE3 < 1e-6);
+  }
+  printf("abs y[0]: %f\n", cuCabs(y[0]));
+#endif
+
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
   assert(weights[0] + weights[1] == 1.);
