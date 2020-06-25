@@ -45,8 +45,7 @@ int main(int argc, char** argv) {
     &n_per_plane = params.n_per_plane;
 
   const auto transformation = PROJECT_PHASE ? Transformation::Full : Transformation::Amplitude;
-  // const bool add_reference = transformation == Transformation::Amplitude;
-  const bool add_reference = 0;
+  const bool add_reference = transformation == Transformation::Amplitude;
 
   // TODO rename non-spatial xyz,uvw to setup.obj, setup.projector etc
   auto
