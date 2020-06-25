@@ -15,29 +15,31 @@ void show_help(const char *p) {
 namespace input {
 
 Params read_args(int argc, char **argv) {
-  const auto obj_z_offset = Range<double> {min: 0.1, max: 0.1};
+  /* const auto obj_z_offset = Range<double> {min: 0.35, max: 0.35}; */
+  const auto obj_z_offset = Range<double> {min: 1e3 * LAMBDA, max: 0.35};
   // projector z_offset is always zero
   auto p = Params
-    {n_planes: {obj: 1,
-                projector: 1,
-                projection: 3},
+    {n_planes:     {obj: 1,
+                    projector: 1,
+                    projection: 0},
+     n_per_plane:  {obj: 1,
+                    projector: N_sqrt * N_sqrt,
+                    projection: N_sqrt * N_sqrt},
+     aspect_ratio: {obj: 1.,
+                    projector: 1., // HD
+                    projection: 0.5},
 
-     n_per_plane: {obj: 1,
-                   projector: N_sqrt * N_sqrt,
-                   projection: N_sqrt * N_sqrt},
-     hd: false,
-     /* hd: true, // TODO default false */
-     randomize: false,
-     /* randomize: true, // TODO default false */
-     obj_offset: {x: {min: 0.0, max: 0.0}, // TODO make relative
-                  y: {min: 0.0, max: 0.0},
-                  z: obj_z_offset},
+     /* obj_shape: Shape::DottedCircle, // TODO */
+     obj_offset:  {x: {min: 0.0, max: 0.0}, // TODO make relative
+                   y: {min: 0.0, max: 0.0},
+                   z: obj_z_offset},
 
-     rel_obj_width: {min: 1., max: 0.3},
-     rel_projection_width: {min: 0.005, max: 0.5},
-     /* rel_projection_width: {min: 0.005, max: 0.05}, */
-     /* rel_projection_height: {min: 0.005, max: 0.005}, */
-     projection_z_offset: obj_z_offset
+     rel_obj_width: {min: 0.005, max: 0.3},
+     rel_projection_width: {min: 5, max: 20.0}, // 0.005
+     projection_z_offset: obj_z_offset,
+
+     randomize: false
+     /* randomize: true */
     };
 
   // TODO count n non-constant ranges and static_assert result is <= 1
@@ -45,19 +47,20 @@ Params read_args(int argc, char **argv) {
   // For all ranged params the max is set to min by default.
   int ch;
   /* while ((ch = getopt(argc, argv, "c:e:hH:i:k:L:m:M:n:N:p:t:r:")) != -1) */
-  while ((ch = getopt(argc, argv, "X:Z:x:y:z:d:r:u:U:v:V:w:W:o:O:n:N:m:M:h:")) != -1)
+  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:n:N:m:M:r:h:")) != -1)
     {
       switch(ch) {
-      case 'X': p.n_planes.obj                   = strtol(optarg, 0, 10); break;
+      case 'X': p.n_planes.obj            = strtol(optarg, 0, 10); break;
       /* 'Y': p.n_planes.projector is constant */
-      case 'Z': p.n_planes.projection            = strtol(optarg, 0, 10); break;
-      case 'x': p.n_per_plane.obj        = strtol(optarg, 0, 10); break;
-      case 'y': p.n_per_plane.projector  = strtol(optarg, 0, 10); break;
-      case 'z': p.n_per_plane.projection = strtol(optarg, 0, 10); break;
+      case 'Z': p.n_planes.projection     = strtol(optarg, 0, 10); break;
+      case 'x': p.n_per_plane.obj         = strtol(optarg, 0, 10); break;
+      case 'y': p.n_per_plane.projector   = strtol(optarg, 0, 10); break;
+      case 'z': p.n_per_plane.projection  = strtol(optarg, 0, 10); break;
 
-      case 'd': p.hd = true; break;
-      case 'r': p.randomize = true; break;
+      case 'a': p.aspect_ratio.projector  = strtod(optarg, 0); break;
+      case 'A': p.aspect_ratio.projection = strtod(optarg, 0); break;
 
+      /* case 's': p.obj_shape.       = p.obj_shape        = str_to_shape(optarg, 0); break; */
       case 'u': p.obj_offset.x.min = p.obj_offset.x.min = strtod(optarg, 0); break;
       case 'U': p.obj_offset.x.max =                      strtod(optarg, 0); break;
       case 'v': p.obj_offset.y.min = p.obj_offset.y.max = strtod(optarg, 0); break;
@@ -72,6 +75,7 @@ Params read_args(int argc, char **argv) {
       case 'm': p.projection_z_offset.min = p.projection_z_offset.max =   strtod(optarg, 0); break;
       case 'M': p.projection_z_offset.max =                               strtod(optarg, 0); break;
 
+      case 'r': p.randomize = true; break;
       case 'h': default: show_help(argv[0]);
       }
     }

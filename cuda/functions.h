@@ -80,6 +80,7 @@ inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
   }
 }
 
+// TODO add volitale?
 inline void agg_batch(const Geometry& p, WTYPE *y, cudaStream_t stream,
                       WTYPE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
@@ -89,8 +90,7 @@ inline void agg_batch(const Geometry& p, WTYPE *y, cudaStream_t stream,
 }
 
 template<bool add_constant = false>
-void normalize_amp(std::vector<WTYPE> &c, float to = 1., bool log_normalize = false) {
-  const auto constant = from_polar(1., ARBITRARY_PHASE);
+void normalize_amp(std::vector<WTYPE> &c, double to = 1., bool log_normalize = false) {
   double max_amp = 0;
   for (size_t i = 0; i < c.size(); ++i)
     max_amp = fmax(max_amp, cuCabs(c[i]));
@@ -100,12 +100,20 @@ void normalize_amp(std::vector<WTYPE> &c, float to = 1., bool log_normalize = fa
     return;
   }
   max_amp /= to;
+
+  // zero constant is equivalent to no constant and will be removed by compiler
+  const auto constant = from_polar(add_constant ? 1.0 : 0.0, ARBITRARY_PHASE);
   if (add_constant)
     max_amp *= 2.;
 
   for (size_t i = 0; i < c.size(); ++i) {
-    c[i].x = c[i].x / max_amp + constant.x / 2.;
-    c[i].y = c[i].y / max_amp + constant.y / 2.;
+    if (add_constant) {
+      c[i].x = c[i].x / max_amp + constant.x / 2.;
+      c[i].y = c[i].y / max_amp + constant.y / 2.;
+    } else {
+      c[i].x = c[i].x / max_amp;
+      c[i].y = c[i].y / max_amp;
+    }
   }
 
   if (log_normalize)
@@ -226,8 +234,8 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   cu( cudaFreeHost(d_y_block_ptr ) );
   cu( cudaFreeHost(d_v_ptr       ) );
 
-  size_t len = min(100, (unsigned int) y.size());
 #ifdef DEBUG
+  size_t len = min(100L, y.size());
   assert(std::any_of(y.begin(), y.begin() + len, abs_of_is_positive));
 #endif
   return y;
@@ -252,7 +260,9 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
   auto y = transform<direction>(x, u, v, p);
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
+  assert(weights[0] + weights[1] == 1.);
 
+  assert(!add_constant_wave);
   if (add_reference_wave) {
     /**
      * Add single far away light source behind the second (v) plane,
@@ -261,6 +271,7 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
     */
     // TODO do this on CPU?
     assert(v[2] == 0);
+    assert(0);
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     /* const std::vector<WTYPE> x_reference = {from_polar(1.)}; */
     /* const std::vector<STYPE> u_reference = {{0.,0., z_offset}}; */

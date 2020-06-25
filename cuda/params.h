@@ -7,7 +7,8 @@
 enum class Shape {Line, Cross, Circle, DottedCircle};
 enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
 
-struct Setup { size_t obj, projector, projection; };
+template<typename T>
+struct Setup { T obj, projector, projection; };
 
 template<typename T>
 struct Cartesian { T x,y,z; }; // 3D space
@@ -21,8 +22,8 @@ struct Plane {
   // TODO simplify this struct, avoid duplicate data?
   double width;
   double z_offset;
+  double aspect_ratio; // image width / height
   bool randomize;
-  bool hd;
 };
 
 /**
@@ -32,15 +33,18 @@ struct Plane {
  */
 struct Params {
   // number of planes, number of datapoints per plane
-  Setup n_planes, n_per_plane;
-  bool hd,
-    randomize; // TODO add option to compute local average
+  Setup<size_t> n_planes;
+  Setup<size_t> n_per_plane;
+  Setup<double> aspect_ratio; // image width / height
 
   Cartesian<Range<double>> obj_offset;
+
   Range<double>
     rel_obj_width,        // relative to projector width, affects sampling density
     rel_projection_width, // relative to object width
     projection_z_offset;
+
+  bool randomize; // TODO add option to compute local average
   /* std::string input_filename; // input filename or empty string, positions will be scaled to `obj_width` */
 };
 

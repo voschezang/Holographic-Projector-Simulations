@@ -11,25 +11,25 @@
 #define ZERO make_cuDoubleComplex(0,0)
 /* #define VOL(type, x) *((type *) &x) */
 
-#define HD (1920 * 1080)
+#define HD (1920. / 1080.)
 /* #define LAMBDA (0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser) */
-#define LAMBDA 0.650e-6 // 650 nm
+#define LAMBDA 0.65e-6 // 650 nm
 #define TWO_PI (2 * M_PI)
 #define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
-#define DISTANCE_REFERENCE_WAVE 24e-2 // in meters
-#define PROJECTOR_WIDTH 1.344e-2 // projector width = 1920 x 7e-6
-#define PROJECTOR_HEIGHT(hd) ((hd ? 1080. / 1920. : 1.) * PROJECTOR_WIDTH)
+#define DISTANCE_REFERENCE_WAVE 0.24 // in meters
+/* #define PROJECTOR_WIDTH 1.344e-2 // projector width = 1920 x 7e-6 */
+/* #define PROJECTOR_WIDTH (1920 * 7e-6) */
+#define PROJECTOR_WIDTH (N_sqrt * 7e-6)
+/* #define PROJECTOR_HEIGHT 7.56e-3 // projector width = 1080 x 7e-6 */
+/* #define PROJECTOR_HEIGHT(hd) ((hd ? 1080. / 1920. : 1.) * PROJECTOR_WIDTH) */
+#define PROJECTOR_HEIGHT(aspect_ratio) ((PROJECTOR_WIDTH / aspect_ratio) // height = width / (width / height)
+/* #define PROJECTOR_WIDTH(aspect_ratio) (aspect_ratio * PROJECTOR_HEIGHT) */
 #define DIMS 3
 
 #define MAX_INPUT_SIZE 0 // TODO, specific for GPU
 
-/* #define SCALE (1 / LAMBDA) */
-/* #define SCALE (LAMBDA / 0.6328e-6) */
-#define SCALE (1)
-/* #define PROJECTOR_DISTANCE */
-
-/* #define ARBITRARY_PHASE 0.4912 // used in superposition::per_thread */
-#define ARBITRARY_PHASE 0. // used in superposition::per_thread
+#define ARBITRARY_PHASE 0.4912 // used in superposition::per_thread
+/* #define ARBITRARY_PHASE 0. // used in superposition::per_thread */
 
 #define DOUBLE_PRECISION
 

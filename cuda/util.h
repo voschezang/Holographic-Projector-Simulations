@@ -73,20 +73,23 @@ double memory_in_MB(size_t n) {
   return bytes * 1e-6;
 }
 
-void print_info(Geometry p, size_t Nx, size_t Ny, size_t Nz) {
+void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
   printf("\nHyperparams:");
   printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
   printf("\t(%.3fk threads)", p.gridSize * p.blockSize * 1e-3);
 
-  printf("\n Input size (datapoints): x: %i, y: %i, z: %i", Nx, Ny, Nz);
-  printf("\n E[N_x / thread]: %.4fk", Nx / (double) p.gridSize * p.blockSize * 1e-3);
-  printf("\tE[N_y / thread]: %.4fk", Ny / (double) p.gridSize * p.blockSize * 1e-3);
+  printf("\n Input size (datapoints): objects: %i x %i, projectors: %i x %i, projections: %i x %i",
+         n_planes.obj, n_per_plane.obj,
+         n_planes.projector, n_per_plane.projector,
+         n_planes.projection, n_per_plane.projection);
+  printf("\n E[n objects          (per plane) / thread]: %.4fk", n_per_plane.obj / (double) p.gridSize * p.blockSize * 1e-3);
+  printf("\n E[n projector pixels (per plane) / thread]: %.4fk", n_per_plane.projector / (double) p.gridSize * p.blockSize * 1e-3);
 
   printf("\n n streams: %4i", p.n_streams);
   printf("\tbatch size: \t%6i", p.stream_size);
   printf("\tkernel size: \t%4i", p.kernel_size);
 
-  printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(Ny));
+  printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(n_per_plane.projector));
   {
     size_t n = SHARED_MEMORY_SIZE(p.blockSize);
     double m = n * sizeof(WTYPE) * 1e-3;
@@ -263,14 +266,14 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, st
 
   // TODO replace phasor by amp and phase
   out << "{" \
-      << quote("phasor")    << sep1 << quote(phasor) << sep2 \
-      << quote("pos")       << sep1 << quote(pos)    << sep2 \
-      << quote("z_offset")  << sep1 << p.z_offset    << sep2 \
-      << quote("len")       << sep1 << len           << sep2 \
-      << quote("precision") << sep1 << IO_PRECISION  << sep2 \
-      << quote("dims")      << sep1 << DIMS          << sep2 \
-      << quote("randomized")<< sep1 << p.randomize   << sep2 \
-      << quote("hd")        << sep1 << p.hd          << "}\n";
+      << quote("phasor")       << sep1 << quote(phasor)  << sep2 \
+      << quote("pos")          << sep1 << quote(pos)     << sep2 \
+      << quote("z_offset")     << sep1 << p.z_offset     << sep2 \
+      << quote("len")          << sep1 << len            << sep2 \
+      << quote("precision")    << sep1 << IO_PRECISION   << sep2 \
+      << quote("dims")         << sep1 << DIMS           << sep2 \
+      << quote("randomized")   << sep1 << p.randomize    << sep2 \
+      << quote("aspect_ratio") << sep1 << p.aspect_ratio << "}\n";
 }
 
 void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
