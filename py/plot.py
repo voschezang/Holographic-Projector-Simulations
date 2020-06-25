@@ -14,53 +14,29 @@ cyclic_cmap = 'twilight'
 
 
 def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
-               cmap='gray', bin_threshold=0.1, verbose=1, **kwargs):
-    Nx, Ny = util.solve_xy_is_a(u.shape[0], ratio)
-    ybins = int(util.find_nearest_denominator(Ny, ybins, bin_threshold))
-    if Nx == Ny:
-        # ratio is close to 1.0
-        xbins = ybins
-        assert xbins <= Nx
-    else:
-        # derive xbins from updated ybins to preserve "squareness" of pixels
-        xbins = min(Nx, round(ybins * ratio))
-        xbins = util.find_nearest_denominator(Nx, xbins, bin_threshold)
-
-    if verbose:
-        print('bins:',
-              f'\tx: {xbins} (~{Nx / xbins:0.1f} per bin)\n',
-              f'\ty: {ybins} (~{Ny / ybins:0.1f} per bin)')
-
-    assert xbins <= Nx
-    assert ybins <= Ny
+               cmap='gray', bin_threshold=0.1, bin_options={},  verbose=1, **kwargs):
+    # Save histogram without plot markup or labels
     x = u[:, 0]
     y = u[:, 1]
-    # bins = (np.linspace(x.min(), x.max(), xbins + 1)[1:-1],
-    #         np.linspace(y.min(), y.max(), ybins + 1)[1:-1])
-    bins = util.regular_bins([x.min(), y.min()],
-                             [x.max(), y.max()],
-                             [xbins, ybins])
-    # bins = (xbins, ybins)
-    h = 4
-    w = round(h * ratio)
-    # print(w, h, w / h)
-    items = ['amp', 'phase']
+    # TODO derived minmax is incorrect: e.g. for nonrand the first point is at the boundary, for rand boundary is nondeterministic
+    bins = util.gen_bin_edges(x, y, ratio, ybins, bin_threshold, bin_options)
+    # h = 4
+    # w = round(h * ratio)
     n_items = (phasor.shape + (1,))[1]
+    items = ['amp', 'phase'] if n_items > 1 else ['']
     for i, k in enumerate(items[:n_items]):
-        plt.figure(figsize=(w, h))
-        # ax = plt.gca()
-        ax = plt.subplot()
+        # plt.figure(figsize=(w, h))
+        # ax = plt.subplot()
         color = phasor if len(phasor.shape) == 1 else phasor[:, i]
         # TODO use imshow for nonrand?
         matrix = _hist2d_wrapper(x, y, color, bins=bins, cmap=cmap, **kwargs)
-        plt.axis('off')
-
-        # force aspect ratio
-        ax.set_aspect(1.0 / ax.get_data_ratio() / ratio)
-
-        # plt.tight_layout()
+        # plt.axis('off')
+        # # force aspect ratio
+        # ax.set_aspect(1.0 / ax.get_data_ratio() / ratio)
+        # # save_fig(f'{filename}_{k}', ext='png', pad_inches=0)
+        plt.close()
         if filename is not None:
-            save_fig(f'{filename}_{k}', ext='png', pad_inches=0)
+            plt.imsave(f'{IMG_DIR}/{filename}_{k}.png', matrix, cmap=cmap)
 
     return matrix
 
@@ -77,7 +53,8 @@ def scatter_multiple(x, u=None, title='', subtitle='', filename=None, **kwargs):
 
 
 def hist_2d_multiple(phasor, pos, title='', subtitle='', filename=None,
-                     ybins=100, ratio=1., bin_threshold=0.1, **kwargs):
+                     ybins=100, ratio=1., bin_threshold=0.1, bin_options={},
+                     **kwargs):
     """
     Plot 2d histogram
 
@@ -91,27 +68,8 @@ def hist_2d_multiple(phasor, pos, title='', subtitle='', filename=None,
     xbins, ybins : horizontal and vertical bins (respectively) and relate to
     the plot/image; not to the phasor.
     """
-    assert ratio != 0
-    # TODO fix bins
-    Nx, Ny = util.solve_xy_is_a(pos.shape[0], ratio)
-    ybins = util.find_nearest_denominator(Ny, ybins, bin_threshold)
-    if Nx == Ny:
-        # ratio is close to 1.0
-        xbins = ybins
-        assert xbins <= Nx
-    else:
-        # derive xbins from updated ybins to preserve "squareness" of pixels
-        xbins = min(Nx, round(ybins * ratio))
-        xbins = util.find_nearest_denominator(Nx, xbins, bin_threshold)
-
-    assert xbins <= Nx
-    assert ybins <= Ny
-    x = pos[:, 0]
-    y = pos[:, 1]
-    bins = util.regular_bins([x.min(), y.min()],
-                             [x.max(), y.max()],
-                             [xbins, ybins])
-
+    bins = util.gen_bin_edges(pos[:, 0], pos[:, 1], ratio, ybins,
+                              bin_threshold, bin_options)
     amp_phase_irradiance(_hist2d_wrapper, phasor, pos,
                          title=title, subtitle=subtitle,
                          filename=filename, bins=bins, ratio=ratio,
@@ -165,20 +123,22 @@ def _scatter_wrapper(x, y, z, **kwargs):
 
 
 def _hist2d_wrapper(x, y, z, density=True, **kwargs):
-    return plt.hist2d(x, y, weights=z, density=density, **kwargs)[0]
+    return util.soft_round(plt.hist2d(x, y, weights=z, density=density, **kwargs)[0])
 
 
 def _imshow_wrapper(x, _y, _z, ratio=1., **kwargs):
     # TODO use imshow for nonrand planes to avoid unnecessary computation
     # TODO fix return type to be fully compatible with _hist2d_wrapper?
     hd = ratio > 1.
+    # TODO reshape according to non-hd ratios
     # return plt.imshow(x, y, weights=z, density=density, **kwargs)
     # vmin, vmax
     plt.imshow(reshape(z[:, 0], hd), origin='lower', aspect='auto', **kwargs)
 
 
 def amp_phase_irradiance(plot_func, x, v, title='', subtitle='', filename=None,
-                         ratio=1., density3=None, large=True, **kwargs):
+                         ratio=1., density3=None, large=True,
+                         max_ratio=4, min_ratio=0.5, **kwargs):
     """ Triple plot of amplitude, phase, irradiance
 
     Params
@@ -199,15 +159,23 @@ def amp_phase_irradiance(plot_func, x, v, title='', subtitle='', filename=None,
     horizontal = ratio < 1.1  # distribute subplots horizontally
     # h = 15, w = 4
     if horizontal:
+        w = n_subplots * 5
+        h = 4 * min(1. / ratio, max_ratio)
         if large:
-            w = n_subplots * ratio * 7
-            h = 6
-        else:
-            w = n_subplots * ratio * 5
-            h = 4
+            # w = n_subplots * max(ratio, min_ratio) * 7
+            # h = 6
+            # w = n_subplots * 7
+            # h = 6 * min(1. / ratio, max_ratio)
+            w *= 7. / 5.
+            h *= 6. / 4.
+        # else:
+        #     w = n_subplots * max(ratio, min_ratio) * 5
+        #     h = 4
     else:
-        h = n_subplots * ratio * 2 + 1
-        w = 8
+        # h = n_subplots / min(4, ratio / 2) * 2 + 1
+        h = n_subplots * 4 + 1
+        # w = 8 * min(ratio, max_ratio)
+        w = 5 * min(ratio, max_ratio)
 
     fig = plt.figure(figsize=(round(w), h))
     plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
@@ -256,10 +224,10 @@ def amp_phase_irradiance(plot_func, x, v, title='', subtitle='', filename=None,
     markup(ax, unit='m')
     plt.title('Phase', fontsize=16)
 
-    # if horizontal:
-    plt.text(0.5, 1.15, subtitle, {'fontsize': 12},
-             horizontalalignment='center', verticalalignment='center',
-             transform=ax.transAxes)
+    if horizontal:
+        plt.text(0.5, 1.15, subtitle, {'fontsize': 12},
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=ax.transAxes)
 
     if not horizontal:
         print('TODO')
@@ -516,7 +484,7 @@ if __name__ == '__main__':
     # print('uu', data['u'])
 
     N = data['y'][0].shape[0]
-    ratio = 1920. / 1080. if params['y'][0]['hd'] else 1.
+    ratio = params['y'][0]['aspect_ratio']
     Nx, Ny = util.solve_xy_is_a(N, ratio)
     Nxy = Nx * Ny
     for k in 'yv':
@@ -549,5 +517,5 @@ if __name__ == '__main__':
             z = data['z'][i]
             if params['z'][i]['randomized']:
                 print('Warning, plotting random points without proper discretization')
-            matrix(reshape(z[:, 0], params['x'][i]['hd']), f'z_{i} Amplitude')
+            matrix(reshape(z[:, 0], False), f'z_{i} Amplitude')
             plt.show()

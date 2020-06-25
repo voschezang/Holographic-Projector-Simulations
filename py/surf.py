@@ -77,7 +77,7 @@ if __name__ == '__main__':
     # print('uu', data['u'])
 
     N = data['y'][0].shape[0]
-    ratio = 1920. / 1080. if params['y'][0]['hd'] else 1.
+    ratio = params['y'][0]['aspect_ratio']
     Nx, Ny = util.solve_xy_is_a(N, ratio)
     Nxy = Nx * Ny
     for k in 'yv':
@@ -107,3 +107,4 @@ if __name__ == '__main__':
             print(title)
             prefix = f'$z_{{{major},{minor}}}$ '
             surf_multiple(data['z'][i], data['w'][i], N_sqrt, N_sqrt, prefix)
+            # surf_multiple(data['y'][i], data['v'][i], N_sqrt, N_sqrt, prefix)

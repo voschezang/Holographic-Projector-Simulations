@@ -608,11 +608,17 @@ def pendulum_range(*args):
         yield i
 
 
-def regular_bins(minima=[], maxima=[], n_bins=[]):
-    n = len(n_bins)
-    assert (n == len(minima)) and (n == len(maxima))
-    return [np.linspace(minima[i], maxima[i], n_bins[i] + 1)[1:-1]
-            for i in range(n)]
+def soft_round(matrix: np.ndarray, threshold=1e-9, decimals=9, normalize=True):
+    minmax = [matrix.min(), matrix.max()]
+    range = minmax[1] - minmax[0]
+    if range != 0 and range / np.mean(minmax) < threshold:
+        # normalize and rm noise
+        matrix = (matrix / minmax[1]).round(decimals)
+        if not normalize:
+            # scale back
+            return matrix * minmax[1]
+
+    return matrix
 
 
 def find_nearest_denominator(n: int, x: float, threshold=0):
@@ -691,15 +697,63 @@ def find_nearest_denominator(n: int, x: float, threshold=0):
     raise NotImplementedError(f'Cannot find result for args {n} / {x}')
 
 
+def regular_bin_edges(minima=[], maxima=[], n_bins=[]):
+    n = len(n_bins)
+    assert (n == len(minima)) and (n == len(maxima))
+    # return [np.linspace(minima[i], maxima[i], n_bins[i] + 1)[1:-1] for i in range(n)]
+    return [np.linspace(minima[i], maxima[i], n_bins[i] + 1) for i in range(n)]
+
+
+def gen_bin_edges(x, y, ratio=1., ybins=10, bin_threshold=0.1, options={}, verbose=0):
+    """ Generate uniform bins with some aspect ratio
+    """
+    assert ratio != 0
+    assert x.shape == y.shape
+    Nx, Ny = solve_xy_is_a(x.size, ratio)
+    ybins = int(find_nearest_denominator(Ny, ybins, bin_threshold))
+    if Nx == Ny:
+        # ratio is close to 1.0
+        xbins = ybins
+        assert xbins <= Nx
+    else:
+        # derive xbins from updated ybins to preserve "squareness" of pixels
+        xbins = min(Nx, round(ybins * ratio))
+        xbins = find_nearest_denominator(Nx, xbins, bin_threshold)
+
+    if verbose:
+        print('bins:',
+              f'\tx: {xbins} (~{Nx / xbins:0.1f} per bin)\n',
+              f'\ty: {ybins} (~{Ny / ybins:0.1f} per bin)')
+
+    assert xbins <= Nx
+    assert ybins <= Ny
+    # TODO implement proper interface instead of bin_options dict
+    try:
+        x_center, y_center = options['x_offset'], options['y_offset']
+        width = options['width']
+        height = width / options['aspect_ratio']
+        xmin = x_center - width / 2.
+        xmax = x_center + width / 2.
+        ymin = y_center - height / 2.
+        ymax = y_center + height / 2.
+    except KeyError:
+        xmin, xmax, ymin, ymax = x.min(), x.max(), y.min(), y.max()
+
+    # bins = (np.linspace(x.min(), x.max(), xbins + 1)[1:-1],
+    #         np.linspace(y.min(), y.max(), ybins + 1)[1:-1])
+    return regular_bin_edges([xmin, ymin],
+                             [xmax, ymax],
+                             [xbins, ybins])
+
+
 def solve_xy_is_a(n: int, ratio=1.):
-    """ Solve the equation x * y = n, where x,y are unkown.
+    """ Solve the equation x * y = n, where x,y are unkown, for a known ratio x/y.
     Can be used to find dimensions of a flattened matrix
     (with original shape (x,y)).
     """
     x = int(np.sqrt(n * ratio))
     y = n // x
-    assert x - 1 <= round(y * ratio) <= x + 1, \
-        f'for x: {x}, y: {y}, ratio: {ratio}, y * ratio: {y * ratio}'
+    assert x * y <= n
     if ratio == 1.:
         assert x == y
 
