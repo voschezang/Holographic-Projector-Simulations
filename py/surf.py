@@ -49,7 +49,6 @@ def surf_multiple(phasor, position, Nx: int, Ny: int, prefix='', filename=None):
             z = util.standardize(log_irradiance)
             assert abs(z.min()) < 1e-3
             assert abs(1 - z.max()) < 1e-3
-            print('z range', z.min(), z.max())
 
         # ignore third dimension
         surf(position[:, 0], position[:, 1],

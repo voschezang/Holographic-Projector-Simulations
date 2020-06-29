@@ -1,4 +1,5 @@
 ssh nikhef-g2 << EOF
-cd /project/detrd/markv/Holographic-Projector/cuda
+source ~/.profile
+cd cuda
 make build-run
 EOF

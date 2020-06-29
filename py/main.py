@@ -54,20 +54,17 @@ if __name__ == '__main__':
     #                 filename=f'y-hist2d-lo', ybins=bins / 4,
     #                 ratio=ratio)
 
-    # plot phase
-    plot.hist_2d_hd(data['y'][0], data['v'][0],
-                    filename='y_0', ybins=bins,
-                    ratio=ratio, bin_options=params['y'][0], verbose=0)
+    i = 0
+    plot.hist_2d_hd(data['y'][i], data['v'][i],
+                    filename=f'y_{i}', ybins=bins,
+                    ratio=ratio, bin_options=params['y'][i], verbose=0)
 
-    # plt.imshow(data['y'][0][:, 0].reshape((Ny, Ny)))
-    # plt.show()
-    #
     print('plot sequence y')
-    for i, j in enumerate(util.pendulum(len(data['y']))):
-        amp = data['y'][j][:, 0]
-        plot.hist_2d_hd(amp ** 2, data['v'][j],
-                        filename=f'{sequence_dir}y/{i:06}', ybins=bins,
-                        ratio=ratio, bin_options=params['y'][j], verbose=0)
+    for j, i in enumerate(util.pendulum(len(data['y']))):
+        amp = data['y'][i][:, 0]
+        plot.hist_2d_hd(amp ** 2, data['v'][i],
+                        filename=f'{sequence_dir}y/{j:06}', ybins=bins,
+                        ratio=ratio, bin_options=params['y'][i], verbose=0)
 
     print('plot various x, y')
     n = int(5e3)
@@ -80,14 +77,19 @@ if __name__ == '__main__':
         # title = f"$x_{{{i}}}$ (distance: {round(offset, 2)} m)"
         # title = plot.format_title('x', i, offset)
         # title = format_title('x', i, params['x'][i]['z_offset'])
+        # print(data['v'][i][:, 0].min(), data['v'][i][:, 0].max())
+        # print(data['v'][i][:, 1].min(), data['v'][i][:, 1].max())
+        print('y phase range', data['y'][i][:, 1].min(),
+              data['y'][i][:, 1].max())
         subtitle = f"(distance: {round(params['x'][i]['z_offset'], 2)} m)"
         plot.scatter_multiple(data['x'][i][:n], data['u'][i][:n],
                               f'Object ({i})', subtitle, filename=f'x-scatter-sub-{i}')
 
         subtitle = f"(distance: {params['y'][i]['z_offset']:0.2f} m)"
-        if 1:
+        if 0:
             # print(data['y'][0][:10])
-            indices = np.random.randint(0, Nxy, n)
+            indices = np.random.randint(0, Nxy, n) \
+                if n < Nxy else np.arange(Nxy)
             plot.scatter_multiple(data['y'][i][indices], data['v'][i][indices],
                                   f'Projector ({i})',
                                   filename=f'y-scatter-sub-{i}', s=pointsize)
@@ -95,7 +97,7 @@ if __name__ == '__main__':
         plot.hist_2d_multiple(data['y'][i], data['v'][i],
                               f'Projector ({i})', subtitle,
                               filename=f'y-hist2d-{i}',
-                              ybins=bins, ratio=ratio, bin_options=params['y'][j])
+                              ybins=bins, ratio=ratio, bin_options=params['y'][i])
 
     if 'z' in data.keys() and len(data['z']):
         print('plot various z')
@@ -119,6 +121,7 @@ if __name__ == '__main__':
         for major in range(*args1):
             for minor in range(*args2):
                 i = major * n_z_per_y + minor
+                print('plot ', i)
                 # offset = params['z'][i]['z_offset']
                 title = f"Projection {minor} (Object {major})"
                 # title = f"$z_{{{major}, {minor}}}$ " + \
@@ -126,17 +129,33 @@ if __name__ == '__main__':
                 # title = format_title('z', f"{major, minor}",
                 #                      params['z'][i]['z_offset'])
                 subtitle = f"(distance: {round(params['z'][i]['z_offset'], 2)} m)"
-                # indices = np.random.randint(0, Nxy, n)
-                # fn = f'z-scatter-sub-{major}-{minor}'
-                # plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
-                #                       title, filename=fn, s=pointsize)
+                indices = np.random.randint(0, Nxy, n) \
+                    if n < Nxy else np.arange(Nxy)
+                fn = f'z-scatter-sub-{major}-{minor}'
+                plot.scatter_multiple(data['z'][i][indices], data['w'][i][indices],
+                                      title, subtitle=subtitle,
+                                      filename=fn, s=pointsize)
 
                 fn = f'z-hist2d-{major}-{minor}'
-                print('ratio pre', ratio)
+                # print('bin options', i)
+                # print(params['z'][i])
+                # print(data['w'][i][:, 0].min(), data['w'][i][:, 0].max())
+                # print(data['w'][i][:, 1].min(), data['w'][i][:, 1].max())
+                # amp = data['z'][i][:, 0]
+                # print(amp.shape)
+                # data['z'][i][:, 0] = np.arange(
+                #     amp.size).reshape(amp.shape) / amp.size
+                # data['z'][i][:Nx // 2, 0] = 1e-9
+                # data['z'][i][:Nx // 3, 0] = 1.
+                # data['z'][i][Nx - 1, 0] = 0.5
                 plot.hist_2d_multiple(data['z'][i], data['w'][i],
                                       title, subtitle,
                                       filename=fn, ybins=Ny, ratio=ratio,
-                                      bin_options=params['y'][j])
+                                      bin_options=params['z'][i])
+                if 0:
+                    plot.hist_2d_multiple(data['z'][i], data['w'][i],
+                                          title, subtitle,
+                                          filename=fn + '_nobins', ybins=Ny, ratio=ratio)
 
                 fn = f'z-surf-{major}-{minor}'
                 # TODO add suptitle, title to surf

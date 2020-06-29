@@ -13,15 +13,14 @@ cmap = 'inferno'
 cyclic_cmap = 'twilight'
 
 
-def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
-               cmap='gray', bin_threshold=0.1, bin_options={},  verbose=1, **kwargs):
+def hist_2d_hd(phasor, pos, title='', filename=None,  ybins=10, ratio=1,
+               cmap='gray', bin_threshold=0.1, bin_options={},  verbose=1,
+               **kwargs):
     # Save histogram without plot markup or labels
-    x = u[:, 0]
-    y = u[:, 1]
+    x = pos[:, 0]
+    y = pos[:, 1]
     # TODO derived minmax is incorrect: e.g. for nonrand the first point is at the boundary, for rand boundary is nondeterministic
     bins = util.gen_bin_edges(x, y, ratio, ybins, bin_threshold, bin_options)
-    # h = 4
-    # w = round(h * ratio)
     n_items = (phasor.shape + (1,))[1]
     items = ['amp', 'phase'] if n_items > 1 else ['']
     for i, k in enumerate(items[:n_items]):
@@ -29,14 +28,22 @@ def hist_2d_hd(phasor, u, title='', filename=None,  ybins=10, ratio=1,
         # ax = plt.subplot()
         color = phasor if len(phasor.shape) == 1 else phasor[:, i]
         # TODO use imshow for nonrand?
-        matrix = _hist2d_wrapper(x, y, color, bins=bins, cmap=cmap, **kwargs)
+
+        # soft round required because hist2d is lossy
+        # e.g. a constant input can become noisy
+        matrix = np.histogram2d(x, y, weights=color, bins=bins, density=True,
+                                **kwargs)[0]
+        matrix = util.soft_round(matrix)
+        # matrix = plt.hist2d(x, y, weights=color, bins=bins, cmap=cmap, density=True, **kwargs)
         # plt.axis('off')
         # # force aspect ratio
         # ax.set_aspect(1.0 / ax.get_data_ratio() / ratio)
         # # save_fig(f'{filename}_{k}', ext='png', pad_inches=0)
+        # plt.show()
         plt.close()
         if filename is not None:
-            plt.imsave(f'{IMG_DIR}/{filename}_{k}.png', matrix, cmap=cmap)
+            plt.imsave(f'{IMG_DIR}/{filename}_{k}.png', matrix.T,
+                       origin='lower', cmap=cmap)
 
     return matrix
 
@@ -47,14 +54,14 @@ def scatter_multiple(x, u=None, title='', subtitle='', filename=None, **kwargs):
         n = x.shape[0]
         kwargs['s'] = max(1, 10 - n / 2.)
 
-    amp_phase_irradiance(_scatter_wrapper, x, u,
+    amp_phase_irradiance(_scatter_wrapper, u[:, 0], u[:, 1], x,
                          title=title, subtitle=subtitle,
                          filename=filename, **kwargs)
 
 
 def hist_2d_multiple(phasor, pos, title='', subtitle='', filename=None,
                      ybins=100, ratio=1., bin_threshold=0.1, bin_options={},
-                     **kwargs):
+                     verbose=0, **kwargs):
     """
     Plot 2d histogram
 
@@ -70,7 +77,16 @@ def hist_2d_multiple(phasor, pos, title='', subtitle='', filename=None,
     """
     bins = util.gen_bin_edges(pos[:, 0], pos[:, 1], ratio, ybins,
                               bin_threshold, bin_options)
-    amp_phase_irradiance(_hist2d_wrapper, phasor, pos,
+    if verbose:
+        for i in [0, 1]:
+            print('hist_2d_multiple', bin_options)
+            print(f'bins {i}: [{bins[i].min()} ; {bins[i].max()}], n:',
+                  bins[i].size)
+            print(f'pos: [{pos[:,i].min()} ; {pos[:,i].max()}]')
+
+    # TODO for a constant input the histogram won't be constant
+    # use imshow(soft_round(hist(..)))
+    amp_phase_irradiance(_hist2d_wrapper, pos[:, 0], pos[:, 1], phasor,
                          title=title, subtitle=subtitle,
                          filename=filename, bins=bins, ratio=ratio,
                          density3=False, **kwargs)
@@ -122,35 +138,44 @@ def _scatter_wrapper(x, y, z, **kwargs):
         lim_func(a, b)
 
 
-def _hist2d_wrapper(x, y, z, density=True, **kwargs):
-    return util.soft_round(plt.hist2d(x, y, weights=z, density=density, **kwargs)[0])
+def _hist2d_wrapper(x, y, z, density=True, bins=10, **kwargs):
+    # create tmp figure
+    # fig = plt.figure()
+    # hist = plt.hist2d(x, y, weights=z, density=density, bins=bins)[0]
+    # plt.close(fig)
+    hist = np.histogram2d(x, y, weights=z, density=density, bins=bins)[0]
+    # supply bins as positions s.t. the axis range equals the bins range
+    _imshow_wrapper(bins[0], bins[1], util.soft_round(hist), **kwargs)
 
 
-def _imshow_wrapper(x, _y, _z, ratio=1., **kwargs):
+def _imshow_wrapper(x, y, color, ratio=1., **kwargs):
     # TODO use imshow for nonrand planes to avoid unnecessary computation
     # TODO fix return type to be fully compatible with _hist2d_wrapper?
-    hd = ratio > 1.
+    # hd = ratio > 1.
     # TODO reshape according to non-hd ratios
     # return plt.imshow(x, y, weights=z, density=density, **kwargs)
     # vmin, vmax
-    plt.imshow(reshape(z[:, 0], hd), origin='lower', aspect='auto', **kwargs)
+    # plt.imshow(reshape(z[:, 0], hd), origin='lower', aspect='auto', **kwargs)
+    plt.imshow(util.soft_round(color).T, origin='lower', aspect=ratio,
+               extent=(x.min(), x.max(), y.min(), y.max()),
+               **kwargs)
 
 
-def amp_phase_irradiance(plot_func, x, v, title='', subtitle='', filename=None,
+def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filename=None,
                          ratio=1., density3=None, large=True,
                          max_ratio=4, min_ratio=0.5, **kwargs):
     """ Triple plot of amplitude, phase, irradiance
 
     Params
     ------
-    x : array of shape (N, 2)
+    phasor : array of shape (N, 2)
         representing amplitude, phase of N datapoints
-    v : array of shape (N, 3)
-        the corresponding 3d positions of x
-    plot_func : func that takes args (array1, array2, array3, pyplot_args)
+    x,y : arrays of length N
+        the corresponding 2d positions of x
+    plot_func : func that takes args (x, y, color, pyplot_args)
         e.g. plt.scatter
     """
-    a, phi = x.T
+    a, phi = phasor.T
     if 'cmap' not in kwargs:
         global cmap
         kwargs['cmap'] = cmap
@@ -178,16 +203,15 @@ def amp_phase_irradiance(plot_func, x, v, title='', subtitle='', filename=None,
         w = 5 * min(ratio, max_ratio)
 
     fig = plt.figure(figsize=(round(w), h))
-    plt.suptitle(title, y=1.02, fontsize=16, fontweight='bold')
+    title_y_offset = 1.05 if horizontal else 1.04
+    plt.suptitle(title, y=title_y_offset, fontsize=16, fontweight='bold')
 
     if horizontal:
         ax = plt.subplot(131)
     else:
         ax = plt.subplot(311)
 
-    v1 = v[:, 0]
-    v2 = v[:, 1]
-    plot_func(v1, v2, a, **kwargs)
+    plot_func(x, y, a, **kwargs)
     markup(ax, unit='m')
     plt.title('Amplitude', fontsize=16)
 
@@ -204,7 +228,7 @@ def amp_phase_irradiance(plot_func, x, v, title='', subtitle='', filename=None,
         # hack to allow optional 3rd param for histogram plot func
         kwargs['density'] = density3
 
-    plot_func(v1, v2, standardize(log_irradiance), **kwargs)
+    plot_func(x, y, standardize(log_irradiance), **kwargs)
     if density3 is not None:
         del kwargs['density']
 
@@ -220,22 +244,21 @@ def amp_phase_irradiance(plot_func, x, v, title='', subtitle='', filename=None,
 
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = cyclic_cmap
-    plot_func(v1, v2, phi, **kwargs)
+    plot_func(x, y, phi, **kwargs)
     markup(ax, unit='m')
     plt.title('Phase', fontsize=16)
-
-    if horizontal:
-        plt.text(0.5, 1.15, subtitle, {'fontsize': 12},
-                 horizontalalignment='center', verticalalignment='center',
-                 transform=ax.transAxes)
-
-    if not horizontal:
-        print('TODO')
-        # plt.text(0., 0.0, subtitle, {'fontsize': 14})
 
     # plt.text(0., 0.0015, 'abc', {'fontsize': 14})
     try:
         plt.tight_layout()
+
+        if horizontal:
+            x, y = 0.5, 1.075
+        else:
+            x, y = 0.5, 2.5
+        plt.text(x, y, subtitle, {'fontsize': 12},
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=ax.transAxes)
 
         # add custom subtitle after tightening layout
         # plt.text(0.5, 0, 'sec', {'fontsize': 14})

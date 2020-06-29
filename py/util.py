@@ -608,15 +608,24 @@ def pendulum_range(*args):
         yield i
 
 
-def soft_round(matrix: np.ndarray, threshold=1e-9, decimals=9, normalize=True):
-    minmax = [matrix.min(), matrix.max()]
+def soft_round(matrix: np.ndarray, threshold=1e-9, decimals=9):
+    """ Round values in `matrix` if data range is below `threshold`.
+    """
+    minmax = np.array([matrix.min(), matrix.max()])
+    # if range == 0:
+    # return np.ones_like(matrix) * matrix.min()
+    # s = standardize(matrix)
     range = minmax[1] - minmax[0]
-    if range != 0 and range / np.mean(minmax) < threshold:
+    # print('range', range, range < threshold)
+    # abs_min = minmax.abs().min()
+    # min = minmax.abs().min()
+    # if range != 0 and range / min < threshold:
+    if range != 0 and range < threshold:
         # normalize and rm noise
-        matrix = (matrix / minmax[1]).round(decimals)
-        if not normalize:
-            # scale back
-            return matrix * minmax[1]
+        return matrix.round(decimals)
+        # matrix = (matrix / min).round(decimals)
+        # # scale back
+        # return matrix * min
 
     return matrix
 
@@ -704,7 +713,8 @@ def regular_bin_edges(minima=[], maxima=[], n_bins=[]):
     return [np.linspace(minima[i], maxima[i], n_bins[i] + 1) for i in range(n)]
 
 
-def gen_bin_edges(x, y, ratio=1., ybins=10, bin_threshold=0.1, options={}, verbose=0):
+def gen_bin_edges(x, y, ratio=1., ybins=10, bin_threshold=0.1, options={},
+                  verbose=0):
     """ Generate uniform bins with some aspect ratio
     """
     assert ratio != 0
