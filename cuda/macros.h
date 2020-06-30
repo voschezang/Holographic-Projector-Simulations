@@ -3,6 +3,7 @@
 
 /* #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int) */
 #define CEIL(x,y) ((x + y - 1) / y) // ceil(int, int)
+#define MIN(x,y) (x < y ? x : y)
 
 /* #define DEBUG */
 /* #define TEST_CONST_PHASE */

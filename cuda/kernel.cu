@@ -70,7 +70,7 @@ inline __device__ void warp_reduce_complex(WAVE *s, const unsigned int i) {
     if (blockSize >= n+n)
       s[i] = cuCadd(s[i], s[i + n]);
 
-    __threadfence(); // TODO can this be moved inside the prev if
+    __threadfence(); // TODO mv inside the prev if
   }
 
   // // example code from Nvidia
