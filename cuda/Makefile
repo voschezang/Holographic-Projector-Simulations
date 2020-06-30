@@ -9,8 +9,8 @@ EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
-HyperParams := KERNEL_SIZE='2' # 8
-# TODO add stream size, kernel size, x distribution, Ny, Nz
+HyperParams := KERNEL_SIZE='8' # 8
+	# TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE) test
 
 build:
@@ -49,7 +49,7 @@ profile:
 	nvprof ./$(EXE)
 
 test:
-	$(C) -o test test.cu -l curand -std=c++11 -DNORM_3D='norm3d_host' && ./test
+	nvcc -o test test.cu $(FLAGS) -DNORM_3D='norm3d_host' && ./test
 	rm -f test;
 
 vprofile:

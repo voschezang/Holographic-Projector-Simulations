@@ -33,21 +33,24 @@ namespace superposition {
 //////////////////////////////////////////////////////////////////////////////////
 
 template<const Direction direction>
-inline __host__ __device__ WTYPE single(const size_t i, const size_t j,
-                                        const WTYPE *x, const STYPE *u, const STYPE *v) {
-  const size_t
-    n = i * DIMS,
-    m = j * DIMS;
+inline __host__ __device__ WAVE single(const WAVE x, const SPACE *u, const SPACE *v) {
+  /**
+   * Compute the "superposition" of a single input datapoint, for some location `v \in R^3`
+   */
   // transposed shape (DIMS, N) for spatial data is not significantly faster than shape (N, DIMS)
   const double
-    distance = NORM_3D(v[m] - u[n], v[m+1] - u[n+1], v[m+2] - u[n+2]),
-    amp = cuCabs(x[i]),
-    phase = angle(x[i]);
+    distance = NORM_3D(v[0] - u[0], v[1] - u[1], v[2] - u[2]),
+    amp = cuCabs(x),
+    phase = angle(x);
 
 #ifdef DEBUG
   if (distance == 0) { printf("ERROR: distance must be nonzero\n"); asm("trap;"); }
 #endif
   // TODO __ddiv_rd, __dmul_ru
+
+#ifdef TEST_CONST_PHASE
+  return from_polar(amp / distance, ARBITRARY_PHASE);
+#endif
 
   if (direction == Direction::Forwards)
     return from_polar(amp / distance, phase + distance * TWO_PI_OVER_LAMBDA);
@@ -55,45 +58,59 @@ inline __host__ __device__ WTYPE single(const size_t i, const size_t j,
     return from_polar(amp / distance, phase - distance * TWO_PI_OVER_LAMBDA);
 }
 
-template<Direction direction>
-inline __device__ void per_thread(const WTYPE *__restrict__ x, const size_t N_x,
-                                  const STYPE *__restrict__ u,
-                                  WTYPE *__restrict__ y_local,
-                                  const STYPE *__restrict__ v) {
-#if CACHE_BATCH
-  // TODO don't fill array in case N_x < tid
-  // cache v[batch] because it is read by every thread
-  // v_cached is constant and equal for each block
-  __shared__ STYPE v_cached[KERNEL_SIZE * DIMS];
-  // use strides when BLOCKDIM < BATCH_SIZE * DIMS
-  for (unsigned int i = threadIdx.x; i < KERNEL_SIZE * DIMS; i+=blockDim.x)
-    v_cached[i] = v[i];
-
-  __syncthreads();
-  STYPE *v_ = v_cached;
-#else
-  STYPE *v_ = v;
-#endif
-
+template<Direction direction, bool cache_batch>
+inline __device__ void per_thread(const WAVE *__restrict__ x, const size_t N_x,
+                                  const SPACE *__restrict__ u,
+                                  WAVE *__restrict__ y_local,
+                                  const SPACE *__restrict__ v)
+{
   const size_t
     idx = blockIdx.x * blockDim.x + threadIdx.x,
     stride = blockDim.x * gridDim.x;
-  // for each y-datapoint in current batch
-  // outer loop for batch, inner loop for index is faster than vice versa
-  // TODO consider transposing u, v to improve memory coalescing (w[i, j] is always read for each thread i, then for each dim j)
-  for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
-    for (size_t i = idx; i < N_x; i += stride)
-      y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_));
+
+  if (cache_batch) {
+    // TODO don't fill array in case N_x < tid
+    // cache v[batch] because it is read by every thread
+    // v_cached is constant and equal for each block
+    __shared__ SPACE v_cached[KERNEL_SIZE * DIMS];
+    // use strides when BLOCKDIM < BATCH_SIZE * DIMS
+    for (unsigned int i = threadIdx.x; i < KERNEL_SIZE * DIMS; i+=blockDim.x)
+      v_cached[i] = v[i];
+
+    __syncthreads();
+
+    // for each y-datapoint in current batch
+    // outer loop for batch, inner loop for index is faster than vice versa
+    for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
+      for (size_t i = idx; i < N_x; i += stride)
+        y_local[m] = cuCadd(y_local[m], single<direction>(x[i], &u[i * DIMS], &v_cached[m * DIMS]));
+
+  } else {
+    // for each y-datapoint in current batch
+    // outer loop for batch, inner loop for index is faster than vice versa
+    for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
+      for (size_t i = idx; i < N_x; i += stride)
+        y_local[m] = cuCadd(y_local[m], single<direction>(x[i], &u[i * DIMS], &v[m * DIMS]));
+  }
+  // // SPACE *v_ = v_cached;
+  // // SPACE *v_ = v;
+  // // for each y-datapoint in current batch
+  // // outer loop for batch, inner loop for index is faster than vice versa
+  // // TODO consider transposing u, v to improve memory coalescing (w[i, j] is always read for each thread i, then for each dim j)
+  // for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
+  //   for (size_t i = idx; i < N_x; i += stride)
+  //     y_local[m] = cuCadd(y_local[m], single<direction>(i, m, x, u, v_));
 }
 
-inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict__ y_shared) {
+inline __device__ void copy_result(WAVE *__restrict__ local, WAVE *__restrict__ shared) {
   const unsigned int tid = threadIdx.x;
 
   if (blockDim.x == 1 || REDUCE_SHARED_MEMORY == 1) {
     // #if (BLOCKDIM == 1 || REDUCE_SHARED_MEMORY == 1)
+    // TODO #if SHARED_MEMORY_LAYOUT row-major #else column-major
     for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
-      y_shared[threadIdx.x + m * blockDim.x] = local[m];
-    // y_shared[m + threadIdx.x * KERNEL_SIZE] = local[m];
+      shared[threadIdx.x + m * blockDim.x] = local[m];
+    // shared[m + threadIdx.x * KERNEL_SIZE] = local[m];
     // #else
   }
   else {
@@ -106,16 +123,16 @@ inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict_
       // simple reduction, first half writes first, then second half add their result
       if (threadIdx.x >= halfBlockSize)
         for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
-          y_shared[threadIdx.x - halfBlockSize + m * blockDim.x] = local[m];
-      // y_shared[m + (threadIdx.x - halfBlockSize ) * KERNEL_SIZE] = local[m];
+          shared[threadIdx.x - halfBlockSize + m * blockDim.x] = local[m];
+      // shared[m + (threadIdx.x - halfBlockSize ) * KERNEL_SIZE] = local[m];
 
       __syncthreads();
       if (threadIdx.x < halfBlockSize)
         for (unsigned int m = 0; m < KERNEL_SIZE; ++m)
-          y_shared[threadIdx.x + m * KERNEL_SIZE] = \
-            cuCadd(local[m], y_shared[threadIdx.x + m * KERNEL_SIZE]);
-      // y_shared[m + threadIdx.x * KERNEL_SIZE] = \
-      //   cuCadd(local[m], y_shared[m + threadIdx.x * KERNEL_SIZE]);
+          shared[threadIdx.x + m * KERNEL_SIZE] = \
+            cuCadd(local[m], shared[threadIdx.x + m * KERNEL_SIZE]);
+      // shared[m + threadIdx.x * KERNEL_SIZE] = \
+      //   cuCadd(local[m], shared[m + threadIdx.x * KERNEL_SIZE]);
     }
     else if (REDUCE_SHARED_MEMORY == 2) {
       // still use 1/2 of shared memory, but without idle threads
@@ -130,51 +147,51 @@ inline __device__ void copy_result(WTYPE *__restrict__ local, WTYPE *__restrict_
           dm  = threadIdx.x < size ? 0 : KERNEL_SIZE / 2;
         for (unsigned int m = 0; m < KERNEL_SIZE / 2; ++m) {
           // first half writes first half of batch, idem for second half
-          // y_shared[(m + dm) + idx * KERNEL_SIZE] = local[m + dm];
-          y_shared[idx + (m + dm) * size] = local[m + dm];
+          // shared[(m + dm) + idx * KERNEL_SIZE] = local[m + dm];
+          shared[idx + (m + dm) * size] = local[m + dm];
         }
       }
 
-      __syncthreads();
+      __syncthreads(); // block level sync
       const unsigned int dm = threadIdx.x < size ? KERNEL_SIZE / 2 : 0;
       for(unsigned int m = 0; m < KERNEL_SIZE / 2; ++m) {
         // first half adds+writes first half of batch, idem for second half
         const unsigned int i = idx + (m + dm) * size;
         // const unsigned int i = (m + dm) + idx * KERNEL_SIZE;
-        y_shared[i] = cuCadd(y_shared[i], local[m + dm]);
+        shared[i] = cuCadd(shared[i], local[m + dm]);
       }
     }
     else if (REDUCE_SHARED_MEMORY > 2) {
       const unsigned int size = blockDim.x / REDUCE_SHARED_MEMORY;
       for (unsigned int m = 0; m < KERNEL_SIZE; ++m) {
         if (tid < size)
-          y_shared[m * size + tid] = local[m];
+          shared[m * size + tid] = local[m];
 
         const unsigned int relative_tid = tid % size;
         for (unsigned int n = 1; n < REDUCE_SHARED_MEMORY; ++n) {
+          __syncthreads(); // block level sync
           if (n * size < tid && tid < (n+1) * size) {
             const unsigned int i = m * size + relative_tid;
             // const unsigned int i = (m + dm) + idx * KERNEL_SIZE;
-            y_shared[i] = cuCadd(y_shared[i], local[m]);
+            shared[i] = cuCadd(shared[i], local[m]);
           }
         }
       }
     }
 
   } // end if (BLOCKDIM == 1 || REDUCE_SHARED_MEMORY == 1) {
-  __syncthreads();
+  __syncthreads(); // block level sync
 }
 
 template <unsigned int blockSize>
-inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__restrict__ y_global) {
+inline __device__ void aggregate_blocks(WAVE *__restrict__ y_shared, double *__restrict__ y_global) {
   const unsigned int tid = threadIdx.x;
   const unsigned int size = CEIL(blockSize, REDUCE_SHARED_MEMORY);
 
   // inter warp
-  // TODO do this in parallel for the next warp in case of next batch
   for(unsigned int m = 0; m < KERNEL_SIZE; ++m) {
     // TOOD check for memory bank conflicts
-    WTYPE *x = &y_shared[m * size];
+    WAVE *x = &y_shared[m * size];
 #pragma unroll
     for (unsigned int s = size / 2; s >= 2 * WARP_SIZE; s/=2) {
       if(tid < s)
@@ -228,30 +245,40 @@ inline __device__ void aggregate_blocks(WTYPE *__restrict__ y_shared, double *__
 
 template<Direction direction, unsigned int blockSize>
 __global__ void per_block(const Geometry p,
-                          const WTYPE *__restrict__ x, const size_t N_x,
-                          const STYPE *__restrict__ u,
+                          const WAVE *__restrict__ x, const size_t N_x,
+                          const SPACE *__restrict__ u,
                           double *__restrict__ y_global,
-                          const STYPE *__restrict__ v) {
-  __shared__ WTYPE y_shared[SHARED_MEMORY_SIZE(blockSize)];
+                          const SPACE *__restrict__ v) {
+  __shared__ WAVE y_shared[SHARED_MEMORY_SIZE(blockSize)];
   // TODO transpose y_shared? - memory bank conflicts, but first simplify copy_result()
   // but, this would make warp redcuce more complex
   {
-    // extern WTYPE y_local[]; // this yields; warning: address of a host variable "dynamic" cannot be directly taken in a device function
-    WTYPE y_local[KERNEL_SIZE] = {}; // init to zero
-    superposition::per_thread<direction>(x, N_x, u, y_local, v);
+    // extern WAVE y_local[]; // this yields; warning: address of a host variable "dynamic" cannot be directly taken in a device function
+    WAVE y_local[KERNEL_SIZE] = {}; // init to zero
+    superposition::per_thread<direction, CACHE_BATCH>(x, N_x, u, y_local, v);
+
     // printf("tid: %i \t y[0]: a: %f phi: %f (local)\n", threadIdx.x, cuCabs(y_local[0]), angle(y_local[0]));
     superposition::copy_result(y_local, y_shared);
     // {
     //   __syncthreads();
     //   printf("tid: %i \t y[0]: a: %f phi: %f (shared)\n", threadIdx.x, cuCabs(y_shared[0]), angle(y_shared[0]));
     // }
+#ifdef TEST_CONST_PHASE
+    for (size_t i = 0; i < KERNEL_SIZE; ++i) {
+      // printf("y_local[%lu]: amp: %e, phase: %e, .y: %e\n", i, cuCabs(y_local[i]), angle(y_local[i]), y_local[i].y);
+      assert(angle(y_local[i]) - ARBITRARY_PHASE < 1e-6);
+    }
+    __syncthreads();
+    for (size_t i = 0; i < SHARED_MEMORY_SIZE(blockSize); ++i)
+      assert(angle(y_shared[i]) - ARBITRARY_PHASE < 1e-6);
+#endif
   }
   superposition::aggregate_blocks<blockSize>(y_shared, y_global);
   // {
   //   __syncthreads();
   //   size_t m = gridDim.x * BATCH_SIZE * KERNEL_SIZE;
   //   printf("N_x: %lu, m: %lu\n", N_x, m);
-  //   WTYPE c = {y_global[0], y_global[m]};
+  //   WAVE c = {y_global[0], y_global[m]};
   //   printf("tid: %i \t y[0]: a: %f phi: %f (shared)\n", threadIdx.x, cuCabs(c), angle(c));
   // }
 }

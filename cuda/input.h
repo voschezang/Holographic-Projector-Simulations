@@ -15,27 +15,29 @@ void show_help(const char *p) {
 namespace input {
 
 Params read_args(int argc, char **argv) {
-  const auto obj_z_offset = Range<double> {min: 0.35, max: 0.35};
+  /* const double z_offset = 1000 * LAMBDA; */
+  const double z_offset = 0.35;
+  const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset};
+  /* const auto obj_z_offset = Range<double> {min: 0.35, max: 0.35}; */
   // projector z_offset is always zero
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1,
-                    projection: 0},
-     /* n_per_plane:  {obj: N_sqrt, */
+                    projection: 1},
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,
                     projector: 1., // HD
-                    projection: 0.5},
+                    projection: 1.}, // 0.2
 
      /* obj_shape: Shape::DottedCircle, // TODO */
-     obj_offset:  {x: {min: 0.0, max: 0.0}, // TODO make relative
+     obj_offset:  {x: {min: 0.0, max: 0.0}, // TODO make relative?
                    y: {min: 0.0, max: 0.0},
                    z: obj_z_offset},
 
-     rel_obj_width: {min: 0.005, max: 0.3},
-     rel_projection_width: {min: 5, max: 20.0}, // 0.005
+     rel_obj_width: {min: 1. / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH
+     rel_projection_width: {min: N_sqrt * 8.019 * LAMBDA, max: N_sqrt * 16.3 * LAMBDA}, // 0.005
      projection_z_offset: obj_z_offset,
 
      randomize: false

@@ -19,14 +19,14 @@ void add(std::vector<T> &x, const T value) {
     x[i] += value;
 }
 
-template<typename T = WTYPE>
+template<typename T = WAVE>
 void add_complex(std::vector<T> &x, const T value) {
   // add constant to vector (in place)
   for (unsigned int i = 0; i < x.size(); ++i)
     x[i] = cuCadd(x[i], value);
 }
 
-template<typename T = WTYPE>
+template<typename T = WAVE>
 void add_complex(std::vector<T> &x, const std::vector<T> &y) {
   // elementwise sum of vectors (in place)
   assert(x.size() == y.size());
@@ -161,7 +161,10 @@ void test() {
   assert(sample_variance(std::vector<double>{0,1}) == 0.25);
 
   assert(lerp(0, 1, 0.9) == 0.9);
+  assert(lerp(0, 2, 1) == 2);
   assert(gerp(1, 2, 0.5) - 1.41421 <= 1e-5);
+  assert(gerp(1, 2, 0) == 1);
+  assert(gerp(1, 2, 1) == 2);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

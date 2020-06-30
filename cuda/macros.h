@@ -5,6 +5,8 @@
 #define CEIL(x,y) ((x + y - 1) / y) // ceil(int, int)
 
 /* #define DEBUG */
+/* #define TEST_CONST_PHASE */
+
 #define ZERO make_cuDoubleComplex(0,0)
 /* #define VOL(type, x) *((type *) &x) */
 
@@ -33,18 +35,14 @@
 #define DOUBLE_PRECISION
 
 #ifdef DOUBLE_PRECISION
-/* #define WTYPE_cuda cuDoubleComplex // wave type for CUDA device */
-/* #define WTYPE double complex // wave type */
-/* #define ABS(x) (cabs(x)) */
-#define WTYPE cuDoubleComplex // wave type for host
+#define WAVE cuDoubleComplex
 #define IO_PRECISION 8
 /* #define ABS(x) (cuCabs(x)) */
-#define STYPE double  // space (coordinate) type
+#define SPACE double  // space type (for each cartesian coordinate)
 #else
-/* #define WTYPE_cuda cuFloatComplex // wave type for CUDA device */
-#define WTYPE cuFloatComplex  // wave type
-#define STYPE float // space (coordinate) type
-#endif // DOUBLE_PRECISION
+#define WAVE cuFloatComplex  // wave type
+#define SPACE float // space (coordinate) type
+#endif
 
 #ifndef NORM_3D
 #define NORM_3D norm3d // CUDA math api

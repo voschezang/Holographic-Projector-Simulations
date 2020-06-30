@@ -13,7 +13,8 @@ struct Setup { T obj, projector, projection; };
 template<typename T>
 struct Cartesian { T x,y,z; }; // 3D space
 
-struct Polar { double amp, phi; }; // phasor TODO use to avoid ambiguity in cuda code
+template<typename T = double>
+struct Polar { T amp, phi; }; // phasor TODO use to avoid ambiguity in cuda code
 
 template<typename T = double>
 struct Range {T min, max; };
@@ -22,7 +23,6 @@ struct Plane {
   // TODO simplify this struct, avoid duplicate data?
   double width;
   Cartesian<double> offset;
-  double z_offset; // TODO replace by Cartesian<>offset
   double aspect_ratio; // image width / height
   bool randomize;
 };

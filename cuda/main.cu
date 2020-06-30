@@ -46,18 +46,19 @@ int main(int argc, char** argv) {
 
   const auto transformation = PROJECT_PHASE ? Transformation::Full : Transformation::Amplitude;
   const bool add_reference = transformation == Transformation::Amplitude;
+  // const bool add_reference = false;
 
   // TODO rename non-spatial xyz,uvw to setup.obj, setup.projector etc
   auto
-    u = std::vector<STYPE>(DIMS * n_per_plane.obj),
-    v = std::vector<STYPE>(DIMS * n_per_plane.projector),
-    w = std::vector<STYPE>(DIMS * n_per_plane.projection);
+    u = std::vector<SPACE>(DIMS * n_per_plane.obj),
+    v = std::vector<SPACE>(DIMS * n_per_plane.projector),
+    w = std::vector<SPACE>(DIMS * n_per_plane.projection);
 
 #ifdef READ_INPUT
   print("Reading input files");
   // overwrite x,u
-  auto x = read_bytes<WTYPE>(std::string{"../tmp/x_phasor.input"});
-  auto u = read_bytes<STYPE>(std::string{"../tmp/x_pos.input"});
+  auto x = read_bytes<WAVE>(std::string{"../tmp/x_phasor.input"});
+  auto u = read_bytes<SPACE>(std::string{"../tmp/x_pos.input"});
   params.n_per_plane.obj = x.size();
   assert(params.n_per_plane.obj == n_per_plane.obj);
   printf("Number of input datapoints/plane: %u\n", x.size());
@@ -75,7 +76,7 @@ int main(int argc, char** argv) {
   // TODO use cmd arg for x length
   const auto shape = Shape::DottedCircle;
   // const auto shape = Shape::Circle;
-  auto x = std::vector<WTYPE>(n_per_plane.obj, from_polar(1.0));
+  auto x = std::vector<WAVE>(n_per_plane.obj, from_polar(1.0));
 #endif
 
   const Geometry
@@ -89,7 +90,6 @@ int main(int argc, char** argv) {
 
   const auto y_plane = Plane {width: PROJECTOR_WIDTH,
                               offset: {x: 0., y: 0., z: 0.},
-                              z_offset: 0.,
                               aspect_ratio: params.aspect_ratio.projector,
                               randomize: params.randomize};
   init::plane(v, y_plane);
@@ -105,15 +105,16 @@ int main(int argc, char** argv) {
     printf("x plane #%i\n", i);
 
     // linear/geometric interpolation
-    const double di = i / (double) n_planes.obj;
-    const Cartesian<double> obj_offset = {x: lerp(params.obj_offset.x, di),
-                                          y: lerp(params.obj_offset.y, di),
-                                          z: gerp(params.obj_offset.z, di)};
-    const auto x_plane = Plane {width: lerp(params.rel_obj_width, di) * PROJECTOR_WIDTH,
+    const double ratio = i == 0 ? i : i / ((double) n_planes.obj - 1.);
+    const Cartesian<double> obj_offset = {x: lerp(params.obj_offset.x, ratio),
+                                          y: lerp(params.obj_offset.y, ratio),
+                                          z: gerp(params.obj_offset.z, ratio)};
+
+    const auto x_plane = Plane {width: lerp(params.rel_obj_width, ratio) * PROJECTOR_WIDTH,
                                 offset: obj_offset,
-                                z_offset: obj_offset.z,
                                 aspect_ratio: 1.,
                                 randomize: false};
+    printf("x_plane: %i, width: %e\n", i, x_plane.width);
 #ifndef READ_INPUT
     const double modulate = i / (double) n_planes.obj;
     init::sparse_plane(u, shape, x_plane.width, obj_offset, modulate);
@@ -145,23 +146,23 @@ int main(int argc, char** argv) {
       // TODO allow to disable forward transformation
       if (transformation == Transformation::Amplitude && n_planes.obj >= 4 && j % 2 == 1) continue;
       printf(" z plane #%i\n", j);
-      const auto ratio = j / (double) n_planes.projection;
+      const auto ratio = j == 0 ? 0 : j / ((double) n_planes.projection - 1.);
       // TODO use rel z offset, s.t. value corresonds to obj z offset
       const double width = gerp(params.rel_projection_width, ratio) * x_plane.width;
-      const auto offset = Cartesian<double> {x: obj_offset.x + 4/9. * width,
-                                             y: obj_offset.y + 4/9. * width / params.aspect_ratio.projection,
+      const auto offset = Cartesian<double> {x: obj_offset.x + 0 * 4/9. * width,
+                                             y: obj_offset.y + 0 * 4/9. * width / params.aspect_ratio.projection,
                                              z: gerp(params.projection_z_offset, ratio)};
-      const auto z_plane = Plane {width:     gerp(params.rel_projection_width, ratio) * x_plane.width,
+      const auto z_plane = Plane {width: gerp(params.rel_projection_width, ratio) * x_plane.width,
                                   offset: offset,
-                                  z_offset:  offset.z,
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
 
-      init::plane(w, z_plane, offset);
+      printf("z_plane: %i, width: %e\n", j, z_plane.width);
+      init::plane(w, z_plane);
       // init::plane(w, z_plane, {obj_offset.x, obj_offset.y, z_plane.z_offset});
 
       // TODO mv z outside loop to avoid unnecessary mallocs
-      // auto z = std::vector<WTYPE>(n.z);
+      // auto z = std::vector<WAVE>(n.z);
       auto z = time_transform<Direction::Forwards>(y, v, w, projection, &t1, &t2, &dt[j]);
       check_cvector(z);
       if (i == 0 && j == 0)

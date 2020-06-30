@@ -59,10 +59,10 @@ inline __device__ void warp_reduce(volatile T *s, unsigned int i) {
   if (blockSize >=  2) s[i] += s[i +  1]; // TODO rm last line
 }
 
-// volatile WTYPE& operator=(volatile WTYPE&) volatile;
+// volatile WAVE& operator=(volatile WAVE&) volatile;
 
 template <unsigned int blockSize>
-inline __device__ void warp_reduce_complex(WTYPE *s, const unsigned int i) {
+inline __device__ void warp_reduce_complex(WAVE *s, const unsigned int i) {
   // TODO assert size <= 2*WARP_SIZE
   // TODO if (1 < size <= 64) for (n = size / 2;;)
 #pragma unroll
@@ -113,7 +113,7 @@ namespace kernel {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-__global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_t len, WTYPE *out) {
+__global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_t len, WAVE *out) {
   // convert two arrays into array of tuples (i.e. complex numbers)
   // i.e. transpose & flatten the matrix (a,b)
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;

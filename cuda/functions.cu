@@ -25,15 +25,15 @@ inline void cp_batch_data_to_device(const T *v, DeviceVector<T> d_v, cudaStream_
 }
 
 #define SuperpositionPerBlock(size) {                                   \
-    /* const size_t local_memory_size = p.kernel_size * sizeof(WTYPE);  */ \
-    /* TODO add SHARED_MEMORY_SIZE * sizeof(WTYPE) */                   \
+    /* const size_t local_memory_size = p.kernel_size * sizeof(WAVE);  */ \
+    /* TODO add SHARED_MEMORY_SIZE * sizeof(WAVE) */                   \
     superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
       (p, d_x, Nx, d_u, &d_y_block[j], &d_v[k * DIMS] );                 \
   }
 
 template<Direction direction>
 inline void partial_superposition_per_block(const Geometry& p, const size_t Nx,
-                                            const WTYPE *d_x, const STYPE *d_u, STYPE *d_v,
+                                            const WAVE *d_x, const SPACE *d_u, SPACE *d_v,
                                             cudaStream_t stream, double *d_y_block)
 {
   assert(p.blockSize <= 512); // not implemented
@@ -81,16 +81,16 @@ inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
   }
 }
 
-inline void agg_batch(const Geometry& p, WTYPE *y, cudaStream_t stream,
-                      WTYPE *d_y_stream, double *d_y_batch) {
+inline void agg_batch(const Geometry& p, WAVE *y, cudaStream_t stream,
+                      WAVE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[p.n_per_batch], p.n_per_batch, d_y_stream);
-	cu( cudaMemcpyAsync(y, d_y_stream, p.n_per_batch * sizeof(WTYPE),
+	cu( cudaMemcpyAsync(y, d_y_stream, p.n_per_batch * sizeof(WAVE),
                       cudaMemcpyDeviceToHost, stream ) );
 }
 
 template<bool add_constant = false>
-void normalize_amp(std::vector<WTYPE> &c, double to = 1., bool log_normalize = false) {
+void normalize_amp(std::vector<WAVE> &c, double to = 1., bool log_normalize = false) {
   double max_amp = 0;
   for (size_t i = 0; i < c.size(); ++i)
     max_amp = fmax(max_amp, cuCabs(c[i]));
@@ -123,7 +123,7 @@ void normalize_amp(std::vector<WTYPE> &c, double to = 1., bool log_normalize = f
     }
 }
 
-void rm_phase(std::vector<WTYPE> &c) {
+void rm_phase(std::vector<WAVE> &c) {
   // Set phase to zero, note that `a * exp(0 I) == {a, 0}`
   for (size_t i = 0; i < c.size(); ++i)
     c[i] = {cuCabs(c[i]), 0.};
@@ -141,9 +141,9 @@ void rm_phase(std::vector<WTYPE> &c) {
    type& X is used to reference X instead of copying it (similar to a pointer *x, which would require later dereferencing)
 */
 template<Direction direction>
-inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
-                                    const std::vector<STYPE> &u,
-                                    const std::vector<STYPE> &v,
+inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
+                                    const std::vector<SPACE> &u,
+                                    const std::vector<SPACE> &v,
                                     const Geometry& p) {
   assert(u[2] != v[2]);
   // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
@@ -154,11 +154,11 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   if (x.size() < p.gridSize * p.blockSize)
     print("Warning, suboptimal input size");
 
-  auto y = std::vector<WTYPE>(n);
+  auto y = std::vector<WAVE>(n);
 
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
-  const thrust::device_vector<WTYPE> d_x = x;
-  const thrust::device_vector<STYPE> d_u = u;
+  const thrust::device_vector<WAVE> d_x = x;
+  const thrust::device_vector<SPACE> d_u = u;
   // cast to pointers to allow usage in non-thrust kernels
   const auto d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
   const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
@@ -167,14 +167,14 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
   cudaStream_t streams[p.n_streams];
   // malloc data using pinned memory for all batches before starting streams
   // TODO consider std::unique_ptr<>
-  WTYPE *d_y_stream_ptr;
+  WAVE *d_y_stream_ptr;
   double *d_y_block_ptr;
   double *d_y_batch_ptr;
-  STYPE *d_v_ptr;
-  auto d_y_stream = init::pinned_malloc_vector<WTYPE>(&d_y_stream_ptr, p.n_streams, p.n_per_batch);
+  SPACE *d_v_ptr;
+  auto d_y_stream = init::pinned_malloc_vector<WAVE>(&d_y_stream_ptr, p.n_streams, p.n_per_batch);
   auto d_y_block  = init::pinned_malloc_vector<double>(&d_y_block_ptr, p.n_streams, 2 * p.n_per_batch * p.gridSize);
   auto d_y_batch  = init::pinned_malloc_matrix<double>(&d_y_batch_ptr, p.n_streams, 2 * p.n_per_batch);
-  auto d_v        = init::pinned_malloc_matrix<STYPE>(&d_v_ptr, p.n_streams, p.n_per_batch * DIMS);
+  auto d_v        = init::pinned_malloc_matrix<SPACE>(&d_v_ptr, p.n_streams, p.n_per_batch * DIMS);
 
   for (auto& stream : streams)
     cudaStreamCreate(&stream);
@@ -190,8 +190,9 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
       if (p.n_batches > 10 && i_batch % (int) (p.n_batches / 10) == 0)
         printf("\tbatch %0.3fk / %0.3fk\n", i_batch * 1e-3, p.n_batches * 1e-3);
 
-      cp_batch_data_to_device(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
-                              streams[i_stream]);
+      assert(d_v[i_stream].size / DIMS == p.n_per_batch);
+      cp_batch_data_to_device<SPACE>(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
+                                     streams[i_stream]);
 
       partial_superposition_per_block<direction>(p, x.size(), d_x_ptr, d_u_ptr,
                                                  d_v[i_stream].data,
@@ -246,9 +247,9 @@ inline std::vector<WTYPE> transform(const std::vector<WTYPE> &x,
  * Do a second transformation if add_reference is true.
  */
 template<Direction direction, bool add_constant_wave = false, bool add_reference_wave = false>
-std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
-                                  const std::vector<STYPE> &u,
-                                  const std::vector<STYPE> &v,
+std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
+                                  const std::vector<SPACE> &u,
+                                  const std::vector<SPACE> &v,
                                   const Geometry& p,
                                   struct timespec *t1, struct timespec *t2, double *dt,
                                   bool verbose = false) {
@@ -260,7 +261,6 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
   auto y = transform<direction>(x, u, v, p);
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
-  assert(weights[0] + weights[1] == 1.);
 
   assert(!add_constant_wave);
   if (add_reference_wave) {
@@ -271,9 +271,6 @@ std::vector<WTYPE> time_transform(const std::vector<WTYPE> &x,
     */
     // TODO do this on CPU?
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
-    /* const std::vector<WTYPE> x_reference = {from_polar(1.)}; */
-    /* const std::vector<STYPE> u_reference = {{0.,0., z_offset}}; */
-    /* auto y_reference = transform<Direction::Forwards>(x_reference, u_reference, v, p); */
     auto y_reference = transform<Direction::Forwards>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
     add_complex(y, y_reference);

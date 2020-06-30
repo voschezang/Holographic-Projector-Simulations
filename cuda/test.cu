@@ -57,23 +57,31 @@ void test_complex_multiple() {
 }
 
 void test_normalize_amp() {
-  auto x = std::vector<WTYPE> {{1,2}, {-1,4}, {8,12}, {11,-3}};
+  const double phase[] = {1.234987, -3.09384};
+  auto x = std::vector<WAVE> {from_polar(1.2, phase[0]),
+                              from_polar(3.1, phase[1]),
+                              {8, 12},
+                              {11, -3}};
   for (double to = 0.5; to < 5; to*=3.14) {
     normalize_amp<false>(x, to);
     for (int i = 0; i < x.size(); ++i)
       assert(cuCabs(x[i]) - to <= 1e-6);
+
+    // phase should be unaffected by transformation
+    assert(angle(x[0]) - phase[0] < 1e-6);
+    assert(angle(x[1]) - phase[1] < 1e-6);
   }
 }
 
 template<const Direction direction = Direction::Forwards>
-void test_superposition_single(std::vector<WTYPE> &x, std::vector<STYPE> &u, std::vector<STYPE> &v,
+void test_superposition_single(std::vector<WAVE> &x, std::vector<SPACE> &u, std::vector<SPACE> &v,
                                double amp, double phi) {
   size_t n = x.size();
   // TODO test function on device
 
   // init device memory
-  const thrust::device_vector<WTYPE> d_x = x;
-  const thrust::device_vector<STYPE>
+  const thrust::device_vector<WAVE> d_x = x;
+  const thrust::device_vector<SPACE>
     d_u = u,
     d_v = v;
   thrust::device_vector<double> d_y(n * 2);
@@ -85,20 +93,20 @@ void test_superposition_single(std::vector<WTYPE> &x, std::vector<STYPE> &u, std
   auto d_y_ptr = thrust::raw_pointer_cast(&d_y[0]);
 
   // test conversion host <-> device
-  thrust::host_vector<WTYPE> x2 = d_x;
+  thrust::host_vector<WAVE> x2 = d_x;
   for (int i = 0; i < n; ++i)
     assert(x[i].x == x2[i].x && x[i].y == x2[i].y);
 
   // test superposition functions
   // on host
-  WTYPE y0 = superposition::single<direction>(0, 0, &x[0], &u[0], &v[0]);
+  WAVE y0 = superposition::single<direction>(x[0], &u[0], &v[0]);
 
   // auto p = init::simple_geometry(1);
   // superposition::per_block<Direction::Forwards, 1><<< p.gridSize, p.blockSize, 0 >>> \
   //   (p, d_x_ptr, n, d_u_ptr, d_y_ptr, d_v_ptr );
 
   // thrust::host_vector<double> y_tmp = d_y;
-  // WTYPE y0 {y_tmp[0], y_tmp[1]};
+  // WAVE y0 {y_tmp[0], y_tmp[1]};
   // printf("amp: %f, phase %f\n", cuCabs(y0), angle(y0));
   assert(equals(amp, cuCabs(y0)));
   assert(equals(phi, angle(y0)));
@@ -116,10 +124,10 @@ void test_superposition_single(std::vector<WTYPE> &x, std::vector<STYPE> &u, std
 }
 
 void test_superposition() {
-  auto x = std::vector<WTYPE>{{1,0}};
+  auto x = std::vector<WAVE>{{1,0}};
   auto
-    u = std::vector<STYPE>{0,0,0},
-    v = std::vector<STYPE>{0,0,LAMBDA};
+    u = std::vector<SPACE>{0,0,0},
+    v = std::vector<SPACE>{0,0,LAMBDA};
 
   assert(equals(norm3d_host(u[0] - v[0], u[1] - v[1], u[2] - v[2]) / LAMBDA, 1.));
   test_superposition_single(x, u, v, 1538461.5384615385, 0.);

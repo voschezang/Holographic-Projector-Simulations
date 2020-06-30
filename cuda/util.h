@@ -33,16 +33,16 @@ double bandwidth(double runtime, size_t n, size_t m, bool include_tmp) {
   // input phasor + input space + output space
   // n,m : number of input, output datapoints
   const double unit = 1e-6; // MB/s
-  double input = n * (sizeof(WTYPE) + 3 * sizeof(STYPE));
-  double output = m * 3 * sizeof(STYPE);
+  double input = n * (sizeof(WAVE) + 3 * sizeof(SPACE));
+  double output = m * 3 * sizeof(SPACE);
   if (include_tmp) {
-    double tmp = GRIDDIM * SHARED_MEMORY_SIZE(BLOCKDIM) * sizeof(WTYPE);
+    double tmp = GRIDDIM * SHARED_MEMORY_SIZE(BLOCKDIM) * sizeof(WAVE);
     return unit * (input + output + tmp) / runtime;
   }
   return unit * (input + output) / runtime;
 }
 
-void check(WTYPE  z) {
+void check(WAVE  z) {
   /* double a = creal(z), b = cimag(z); */
   if (isnan(z.x)) printf("found nan re\n");
   if (isinf(z.x)) printf("found inf re\n");
@@ -58,7 +58,7 @@ void check_hyper_params(Geometry p) {
   assert(REDUCE_SHARED_MEMORY <= CEIL(p.blockSize, 2));
 }
 
-void check_cvector(std::vector<WTYPE> x) {
+void check_cvector(std::vector<WAVE> x) {
 #ifdef DEBUG
   for (size_t i = 0; i < x.size(); ++i)
     assert(cuCabs(x[i]) < DBL_MAX);
@@ -69,7 +69,7 @@ double memory_in_MB(size_t n) {
   // Return lower-bound of memory use
   // complex arrays x,y \in C^N
   // real (double precision) arrays u,v \in C^(DIMS * N)
-  unsigned int bytes = n * sizeof(WTYPE) + DIMS * n * sizeof(STYPE);
+  unsigned int bytes = n * sizeof(WAVE) + DIMS * n * sizeof(SPACE);
   return bytes * 1e-6;
 }
 
@@ -101,7 +101,7 @@ void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(n_per_plane.projector));
   {
     size_t n = SHARED_MEMORY_SIZE(p.blockSize);
-    double m = n * sizeof(WTYPE) * 1e-3;
+    double m = n * sizeof(WAVE) * 1e-3;
     printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
   }
 }
@@ -121,11 +121,11 @@ void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
   }
 }
 
-bool abs_of_is_positive(WTYPE x) {
+bool abs_of_is_positive(WAVE x) {
   return cuCabs(x) > 0;
 }
 
-void summarize_c(char name, std::vector<WTYPE> &x) {
+void summarize_c(char name, std::vector<WAVE> &x) {
   double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
   /* for (const auto& x : X) { */
   for (size_t i = 0; i < x.size(); ++i) {
@@ -147,7 +147,7 @@ void summarize_double(char name, std::vector<double> &x) {
   printf("%c)  range: [%0.3e , %0.3e]\n", name, min, max);
 }
 
-void print_complex(WTYPE x, std::ofstream& out) {
+void print_complex(WAVE x, std::ofstream& out) {
   // check(x); //TODO uncomment
   // e.g. print as "1.2+3.4j" or "1.2-3.4j"
   if (x.y >= 0) {
@@ -206,14 +206,14 @@ std::vector<T> read_bytes(std::string fn) {
 /**
  * (With lazy evaluation) Map/apply function `f` to each array element and write the result to file `out`.
  */
-template<typename T = WTYPE>
+template<typename T = WAVE>
 void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, std::ofstream& out) {
   out << f(x[0]);
   for (size_t i = 1; i < x.size(); ++i)
     out << sep << f(x[i]);
 }
 
-template<typename T = WTYPE>
+template<typename T = WAVE>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
   const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
   double buffer[buffer_size];
@@ -248,7 +248,7 @@ void write_bytes(std::vector<T> &x, std::ofstream& out) {
   std::copy( a, &a[sizeof(double) * x.size()], out_iterator );
 }
 
-void write_complex_array(std::vector<WTYPE> &x, const char sep, std::ofstream& out) {
+void write_complex_array(std::vector<WAVE> &x, const char sep, std::ofstream& out) {
   out << x[0].x << sep << x[0].y;
   for (size_t i = 0; i < x.size(); ++i)
     out << sep << x[i].x << sep << x[i].y;
@@ -280,7 +280,7 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, st
       << quote("len")          << sep1 << len            << sep2 \
       << quote("precision")    << sep1 << IO_PRECISION   << sep2 \
       << quote("dims")         << sep1 << DIMS           << sep2 \
-      << quote("x_offset")     << sep1 << p.offset.z     << sep2 \
+      << quote("x_offset")     << sep1 << p.offset.x     << sep2 \
       << quote("y_offset")     << sep1 << p.offset.y     << sep2 \
       << quote("z_offset")     << sep1 << p.offset.z     << sep2 \
       << quote("width")        << sep1 << p.width        << sep2 \
@@ -288,7 +288,7 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, st
       << quote("aspect_ratio") << sep1 << p.aspect_ratio << "}\n";
 }
 
-void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
+void write_dot(char name, WAVE *x, SPACE *u, size_t len) {
   char fn[] = "tmp/out-x.dat";
   fn[8] = name;
   FILE *out = fopen(fn, "wb");
@@ -300,7 +300,7 @@ void write_dot(char name, WTYPE *x, STYPE *u, size_t len) {
   fclose(out);
 }
 
-void write_arrays(std::vector<WTYPE> &x, std::vector<STYPE> &u,
+void write_arrays(std::vector<WAVE> &x, std::vector<SPACE> &u,
                   std::string k1, std::string k2, Plane p) {
   static bool overwrite = true;
   if (overwrite)

@@ -101,14 +101,13 @@ Geometry geometry(const size_t n) {
 /**
  * Distribute sampling points over a 2D plane in 3D space.
  */
-void plane(std::vector<STYPE> &v, const Plane p, const Cartesian<double> &offset = {0,0,0}) {
+void plane(std::vector<SPACE> &v, const Plane p) {
   // TODO return ptr to device memory, copy pos data to CPU during batches
   static unsigned int seed = 1234; // TODO manage externally from this function
   const size_t n = v.size() / DIMS;
-  printf("offset: %f\n", offset.z);
-  assert(p.z_offset == offset.z); // TODO rm duplicate arg
+  printf("offset: %f\n", p.offset.z);
   for (unsigned int i = 0; i < n; ++i)
-    v[i*DIMS + 2] = offset.z;
+    v[i*DIMS + 2] = p.offset.z;
   /*
    * Assume HD dimensions, keep remaining pixels for kernel geometry compatibility
    * solve for x:  `n * (ratio) = x * y * (x/y) = x^2   ->   x = sqrt(n * ratio)`
@@ -130,9 +129,10 @@ void plane(std::vector<STYPE> &v, const Plane p, const Cartesian<double> &offset
     x_half = (p.width - dx) / 2., // subtract dx/2 to position points in center
     y_half = (height - dy) / 2.;
 
+  printf("init::plane, width: %e, n_x: %lu, dx: %e, x_half: %e\n", p.width, x, dx, x_half);
   // properties to generate random offsets
   const double
-    rel_margin = p.randomize ? 0.00 : 0.0,
+    rel_margin = p.randomize ? 0.01 : 0.0,
     x_margin = rel_margin * dx, // TODO min space between projector pixels
     y_margin = rel_margin * dy,
     x_random_range = dx - 0.5 * x_margin,
@@ -152,9 +152,9 @@ void plane(std::vector<STYPE> &v, const Plane p, const Cartesian<double> &offset
       randomize(random, d_random, n_random, generator);
 
     for (unsigned int j = 0; j < y; ++j) {
-      v[Ix(i,j,0,y)] = i * dx - x_half + offset.x;
-      v[Ix(i,j,1,y)] = j * dy - y_half + offset.y;
-      v[Ix(i,j,2,y)] = offset.z;
+      v[Ix(i,j,0,y)] = i * dx - x_half + p.offset.x;
+      v[Ix(i,j,1,y)] = j * dy - y_half + p.offset.y;
+      v[Ix(i,j,2,y)] = p.offset.z;
 
       if (p.randomize) {
         v[Ix(i,j,0,y)] += x_random_range * (random[j*2] - 0.5);
@@ -173,7 +173,7 @@ void plane(std::vector<STYPE> &v, const Plane p, const Cartesian<double> &offset
       v[i * DIMS + j] = v[j];
 }
 
-std::vector<STYPE> sparse_plane(std::vector<STYPE> &u, Shape shape, double width,
+std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width,
                                 const Cartesian<double> &offset, double modulate = 0.) {
   const size_t n = u.size() / DIMS;
   for (unsigned int i = 0; i < n; ++i)

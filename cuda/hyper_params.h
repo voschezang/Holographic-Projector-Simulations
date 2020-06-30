@@ -8,16 +8,16 @@
  */
 
 /* #define READ_INPUT */
-#define PROJECT_PHASE 0
+#define PROJECT_PHASE 1
 
-// TODO use N,M
 /* #define N_sqrt 4 */
 /* #define N_sqrt 8 */
+/* #define N_sqrt 16 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
-#define N_sqrt 256
-/* #define N_sqrt 512 */
+/* #define N_sqrt 256 */
+#define N_sqrt 512
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 
@@ -31,15 +31,16 @@
 /* #define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch */
 // TODO compute optimal batch size as function of N
 
-#define N_STREAMS 1 // TODO single stream results in incorrect output
+#define N_STREAMS 4
 /* #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream */
 /* #define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE) */
 /* #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM) */
 
 #define WARP_SIZE 32
+
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
 #if (N_sqrt <= 32)
-#define BLOCKDIM 1
+#define BLOCKDIM 8
 #elif (N_sqrt <= 64)
 #define BLOCKDIM 16
 #elif (N_sqrt <= 128)
@@ -53,7 +54,9 @@
 #endif
 /* #define BLOCKDIM 1 */
 
-#if (N_sqrt <= 256)
+#if (N_sqrt <= 64)
+#define GRIDDIM 4
+#elif (N_sqrt <= 256)
 #define GRIDDIM (BLOCKDIM)
 #else
 #define GRIDDIM (BLOCKDIM / 2)
@@ -62,13 +65,17 @@
 
 #define CACHE_BATCH 1 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 
-#if (BLOCKDIM >= 16)
-#define REDUCE_SHARED_MEMORY 4
-#elif (BLOCKDIM >= 32)
-#define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor
-#else
-#define REDUCE_SHARED_MEMORY 1
-#endif
+// TODO this causes errors
+/* #if (BLOCKDIM >= 16) */
+/* #define REDUCE_SHARED_MEMORY 4 */
+/* #elif (BLOCKDIM >= 32) */
+/* #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor */
+/* #else */
+/* #define REDUCE_SHARED_MEMORY 1 */
+/* #endif */
+#define REDUCE_SHARED_MEMORY 8
+
+/* #define SHARED_MEMORY_LAYOUT 0 // TODO */
 
 #define PARALLEL_INTRA_WARP_AGG 0 // TODO reimplement
 
