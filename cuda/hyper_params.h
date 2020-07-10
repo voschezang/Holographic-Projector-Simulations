@@ -8,18 +8,18 @@
  */
 
 /* #define READ_INPUT */
-#define PROJECT_PHASE 1
+#define PROJECT_PHASE 0
 
 /* #define N_sqrt 4 */
 /* #define N_sqrt 8 */
 /* #define N_sqrt 16 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
-#define N_sqrt 128
+/* #define N_sqrt 128 */
 /* #define N_sqrt 256 */
 /* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
-/* #define N_sqrt 1440 */
+#define N_sqrt 1440
 
 #ifndef KERNEL_SIZE
 #define KERNEL_SIZE 2 // n datapoints per kernel
@@ -63,9 +63,11 @@
 #endif
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
 
-#define CACHE_BATCH 1 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
+#define CACHE_BATCH 0 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
 
-// TODO this causes errors
+/* #define CACHE_U 0 // TODO */
+/* #define CACHE_V 0 // TODO */
+
 /* #if (BLOCKDIM >= 16) */
 /* #define REDUCE_SHARED_MEMORY 4 */
 /* #elif (BLOCKDIM >= 32) */
@@ -74,7 +76,7 @@
 /* #define REDUCE_SHARED_MEMORY 1 */
 /* #endif */
 
-#define REDUCE_SHARED_MEMORY MIN(4, BLOCKDIM)
+#define REDUCE_SHARED_MEMORY MIN(4, BLOCKDIM) // reduce shared memory by this factor
 
 #define SHARED_MEMORY_LAYOUT 0
 

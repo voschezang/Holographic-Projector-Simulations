@@ -130,16 +130,14 @@ void rm_phase(std::vector<WAVE> &c) {
 }
 
 /**
-   d_x, d_u are stored in normal (non-pinned) GPU memory
-   d_y, d_v are stored partially, and copied back to CPU on the fly
-
-   Additional temporary memory:
-   d_y_stream = reserved memory for each stream, containing batch result as complex doubles.
-   d_y_batch  = batch results, using doubles because thrust doesn't support cuComplexDouble
-   d_y_block  = block results (because blocks cannot sync), agg by thrust
-
-   type& X is used to reference X instead of copying it (similar to a pointer *x, which would require later dereferencing)
-*/
+ * d_x, d_u are stored in normal (non-pinned) GPU memory
+ * d_y, d_v are stored partially, and copied back to CPU on the fly
+ *
+ * Additional temporary memory:
+ * d_y_stream = reserved memory for each stream, containing batch result as complex doubles.
+ * d_y_batch  = batch results, using doubles because thrust doesn't support cuComplexDouble
+ * d_y_block  = block results (because blocks cannot sync), aggregated by thrust
+ */
 template<Direction direction>
 inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
                                     const std::vector<SPACE> &u,
@@ -273,7 +271,11 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     auto y_reference = transform<Direction::Forwards>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
+    // let full reference wave (amp+phase) interfere with original wave
     add_complex(y, y_reference);
+    // reset phase of result, because the projector is limited
+    for (size_t i = 0; i < y.size(); ++i)
+      y[i] = from_polar(cuCabs(y[i]), angle(y_reference[i]));
   }
 
   clock_gettime(CLOCK_MONOTONIC, t2);

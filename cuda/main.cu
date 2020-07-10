@@ -131,14 +131,8 @@ int main(int argc, char** argv) {
     auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, projector, &t1, &t2, &dt[0], true);
     check_cvector(y);
 
-    if (i == 0)
-      summarize_c('y', y);
-
+    if (i == 0) summarize_c('y', y);
     write_arrays(y, v, "y" + x_suffix, "v" + x_suffix, y_plane);
-    // square amp and rm phase after saving
-    // TODO rename function, apply before normalization?
-    if (transformation == Transformation::Amplitude)
-      rm_phase(y);
 
     // The projection distributions at various locations are obtained using forward transformations
     for (auto& j : range(n_planes.projection)) {
@@ -152,7 +146,7 @@ int main(int argc, char** argv) {
       const auto offset = Cartesian<double> {x: obj_offset.x + 0 * 4/9. * width,
                                              y: obj_offset.y + 0 * 4/9. * width / params.aspect_ratio.projection,
                                              z: gerp(params.projection_z_offset, ratio)};
-      const auto z_plane = Plane {width: gerp(params.rel_projection_width, ratio) * x_plane.width,
+      const auto z_plane = Plane {width: width,
                                   offset: offset,
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
@@ -165,8 +159,7 @@ int main(int argc, char** argv) {
       // auto z = std::vector<WAVE>(n.z);
       auto z = time_transform<Direction::Forwards>(y, v, w, projection, &t1, &t2, &dt[j]);
       check_cvector(z);
-      if (i == 0 && j == 0)
-        summarize_c('z', z);
+      if (i == 0 && j == 0) summarize_c('z', z);
 
       const auto z_suffix = x_suffix + "_" + std::to_string(j);
       // TODO write this async, next loop can start already
