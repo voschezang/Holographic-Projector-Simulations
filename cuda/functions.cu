@@ -26,9 +26,9 @@ inline void cp_batch_data_to_device(const T *v, DeviceVector<T> d_v, cudaStream_
 
 #define SuperpositionPerBlock(size) {                                   \
     /* const size_t local_memory_size = p.kernel_size * sizeof(WAVE);  */ \
-    /* TODO add SHARED_MEMORY_SIZE * sizeof(WAVE) */                   \
+    /* TODO add SHARED_MEMORY_SIZE * sizeof(WAVE) */                    \
     superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
-      (p, d_x, Nx, d_u, &d_y_block[j], &d_v[k * DIMS] );                 \
+    (p, d_x, Nx, d_u, &d_v[k * DIMS], &d_y_block[j] );                  \
   }
 
 template<Direction direction>
@@ -62,6 +62,24 @@ inline void partial_superposition_per_block(const Geometry& p, const size_t Nx,
   }
 }
 
+inline void agg_batch_blocks_naive(const Geometry& p, const size_t N, cudaStream_t stream,
+                                   DeviceVector<double> d_y_batch,
+                                   double *d_y_block) {
+  auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
+  auto y2 = thrust::device_ptr<double>(&d_y_batch.data[d_y_batch.size / 2]);
+  // TODO is a reduction call for each datapoint really necessary?
+  const size_t k = N / p.n_per_batch;
+  for (unsigned int m = 0; m < p.n_per_batch; ++m) {
+    thrust::device_ptr<double> ptr(d_y_block + m * k);
+
+    // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
+    // TODO (syntax) why is here no template? - default template args?
+    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + k, 0.0, thrust::plus<double>(), &y1[m]);
+    ptr += N;
+    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + k, 0.0, thrust::plus<double>(), &y2[m]);
+  }
+}
+
 inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
                              DeviceVector<double> d_y_batch,
                              double *d_y_block) {
@@ -79,6 +97,16 @@ inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
     ptr += p.gridSize * p.n_per_batch;
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + p.gridSize, 0.0, thrust::plus<double>(), &y2[m]);
   }
+}
+
+
+inline void agg_batch_naive(const size_t n, WAVE *y, cudaStream_t stream,
+                            WAVE *d_y_stream, double *d_y_batch_re, double *d_y_batch_im) {
+  // wrapper for thrust call using streams
+  // TODO overwrite *d_y_batch_re, _im
+  kernel::zip_arrays<<< 1,1 >>>(d_y_batch_re, d_y_batch_im, n, d_y_stream);
+	cu( cudaMemcpyAsync(y, d_y_stream, n * sizeof(WAVE),
+                      cudaMemcpyDeviceToHost, stream ) );
 }
 
 inline void agg_batch(const Geometry& p, WAVE *y, cudaStream_t stream,
@@ -129,6 +157,114 @@ void rm_phase(std::vector<WAVE> &c) {
     c[i] = {cuCabs(c[i]), 0.};
 }
 
+
+template<Direction direction, Algorithm algorithm = Algorithm::Naive>
+inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
+                                         const std::vector<SPACE> &u,
+                                         const std::vector<SPACE> &v,
+                                         const Geometry& p) {
+  assert(u[2] != v[2]);
+  const size_t N = u.size() / DIMS;
+  const size_t M = v.size() / DIMS;
+  const dim3 gridDim = {(unsigned int) p.gridSize, 1, 1};
+  const dim3 blockDim = {(unsigned int) p.blockSize, KERNEL_SIZE, 1};
+
+  size_t gridSize = gridDim.x * gridDim.y * blockDim.x * blockDim.y;
+  size_t batch_out_size = MIN(N * p.n_per_batch, gridSize);
+  if (algorithm == Algorithm::Naive)
+    batch_out_size = N * p.n_per_batch;
+
+#ifdef DEBUG
+  assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
+#endif
+  if (x.size() < p.gridSize * p.blockSize)
+    print("Warning, suboptimal input size");
+
+  auto y = std::vector<WAVE>(M);
+
+  // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
+  const thrust::device_vector<WAVE> d_x = x;
+  const thrust::device_vector<SPACE> d_u = u;
+  // cast to pointers to allow usage in non-thrust kernels
+  const auto d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
+  const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
+
+  cudaStream_t streams[p.n_streams];
+  // malloc data using pinned memory for all batches before starting streams
+  // TODO consider std::unique_ptr<>
+  WAVE *d_y_stream_ptr;
+  double *d_y_block_ptr;
+  double *d_y_batch_ptr;
+  SPACE *d_v_ptr;
+  auto d_y_block  = init::pinned_malloc_vector<double>(&d_y_block_ptr, p.n_streams, 2 * batch_out_size);
+  auto d_y_batch  = init::pinned_malloc_matrix<double>(&d_y_batch_ptr, p.n_streams, 2 * p.n_per_batch);
+  auto d_y_stream = init::pinned_malloc_vector<WAVE>(&d_y_stream_ptr, p.n_streams, p.n_per_batch); // TODO rm
+  auto d_v        = init::pinned_malloc_matrix<SPACE>(&d_v_ptr, p.n_streams, p.n_per_batch * DIMS);
+
+  for (auto& stream : streams)
+    cudaStreamCreate(&stream);
+
+  for (size_t i = 0; i < p.n_batches; i+=p.n_streams) {
+    // start each distinct kernel in batches
+
+    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+      const auto i_batch = i + i_stream;
+      if (p.n_batches > 10 && i_batch % (int) (p.n_batches / 10) == 0)
+        printf("\tbatch %0.3fk / %0.3fk\n", i_batch * 1e-3, p.n_batches * 1e-3);
+
+      cp_batch_data_to_device<SPACE>(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
+                                     streams[i_stream]);
+
+      // const size_t k = i_batch * p.n_per_batch;
+      superposition::per_block_naive<direction, algorithm><<< gridDim, blockDim, 0, streams[i_stream] >>> \
+        (p, N, M, d_x_ptr, d_u_ptr, d_v[i_stream].data, d_y_block[i_stream], d_y_block[i_stream] + batch_out_size );
+    }
+
+    // do aggregations in separate stream-loops because of imperfect async functions calls on host
+    // this may yield a ~2.5x speedup
+    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+      agg_batch_blocks_naive(p, batch_out_size, streams[i_stream],
+                             d_y_batch[i_stream],
+                             d_y_block[i_stream]);
+    }
+
+    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+      const auto i_batch = i + i_stream;
+      agg_batch_naive(p.n_per_batch, &y[i_batch * p.n_per_batch],
+                      streams[i_stream],
+                      d_y_stream[i_stream],
+                      d_y_batch[i_stream].data,
+                      d_y_batch[i_stream].data + p.n_per_batch);
+    }
+  }
+
+  // sync all streams before returning
+  cudaDeviceSynchronize();
+
+#ifdef DEBUG
+  printf("done, destroy streams\n");
+#endif
+
+  for (unsigned int i = 0; i < p.n_streams; ++i)
+    cudaStreamDestroy(streams[i]);
+
+#ifdef DEBUG
+  printf("free device memory\n");
+#endif
+
+  cu( cudaFreeHost(d_y_stream_ptr) );
+  cu( cudaFreeHost(d_y_batch_ptr ) );
+  // cu( cudaFreeHost(d_y_block_ptr ) );
+  cu( cudaFreeHost(d_v_ptr       ) );
+
+#ifdef DEBUG
+  size_t len = min(100L, y.size());
+  assert(std::any_of(y.begin(), y.begin() + len, abs_of_is_positive));
+#endif
+  return y;
+}
+
+
 /**
  * d_x, d_u are stored in normal (non-pinned) GPU memory
  * d_y, d_v are stored partially, and copied back to CPU on the fly
@@ -144,7 +280,6 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
                                     const std::vector<SPACE> &v,
                                     const Geometry& p) {
   assert(u[2] != v[2]);
-  // TODO test if ptr conversion (thrust to *x) is flawless for large arrays */
   const size_t n = v.size() / DIMS;
 #ifdef DEBUG
   assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
@@ -181,14 +316,12 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
   for (size_t i = 0; i < p.n_batches; i+=p.n_streams) {
     // start each distinct kernel in batches
     // TODO don't do this in case of non-uniform workloads
-    assert(p.n_streams == N_STREAMS);
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
       if (p.n_batches > 10 && i_batch % (int) (p.n_batches / 10) == 0)
         printf("\tbatch %0.3fk / %0.3fk\n", i_batch * 1e-3, p.n_batches * 1e-3);
 
-      assert(d_v[i_stream].size / DIMS == p.n_per_batch);
       cp_batch_data_to_device<SPACE>(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
                                      streams[i_stream]);
 
@@ -246,17 +379,19 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
  */
 template<Direction direction, bool add_constant_wave = false, bool add_reference_wave = false>
 std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
-                                  const std::vector<SPACE> &u,
-                                  const std::vector<SPACE> &v,
-                                  const Geometry& p,
-                                  struct timespec *t1, struct timespec *t2, double *dt,
-                                  bool verbose = false) {
+                                 const std::vector<SPACE> &u,
+                                 const std::vector<SPACE> &v,
+                                 const Geometry& p,
+                                 struct timespec *t1, struct timespec *t2, double *dt,
+                                 bool verbose = false) {
   clock_gettime(CLOCK_MONOTONIC, t1);
   auto weights = std::vector<double> {1,
                                       add_constant_wave ? 1 : 0,
                                       add_reference_wave ? 1 : 0};
   normalize(weights);
-  auto y = transform<direction>(x, u, v, p);
+  // auto y = transform<direction>(x, u, v, p);
+  auto y = transform_naive<direction, Algorithm::Naive>(x, u, v, p);
+  // auto y = transform_naive<direction, Algorithm::Alt>(x, u, v, p);
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
@@ -268,6 +403,7 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
      * adding the planar wave should happen before squaring the amplitude
     */
     // TODO do this on CPU?
+    assert(0);
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     auto y_reference = transform<Direction::Forwards>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);

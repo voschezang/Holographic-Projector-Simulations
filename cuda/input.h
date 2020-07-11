@@ -20,10 +20,10 @@ Params read_args(int argc, char **argv) {
   /* const auto obj_z_offset = Range<double> {min: 0.35, max: 0.35}; */
   // projector z_offset is always zero
   auto p = Params
-    {n_planes:     {obj: 5,
+    {n_planes:     {obj: 1,
                     projector: 1, // unused
                     projection: 0},
-     n_per_plane:  {obj: 30,
+     n_per_plane:  {obj: 10,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,

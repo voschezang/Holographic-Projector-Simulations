@@ -33,9 +33,27 @@ namespace superposition {
 //////////////////////////////////////////////////////////////////////////////////
 
 template<const Direction direction>
+inline __host__ __device__ WAVE phasor_displacement(const WAVE x, const SPACE *u, const SPACE *v) {
+  // inline __host__ __device__ WAVE phasor_displacement(const double a, const double phi, const SPACE *u, const SPACE *v) {
+  /**
+   * Compute the phasor displacement single source datapoint, for some target location `v \in R^3`
+   * `a / distance * exp(phi \pm distance * 2 * pi / lambda)`
+   */
+  // const auto distance  = NORM_3D(v[0] - u[0], v[1] - u[1], v[2] - u[2]);
+  const double
+    distance = NORM_3D(v[0] - u[0], v[1] - u[1], v[2] - u[2]),
+    a = cuCabs(x),
+    phi = angle(x);
+  if (direction == Direction::Forwards)
+    return from_polar(a / distance, phi + distance * TWO_PI_OVER_LAMBDA);
+  else
+    return from_polar(a / distance, phi - distance * TWO_PI_OVER_LAMBDA);
+}
+
+template<const Direction direction>
 inline __host__ __device__ WAVE single(const WAVE x, const SPACE *u, const SPACE *v) {
   /**
-   * Compute the "superposition" of a single input datapoint, for some location `v \in R^3`
+   * Compute the phasor displacement single source datapoint, for some target location `v \in R^3`
    */
   // transposed shape (DIMS, N) for spatial data is not significantly faster than shape (N, DIMS)
   const double
@@ -238,8 +256,8 @@ template<Direction direction, unsigned int blockSize>
 __global__ void per_block(const Geometry p,
                           const WAVE *__restrict__ x, const size_t N_x,
                           const SPACE *__restrict__ u,
-                          double *__restrict__ y_global,
-                          const SPACE *__restrict__ v) {
+                          const SPACE *__restrict__ v,
+                          double *__restrict__ y_global) {
   __shared__ WAVE y_shared[SHARED_MEMORY_SIZE(blockSize)];
   // TODO transpose y_shared? - memory bank conflicts, but first simplify copy_result()
   // but, this would make warp redcuce more complex
@@ -273,6 +291,48 @@ __global__ void per_block(const Geometry p,
   //   printf("tid: %i \t y[0]: a: %f phi: %f (shared)\n", threadIdx.x, cuCabs(c), angle(c));
   // }
 }
+
+
+template<Direction direction, Algorithm algorithm>
+__global__ void per_block_naive(const Geometry p,
+                                const size_t N, const size_t M,
+                                const WAVE *__restrict__ x,
+                                // const double *__restrict__ a,
+                                // const double *__restrict__ phi,
+                                const SPACE *__restrict__ u,
+                                const SPACE *__restrict__ v,
+                                double *__restrict__ y_global_re,
+                                double *__restrict__ y_global_im) {
+  // const auto
+  //   tid = blockIdx * blockDim + threadIdx,
+  //   gridSize = blockDim * gridDim;
+  const dim3
+    tid = {blockIdx.x * blockDim.x + threadIdx.x,
+           blockIdx.y * blockDim.y + threadIdx.y},
+    gridSize = {blockDim.x * gridDim.x,
+                blockDim.y * gridDim.y};
+
+  if (algorithm == Algorithm::Naive) {
+    for (unsigned int n = tid.x; n < N; n += gridSize.x) {
+      for (unsigned int m = tid.y; m < M; m += gridSize.y) {
+        const WAVE y = phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]);
+        y_global_re[Yidx(n, m, N, M)] = y.x;
+        y_global_im[Yidx(n, m, N, M)] = y.y;
+      } }
+  }
+  else {
+    // save results to Y[m, x] instead of Y[m, n]
+    for (unsigned int m = tid.y; m < M; m += gridSize.y) {
+      WAVE y {0,0};
+      for (unsigned int n = tid.x; n < N; n += gridSize.x) {
+        y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
+      }
+      y_global_re[Yidx(tid.x, m, gridSize.x, N)] = y.x;
+      y_global_im[Yidx(tid.y, m, gridSize.x, M)] = y.y;
+    }
+  }
+}
+
 
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////

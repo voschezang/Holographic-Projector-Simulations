@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include "macros.h"
 
+enum class Algorithm {Naive, Alt};
+
 enum class Shape {Line, Cross, Circle, DottedCircle};
 enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
 

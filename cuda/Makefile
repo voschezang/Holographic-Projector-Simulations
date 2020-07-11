@@ -9,7 +9,7 @@ EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
-HyperParams := KERNEL_SIZE='8' # 8
+HyperParams := KERNEL_SIZE='16' # 8
 	# TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE) test
 

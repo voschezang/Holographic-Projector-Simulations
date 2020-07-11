@@ -2,7 +2,7 @@
 #define MACROS
 
 /* #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int) */
-#define CEIL(x,y) ((x + y - 1) / y) // ceil(int, int)
+#define CEIL(x,y) ((x + y - 1) / (y)) // ceil(int, int)
 #define MIN(x,y) (x < y ? x : y)
 
 /* #define DEBUG */
@@ -55,7 +55,10 @@
 /* #define I_(i,j) (j + (i) * N_sqrt) */
 /* #define Ix(i,j,k) (k + (j) * DIMS + (i) * DIMS * N_sqrt) */
 /* #define Ix(i,j,k,n) (k + (j) * DIMS + (i) * DIMS * (n)) */
-#define Ix(i,j,k,n) (k + DIMS * ((j) + (i) * (n)))
+#define Ix(i,j,k,n) ((k) + DIMS * ((j) + (i) * (n)))
+
+/* #define Yidx(n,m,N,M) ((m) + (n) * (M)) */
+#define Yidx(n,m,N,M) ((n) + (m) * (N))
 
 // two variants: shape (DIMS, N) and (N, DIMS)
 /* #define Ix2(i,j,_) (j + i * DIMS) */
