@@ -326,13 +326,15 @@ __global__ void per_block_naive(const Geometry p,
     // save results to Y[m, x] instead of Y[m, n]
     for (unsigned int m = tid.y; m < M; m += gridSize.y) {
       // cache v[n]? or auto
-      WAVE y {0,0};
-      for (unsigned int n = tid.x; n < N; n += gridSize.x) {
-        y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
+      if (tid.x < N) {
+        WAVE y {0,0};
+        for (unsigned int n = tid.x; n < N; n += gridSize.x) {
+          y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
+        }
+        const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
+        y_global_re[i] = y.x;
+        y_global_im[i] = y.y;
       }
-      const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
-      y_global_re[i] = y.x;
-      y_global_im[i] = y.y;
     }
   }
 }

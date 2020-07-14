@@ -89,7 +89,7 @@ Geometry simple_geometry(const size_t n) {
 Geometry geometry(const size_t n) {
   Geometry p;
   p.blockSize = BLOCKDIM;
-  p.gridSize = GRIDDIM;
+  p.gridSize = GRIDDIM; // TODO rename to gridDim and use dim3 dtype
   p.kernel_size = KERNEL_SIZE;
   p.batch_size = BATCH_SIZE;
   p.n_streams = N_STREAMS;

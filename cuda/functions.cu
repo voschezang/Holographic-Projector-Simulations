@@ -62,22 +62,18 @@ inline void partial_superposition_per_block(const Geometry& p, const size_t Nx,
   }
 }
 
-inline void agg_batch_blocks_naive(const Geometry& p, const size_t N, cudaStream_t stream,
+inline void agg_batch_blocks_naive(const size_t N, const size_t M, cudaStream_t stream,
                                    DeviceVector<double> d_y_batch,
                                    double *d_y_block) {
   // aggregate d_y_block and save to d_y_batch
-  auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
-  auto y2 = thrust::device_ptr<double>(&d_y_batch.data[d_y_batch.size / 2]);
-  // TODO is a reduction call for each datapoint really necessary?
-  const size_t k = N / p.n_per_batch; // source datapoints per target datapoint
-  for (unsigned int m = 0; m < p.n_per_batch; ++m) {
-    thrust::device_ptr<double> ptr(d_y_block + m * k);
+  auto y = thrust::device_ptr<double>(d_y_batch.data);
+  for (unsigned int m = 0; m < M; ++m) {
+    thrust::device_ptr<double> ptr(d_y_block + m * N);
 
     // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
     // TODO (syntax) why is here no template? - default template args?
-    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + k, 0.0, thrust::plus<double>(), &y1[m]);
-    ptr += N;
-    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + k, 0.0, thrust::plus<double>(), &y2[m]);
+    // TODO new kernel with included loop: kernel::reduce_rows(from, to, stride, ...)
+    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + N, 0.0, thrust::plus<double>(), y + m);
   }
 }
 
@@ -168,11 +164,14 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   assert(u[2] != v[2]);
   const size_t N = u.size() / DIMS;
   const size_t M = v.size() / DIMS;
-  const dim3 gridDim = {(unsigned int) p.gridSize, 1, 1};
-  const dim3 blockDim = {(unsigned int) p.blockSize, KERNEL_SIZE, 1};
+  const dim3
+    gridDim = {(unsigned int) p.gridSize, 1, 1},
+    blockDim = {(unsigned int) p.blockSize, KERNEL_SIZE, 1},
+    gridSize = {blockDim.x * gridDim.x,
+                blockDim.y * gridDim.y};
 
-  size_t gridSize = gridDim.x * gridDim.y * blockDim.x * blockDim.y;
-  size_t batch_out_size = MIN(N, gridDim.x * blockDim.x) * p.n_per_batch;
+  // size_t gridSize = gridDim.x * gridDim.y * blockDim.x * blockDim.y;
+  size_t batch_out_size = MIN(N, gridSize.x) * p.n_per_batch;
   if (algorithm == Algorithm::Naive)
     batch_out_size = N * p.n_per_batch;
   printf("batch out size %lu\n", batch_out_size);
@@ -181,7 +180,7 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
 #endif
   if (x.size() < p.gridSize * p.blockSize)
-    print("Warning, suboptimal input size");
+    printf("Warning, suboptimal input size: %f < %f", x.size(), p.gridSize * p.blockSize);
 
   auto y = std::vector<WAVE>(M);
 
@@ -228,7 +227,8 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
     // do aggregations in separate stream-loops because of imperfect async functions calls on host
     // this may yield a ~2.5x speedup
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-      agg_batch_blocks_naive(p, batch_out_size, streams[i_stream],
+      agg_batch_blocks_naive(batch_out_size / p.n_per_batch, p.n_per_batch * 2,
+                             streams[i_stream],
                              d_y_batch[i_stream],
                              d_y_block[i_stream]);
     }
@@ -395,8 +395,8 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
                                       add_reference_wave ? 1 : 0};
   normalize(weights);
   // auto y = transform<direction>(x, u, v, p);
-  auto y = transform_naive<direction, Algorithm::Naive>(x, u, v, p);
-  // auto y = transform_naive<direction, Algorithm::Alt>(x, u, v, p);
+  // auto y = transform_naive<direction, Algorithm::Naive>(x, u, v, p);
+  auto y = transform_naive<direction, Algorithm::Alt>(x, u, v, p);
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
