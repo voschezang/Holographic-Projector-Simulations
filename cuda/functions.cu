@@ -66,15 +66,11 @@ inline void agg_batch_blocks_naive(const size_t N, const size_t M, cudaStream_t 
                                    DeviceVector<double> d_y_batch,
                                    double *d_y_block) {
   // aggregate d_y_block and save to d_y_batch
-  auto y = thrust::device_ptr<double>(d_y_batch.data);
-  for (unsigned int m = 0; m < M; ++m) {
-    thrust::device_ptr<double> ptr(d_y_block + m * N);
-
-    // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
-    // TODO (syntax) why is here no template? - default template args?
-    // TODO new kernel with included loop: kernel::reduce_rows(from, to, stride, ...)
-    kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + N, 0.0, thrust::plus<double>(), y + m);
-  }
+  // launch 1x1 kernel in the specified selected stream, from which multiple thrust are called indirectly
+  thrust::device_ptr<double>
+    x (d_y_block),
+    y (d_y_batch.data);
+  kernel::reduce_rows<<< 1,1,0, stream >>>(x, N, M, 0.0, thrust::plus<double>(), y);
 }
 
 inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
@@ -90,7 +86,6 @@ inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
     thrust::device_ptr<double> ptr(d_y_block + m * p.gridSize);
 
     // launch 1x1 kernels in selected streams, which calls thrust indirectly inside that stream
-    // TODO (syntax) why is here no template?
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + p.gridSize, 0.0, thrust::plus<double>(), &y1[m]);
     ptr += p.gridSize * p.n_per_batch;
     kernel::reduce<<< 1,1,0, stream >>>(ptr, ptr + p.gridSize, 0.0, thrust::plus<double>(), &y2[m]);

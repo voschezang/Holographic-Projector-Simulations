@@ -132,6 +132,17 @@ __global__ void reduce(Iterator first, Iterator last, T init, BinaryOperation bi
   *result = thrust::reduce(thrust::cuda::par, first, last, init, binary_op);
 }
 
+template<typename Iterator, typename T, typename BinaryOperation, typename Pointer>
+__global__ void reduce_rows(Iterator first, const size_t width, const size_t n_rows, T init, BinaryOperation binary_op, Pointer results)
+{
+  // TODO consider thrust::reduce_by_key
+  for (unsigned int i = 0; i < n_rows; ++i) {
+    const size_t di = i * width;
+    // from https://github.com/thrust/thrust/blob/master/examples/cuda/async_reduce.cu
+    results[i] = thrust::reduce(thrust::cuda::par, first + di, first + di + width, init, binary_op);
+  }
+}
+
   ///////////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////
 } // end namespace
