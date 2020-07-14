@@ -22,8 +22,8 @@ Params read_args(int argc, char **argv) {
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
-                    projection: 0},
-     n_per_plane:  {obj: 10,
+                    projection: 1},
+     n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,
@@ -31,8 +31,8 @@ Params read_args(int argc, char **argv) {
                     projection: 1.}, // 0.2
 
      /* obj_shape: Shape::DottedCircle, // TODO */
-     obj_offset:  {x: {min: 0.12, max: 0.09}, // TODO make relative?
-                   y: {min: 0.03, max: 0.2},
+     obj_offset:  {x: {min: 0., max: 0.}, // TODO make relative?
+                   y: {min: 0., max: 0.},
                    z: obj_z_offset},
 
      rel_obj_width: {min: 0.02 / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH
