@@ -114,15 +114,16 @@ namespace kernel {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-__global__ void zip_arrays(double *__restrict__ a, double *__restrict__ b, size_t len, WAVE *out) {
+__global__ void zip_arrays(double *re, double *im, size_t len, WAVE *out) {
+  // __global__ void zip_arrays(double *__restrict__ re, double *__restrict__ im, size_t len, cuDoubleComplex *out) {
+  // __global__ void zip_arrays(double *__restrict__ re, double *__restrict__ im, size_t len, cuDoubleComplex *__restrict__ out) {
+  // out can technically point to the array a
   // convert two arrays into array of tuples (i.e. complex numbers)
   // i.e. transpose & flatten the matrix (a,b)
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   const size_t stride = blockDim.x * gridDim.x;
-  for (size_t i = idx; i < len; i+=stride) {
-    out[i] = make_cuDoubleComplex(a[i], b[i]);
-    // out[i] = {a[i], b[i]}; // TODO
-  }
+  for (size_t i = idx; i < len; i+=stride)
+    out[i] = {re[i], im[i]};
 }
 
 template<typename Iterator, typename T, typename BinaryOperation, typename Pointer>

@@ -92,19 +92,17 @@ inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
   }
 }
 
-
-inline void agg_batch_naive(const size_t n, WAVE *y, cudaStream_t stream,
-                            WAVE *d_y_stream, double *d_y_batch_re, double *d_y_batch_im) {
-  // wrapper for thrust call using streams
-  // TODO overwrite *d_y_batch_re, _im
-  kernel::zip_arrays<<< 1,1 >>>(d_y_batch_re, d_y_batch_im, n, d_y_stream);
-	cu( cudaMemcpyAsync(y, d_y_stream, n * sizeof(WAVE),
-                      cudaMemcpyDeviceToHost, stream ) );
+inline void agg_batch_naive(const size_t half_n, WAVE *y,
+                            cudaStream_t stream, double *d_y_batch, WAVE *d_y_stream) {
+  // TODO replace zip by `re, im => a, phi ` (complex to polar)
+  kernel::zip_arrays<<< KERNEL_SIZE, 1, 0, stream >>>(d_y_batch, d_y_batch + half_n, half_n, d_y_stream);
+	cu( cudaMemcpyAsync(y, d_y_stream, half_n * sizeof(WAVE), cudaMemcpyDeviceToHost, stream ) );
 }
 
 inline void agg_batch(const Geometry& p, WAVE *y, cudaStream_t stream,
                       WAVE *d_y_stream, double *d_y_batch) {
   // wrapper for thrust call using streams
+  // TODO replace zip by `re, im => a, phi ` (complex to polar)
   kernel::zip_arrays<<< 1,1 >>>(d_y_batch, &d_y_batch[p.n_per_batch], p.n_per_batch, d_y_stream);
 	cu( cudaMemcpyAsync(y, d_y_stream, p.n_per_batch * sizeof(WAVE),
                       cudaMemcpyDeviceToHost, stream ) );
@@ -231,10 +229,7 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
       agg_batch_naive(p.n_per_batch, &y[i_batch * p.n_per_batch],
-                      streams[i_stream],
-                      d_y_stream[i_stream],
-                      d_y_batch[i_stream].data,
-                      d_y_batch[i_stream].data + p.n_per_batch);
+                      streams[i_stream], d_y_batch[i_stream].data, d_y_stream[i_stream]);
     }
   }
 
@@ -254,7 +249,7 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
 
   cu( cudaFreeHost(d_y_stream_ptr) );
   cu( cudaFreeHost(d_y_batch_ptr ) );
-  // cu( cudaFreeHost(d_y_block_ptr ) );
+  cu( cudaFreeHost(d_y_block_ptr ) );
   cu( cudaFreeHost(d_v_ptr       ) );
 
 #ifdef DEBUG
