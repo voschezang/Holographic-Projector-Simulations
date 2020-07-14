@@ -114,10 +114,7 @@ namespace kernel {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-__global__ void zip_arrays(double *re, double *im, size_t len, WAVE *out) {
-  // __global__ void zip_arrays(double *__restrict__ re, double *__restrict__ im, size_t len, cuDoubleComplex *out) {
-  // __global__ void zip_arrays(double *__restrict__ re, double *__restrict__ im, size_t len, cuDoubleComplex *__restrict__ out) {
-  // out can technically point to the array a
+__global__ void zip_arrays(double *__restrict__ re, double *__restrict__ im, size_t len, cuDoubleComplex *__restrict__ out) {
   // convert two arrays into array of tuples (i.e. complex numbers)
   // i.e. transpose & flatten the matrix (a,b)
   const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
