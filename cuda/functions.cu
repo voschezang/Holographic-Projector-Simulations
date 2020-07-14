@@ -65,10 +65,11 @@ inline void partial_superposition_per_block(const Geometry& p, const size_t Nx,
 inline void agg_batch_blocks_naive(const Geometry& p, const size_t N, cudaStream_t stream,
                                    DeviceVector<double> d_y_batch,
                                    double *d_y_block) {
+  // aggregate d_y_block and save to d_y_batch
   auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
   auto y2 = thrust::device_ptr<double>(&d_y_batch.data[d_y_batch.size / 2]);
   // TODO is a reduction call for each datapoint really necessary?
-  const size_t k = N / p.n_per_batch;
+  const size_t k = N / p.n_per_batch; // source datapoints per target datapoint
   for (unsigned int m = 0; m < p.n_per_batch; ++m) {
     thrust::device_ptr<double> ptr(d_y_block + m * k);
 
@@ -83,6 +84,7 @@ inline void agg_batch_blocks_naive(const Geometry& p, const size_t N, cudaStream
 inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
                              DeviceVector<double> d_y_batch,
                              double *d_y_block) {
+  // aggregate d_y_block and save to d_y_batch
   auto y1 = thrust::device_ptr<double>(&d_y_batch.data[0]);
   auto y2 = thrust::device_ptr<double>(&d_y_batch.data[d_y_batch.size / 2]);
   // TODO is a reduction call for each datapoint really necessary?
@@ -170,9 +172,10 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   const dim3 blockDim = {(unsigned int) p.blockSize, KERNEL_SIZE, 1};
 
   size_t gridSize = gridDim.x * gridDim.y * blockDim.x * blockDim.y;
-  size_t batch_out_size = MIN(N * p.n_per_batch, gridSize);
+  size_t batch_out_size = MIN(N, gridDim.x * blockDim.x) * p.n_per_batch;
   if (algorithm == Algorithm::Naive)
     batch_out_size = N * p.n_per_batch;
+  printf("batch out size %lu\n", batch_out_size);
 
 #ifdef DEBUG
   assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
@@ -216,8 +219,10 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
                                      streams[i_stream]);
 
       // const size_t k = i_batch * p.n_per_batch;
-      superposition::per_block_naive<direction, algorithm><<< gridDim, blockDim, 0, streams[i_stream] >>> \
-        (p, N, M, d_x_ptr, d_u_ptr, d_v[i_stream].data, d_y_block[i_stream], d_y_block[i_stream] + batch_out_size );
+      superposition::per_block_naive<direction, algorithm>              \
+        <<< gridDim, blockDim, 0, streams[i_stream] >>>                 \
+        (p, N, p.n_per_batch, d_x_ptr, d_u_ptr, d_v[i_stream].data,
+         d_y_block[i_stream], d_y_block[i_stream] + batch_out_size );
     }
 
     // do aggregations in separate stream-loops because of imperfect async functions calls on host

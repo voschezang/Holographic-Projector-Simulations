@@ -314,21 +314,25 @@ __global__ void per_block_naive(const Geometry p,
 
   if (algorithm == Algorithm::Naive) {
     for (unsigned int n = tid.x; n < N; n += gridSize.x) {
+      // cache x[n], u[n]? or auto
       for (unsigned int m = tid.y; m < M; m += gridSize.y) {
         const WAVE y = phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]);
-        y_global_re[Yidx(n, m, N, M)] = y.x;
-        y_global_im[Yidx(n, m, N, M)] = y.y;
+        const size_t i = Yidx(n, m, N, M);
+        y_global_re[i] = y.x;
+        y_global_im[i] = y.y;
       } }
   }
   else {
     // save results to Y[m, x] instead of Y[m, n]
     for (unsigned int m = tid.y; m < M; m += gridSize.y) {
+      // cache v[n]? or auto
       WAVE y {0,0};
       for (unsigned int n = tid.x; n < N; n += gridSize.x) {
         y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
       }
-      y_global_re[Yidx(tid.x, m, gridSize.x, N)] = y.x;
-      y_global_im[Yidx(tid.y, m, gridSize.x, M)] = y.y;
+      const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
+      y_global_re[i] = y.x;
+      y_global_im[i] = y.y;
     }
   }
 }
