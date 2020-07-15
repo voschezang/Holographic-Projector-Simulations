@@ -256,10 +256,36 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
   return u;
 }
 
+ template<typename T>
+ std::vector<T*> malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
+   // Return a host vector of pointers
+   assert(dim1 >= 1); assert(dim2 >= 1);
+   cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
+   auto vec = std::vector<T*>(dim1);
+   for (size_t i = 0; i < dim1; ++i)
+     vec[i] = *d_ptr + i * dim2;
+   return vec;
+ }
+
+ template<typename T>
+ std::vector<DeviceVector<T>> malloc_matrix(T **d_ptr, size_t dim1, size_t dim2) {
+   // Return a host vector of DeviceVector elements
+   assert(dim1 >= 1); assert(dim2 >= 1);
+   cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
+   auto matrix = std::vector<DeviceVector<T>>(dim1);
+   // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
+   // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read by host if it's located on device
+   for (size_t i = 0; i < dim1; ++i)
+     matrix[i] = DeviceVector<T>{data: *d_ptr + i * dim2,
+                                 size: dim2};
+   return matrix;
+ }
+
 template<typename T>
-std::vector<T*> pinned_malloc_vector(T **d_ptr, size_t dim1, size_t dim2) {
+std::vector<T*> pinned_malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
   // Return a host vector of pointers
   assert(dim1 >= 1); assert(dim2 >= 1);
+  // TODO consider cudaHostAllocMapped(..., cudaHostAllocMapped)
   cu( cudaMallocHost( d_ptr, dim1 * dim2 * sizeof(T) ) );
   auto vec = std::vector<T*>(dim1);
   // for (auto&& row : matrix)
@@ -281,7 +307,6 @@ std::vector<DeviceVector<T>> pinned_malloc_matrix(T **d_ptr, size_t dim1, size_t
                                 size: dim2};
   return matrix;
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////

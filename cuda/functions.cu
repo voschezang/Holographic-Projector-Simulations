@@ -24,6 +24,13 @@ inline void cp_batch_data_to_device(const T *v, DeviceVector<T> d_v, cudaStream_
                         cudaMemcpyHostToDevice, stream ) );
 }
 
+template<typename T = double>
+inline void cp_batch_data_to_host(T *d_y, WAVE *y, const size_t len, cudaStream_t stream) {
+  // TODO in case of 2D batches: copy only if final batch for selected y-indices
+  cu ( cudaMemcpyAsync( y, d_y, len * sizeof(WAVE),
+                        cudaMemcpyDeviceToHost, stream ) );
+}
+
 #define SuperpositionPerBlock(size) {                                   \
     /* const size_t local_memory_size = p.kernel_size * sizeof(WAVE);  */ \
     /* TODO add SHARED_MEMORY_SIZE * sizeof(WAVE) */                    \
@@ -62,15 +69,14 @@ inline void partial_superposition_per_block(const Geometry& p, const size_t Nx,
   }
 }
 
-inline void agg_batch_blocks_naive(const size_t N, const size_t M, cudaStream_t stream,
-                                   DeviceVector<double> d_y_batch,
-                                   double *d_y_block) {
-  // aggregate d_y_block and save to d_y_batch
+inline void sum_rows(const size_t width, const size_t n_rows, cudaStream_t stream,
+                     double *d_x, double *d_y) {
   // launch 1x1 kernel in the specified selected stream, from which multiple thrust are called indirectly
+  // auto ptr = thrust::device_ptr<double>(d_x);
   thrust::device_ptr<double>
-    x (d_y_block),
-    y (d_y_batch.data);
-  kernel::reduce_rows<<< 1,1,0, stream >>>(x, N, M, 0.0, thrust::plus<double>(), y);
+    x_ptr (d_x),
+    y_ptr (d_y);
+  kernel::reduce_rows<<< 1,1,0, stream >>>(x_ptr, width, n_rows, 0.0, thrust::plus<double>(), y_ptr);
 }
 
 inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
@@ -92,12 +98,13 @@ inline void agg_batch_blocks(const Geometry& p, cudaStream_t stream,
   }
 }
 
-inline void agg_batch_naive(const size_t half_n, cudaStream_t stream,
-                            double *d_y, WAVE *y) {
+inline void agg_batch_naive(const size_t half_n, WAVE *y, cudaStream_t stream,
+                            double *d_x, double *d_y) {
+  // wrapper for thrust call using streams
   // TODO replace zip by `re, im => a, phi ` (complex to polar)
-  // zip transposes & flattens d_y and overwrites d_y to avoid additional memory. TODO check for side effects
-  kernel::zip_arrays<<< KERNEL_SIZE, 1, 0, stream >>>(d_y, d_y + half_n, half_n, (WAVE*) d_y);
-	cu( cudaMemcpyAsync(y, d_y, half_n * sizeof(WAVE), cudaMemcpyDeviceToHost, stream ) );
+  kernel::zip_arrays<<< KERNEL_SIZE,1, 0, stream >>>(d_x, d_x + half_n, half_n, (WAVE*) d_y);
+	cu( cudaMemcpyAsync(y, d_y, half_n * sizeof(WAVE),
+                      cudaMemcpyDeviceToHost, stream ) );
 }
 
 inline void agg_batch(const Geometry& p, WAVE *y, cudaStream_t stream,
@@ -177,6 +184,9 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
     printf("Warning, suboptimal input size: %f < %f", x.size(), p.gridSize * p.blockSize);
 
   auto y = std::vector<WAVE>(M);
+  // TODO duplicate stream batches to normal memory if too large
+  // WAVE *y;
+  // cudaMallocHost(&y, M);
 
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   const thrust::device_vector<WAVE> d_x = x;
@@ -191,8 +201,9 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   double *d_y_block_ptr;
   double *d_y_batch_ptr;
   SPACE *d_v_ptr;
-  auto d_y_block  = init::pinned_malloc_vector<double>(&d_y_block_ptr, p.n_streams, 2 * batch_out_size);
-  auto d_y_batch  = init::pinned_malloc_matrix<double>(&d_y_batch_ptr, p.n_streams, 2 * p.n_per_batch);
+  // TODO don't use pinned memory for d_y_
+  auto d_y_block  = init::malloc_vectors<double>(&d_y_block_ptr, p.n_streams, 2 * batch_out_size);
+  auto d_y_batch  = init::pinned_malloc_vectors<double>(&d_y_batch_ptr, p.n_streams, 2 * p.n_per_batch);
   auto d_v        = init::pinned_malloc_matrix<SPACE>(&d_v_ptr, p.n_streams, p.n_per_batch * DIMS);
 
   for (auto& stream : streams)
@@ -206,6 +217,7 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
       if (p.n_batches > 10 && i_batch % (int) (p.n_batches / 10) == 0)
         printf("\tbatch %0.3fk / %0.3fk\n", i_batch * 1e-3, p.n_batches * 1e-3);
 
+      // TODO in case of 2D batches: only in case of new y-indices
       cp_batch_data_to_device<SPACE>(&v[i_batch * p.n_per_batch * DIMS], d_v[i_stream],
                                      streams[i_stream]);
 
@@ -218,17 +230,23 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
 
     // do aggregations in separate stream-loops because of imperfect async functions calls on host
     // this may yield a ~2.5x speedup
+    // TODO test again, with updated kernel funcs
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-      agg_batch_blocks_naive(batch_out_size / p.n_per_batch, p.n_per_batch * 2,
-                             streams[i_stream],
-                             d_y_batch[i_stream],
-                             d_y_block[i_stream]);
+      // save to pinned memory to (potentially) improve performance
+      // TODO in case of 2D batches: save to d_y_batch, and then add to d_y_block
+      sum_rows(batch_out_size / p.n_per_batch, 2 * p.n_per_batch,
+               streams[i_stream], d_y_block[i_stream], d_y_batch[i_stream]);
     }
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto i_batch = i + i_stream;
-      agg_batch_naive(p.n_per_batch, streams[i_stream],
-                      d_y_batch[i_stream].data, &y[i_batch * p.n_per_batch]);
+      // re-use pinned memory
+      double *ptr = d_y_batch[i_stream];
+      // TODO replace zip by `re, im => a, phi ` (complex to polar) (and immediately add to prev results)?
+      kernel::zip_arrays<<< KERNEL_SIZE, 1, 0, streams[i_stream] >>>(ptr, ptr + p.n_per_batch,
+                                                                     p.n_per_batch, (WAVE*) ptr);
+      cp_batch_data_to_host(d_y_batch[i_stream], &y[i_batch * p.n_per_batch],
+                            p.n_per_batch, streams[i_stream]);
     }
   }
 
@@ -246,8 +264,9 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   printf("free device memory\n");
 #endif
 
+  cu( cudaFree(d_y_block_ptr ) );
+  // cu( cudaFreeHost(d_y_block_ptr ) );
   cu( cudaFreeHost(d_y_batch_ptr ) );
-  cu( cudaFreeHost(d_y_block_ptr ) );
   cu( cudaFreeHost(d_v_ptr       ) );
 
 #ifdef DEBUG
@@ -255,6 +274,9 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   assert(std::any_of(y.begin(), y.begin() + len, abs_of_is_positive));
 #endif
   return y;
+  // return std::vector<WAVE>{y, y + M};
+  // return thrust::host_vector<>(y, );
+  // return std::vector<WAVE>(y, y + M);
 }
 
 
@@ -297,8 +319,8 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
   double *d_y_block_ptr;
   double *d_y_batch_ptr;
   SPACE *d_v_ptr;
-  auto d_y_stream = init::pinned_malloc_vector<WAVE>(&d_y_stream_ptr, p.n_streams, p.n_per_batch);
-  auto d_y_block  = init::pinned_malloc_vector<double>(&d_y_block_ptr, p.n_streams, 2 * p.n_per_batch * p.gridSize);
+  auto d_y_stream = init::pinned_malloc_vectors<WAVE>(&d_y_stream_ptr, p.n_streams, p.n_per_batch);
+  auto d_y_block  = init::pinned_malloc_vectors<double>(&d_y_block_ptr, p.n_streams, 2 * p.n_per_batch * p.gridSize);
   auto d_y_batch  = init::pinned_malloc_matrix<double>(&d_y_batch_ptr, p.n_streams, 2 * p.n_per_batch);
   auto d_v        = init::pinned_malloc_matrix<SPACE>(&d_v_ptr, p.n_streams, p.n_per_batch * DIMS);
 
