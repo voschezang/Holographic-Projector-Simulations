@@ -4,7 +4,7 @@
 # GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/8.3.0.1/x86_64-centos7/bin
 # GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/9.2.0/x86_64-centos7/bin
 #-ccbin=$(GCC)
-FLAGS := -l curand -std=c++14
+FLAGS := -l curand -l cublas -std=c++14
 EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip

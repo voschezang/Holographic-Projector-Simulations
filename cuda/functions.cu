@@ -8,6 +8,10 @@
 #include <thrust/device_vector.h>
 #include <thrust/reduce.h>
 
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+#include <cusolverDn.h>
+
 #include "macros.h"
 #include "hyper_params.h"
 #include "util.h"
@@ -69,8 +73,24 @@ inline void partial_superposition_per_block(const Geometry& p, const size_t Nx,
   }
 }
 
-inline void sum_rows(const size_t width, const size_t n_rows, cudaStream_t stream,
-                     double *d_x, double *d_y) {
+inline void sum_rows(const size_t width, const size_t n_rows, cublasHandle_t handle,
+                     double *d_a, const double *d_b,
+                     double *d_y, const double beta = 0.) {
+  // GEMV: GEneral Matrix Vector multiplication
+  // y = alpha + op(A)x + beta y
+  // TODO use y from previous y batch for 2D batch
+  // double *d_a = d_y_block[i_stream];
+  // const double *d_b = thrust::raw_pointer_cast(d_unit.data());
+  // double *d_y = d_y_batch[i_stream];
+  // const size_t
+  //   m = batch_out_size / p.n_per_batch,
+  //   n = p.n_per_batch;
+  const double alpha = 1;
+  cuB( cublasDgemv(handle, CUBLAS_OP_T, width, n_rows, &alpha, d_a, width, d_b, 1, &beta, d_y, 1) );
+}
+
+inline void sum_rows_thrust(const size_t width, const size_t n_rows, cudaStream_t stream,
+                            double *d_x, double *d_y) {
   // launch 1x1 kernel in the specified selected stream, from which multiple thrust are called indirectly
   // auto ptr = thrust::device_ptr<double>(d_x);
   thrust::device_ptr<double>
@@ -183,10 +203,15 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   if (x.size() < p.gridSize * p.blockSize)
     printf("Warning, suboptimal input size: %f < %f", x.size(), p.gridSize * p.blockSize);
 
-  auto y = std::vector<WAVE>(M);
   // TODO duplicate stream batches to normal memory if too large
-  // WAVE *y;
-  // cudaMallocHost(&y, M);
+  WAVE *y_ptr;
+  cudaMallocHost(&y_ptr, M);
+  auto y = std::vector<WAVE>(y_ptr, y_ptr + M);
+  // auto y = std::vector<WAVE>(M);
+
+  // // return std::vector<WAVE>{y, y + M};
+  // // return thrust::host_vector<>(y, );
+  // // return std::vector<WAVE>(y, y + M);
 
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   const thrust::device_vector<WAVE> d_x = x;
@@ -195,7 +220,6 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   const auto d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
   const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
 
-  cudaStream_t streams[p.n_streams];
   // malloc data using pinned memory for all batches before starting streams
   // TODO consider std::unique_ptr<>
   double *d_y_block_ptr;
@@ -206,8 +230,18 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   auto d_y_batch  = init::pinned_malloc_vectors<double>(&d_y_batch_ptr, p.n_streams, 2 * p.n_per_batch);
   auto d_v        = init::pinned_malloc_matrix<SPACE>(&d_v_ptr, p.n_streams, p.n_per_batch * DIMS);
 
+  const auto d_unit = thrust::device_vector<double>(2 * batch_out_size, 1.); // unit vector for blas
+  const double *d_b = thrust::raw_pointer_cast(d_unit.data());
+
+  cudaStream_t streams[p.n_streams];
+  cublasHandle_t handles[p.n_streams];
   for (auto& stream : streams)
-    cudaStreamCreate(&stream);
+    cu( cudaStreamCreate(&stream) );
+
+  for (unsigned int i = 0; i < p.n_streams; ++i) {
+      cuB( cublasCreate(&handles[i]) );
+      cublasSetStream(handles[i], streams[i]);
+  }
 
   for (size_t i = 0; i < p.n_batches; i+=p.n_streams) {
     // start each distinct kernel in batches
@@ -235,7 +269,8 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
       // save to pinned memory to (potentially) improve performance
       // TODO in case of 2D batches: save to d_y_batch, and then add to d_y_block
       sum_rows(batch_out_size / p.n_per_batch, 2 * p.n_per_batch,
-               streams[i_stream], d_y_block[i_stream], d_y_batch[i_stream]);
+               handles[i_stream], d_y_block[i_stream], d_b, d_y_batch[i_stream],
+               0);
     }
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
@@ -264,6 +299,9 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   printf("free device memory\n");
 #endif
 
+  for (auto& handle : handles)
+    cuB( cublasDestroy(handle) );
+
   cu( cudaFree(d_y_block_ptr ) );
   // cu( cudaFreeHost(d_y_block_ptr ) );
   cu( cudaFreeHost(d_y_batch_ptr ) );
@@ -274,9 +312,6 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   assert(std::any_of(y.begin(), y.begin() + len, abs_of_is_positive));
 #endif
   return y;
-  // return std::vector<WAVE>{y, y + M};
-  // return thrust::host_vector<>(y, );
-  // return std::vector<WAVE>(y, y + M);
 }
 
 

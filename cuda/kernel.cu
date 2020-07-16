@@ -5,11 +5,14 @@
 #include <stdio.h>
 #include <time.h>
 #include <cuComplex.h>
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
 
 #include "macros.h"
 #include "hyper_params.h"
 
 #define cu(result) { cudaCheck((result), __FILE__, __LINE__); }
+#define cuB(result) { cudaBlasCheck((result), __FILE__, __LINE__); }
 
 
 /** GPU version of std::vector
@@ -31,6 +34,49 @@ cudaError_t cudaCheck(cudaError_t result, const char *file, int line)
     exit(result);
   }
 // #endif
+  return result;
+}
+
+inline
+cublasStatus_t cudaBlasCheck(cublasStatus_t result, const char *file, int line)
+{
+  // check for cuda errors
+  // #ifdef DEBUG
+  if (result != CUBLAS_STATUS_SUCCESS) {
+    auto s = std::string();
+    switch (result)
+      {
+      case CUBLAS_STATUS_SUCCESS:
+        s = "CUBLAS_STATUS_SUCCESS";
+
+      case CUBLAS_STATUS_NOT_INITIALIZED:
+        s = "CUBLAS_STATUS_NOT_INITIALIZED";
+
+      case CUBLAS_STATUS_ALLOC_FAILED:
+        s = "CUBLAS_STATUS_ALLOC_FAILED";
+
+      case CUBLAS_STATUS_INVALID_VALUE:
+        s = "CUBLAS_STATUS_INVALID_VALUE";
+
+      case CUBLAS_STATUS_ARCH_MISMATCH:
+        s = "CUBLAS_STATUS_ARCH_MISMATCH";
+
+      case CUBLAS_STATUS_MAPPING_ERROR:
+        s = "CUBLAS_STATUS_MAPPING_ERROR";
+
+      case CUBLAS_STATUS_EXECUTION_FAILED:
+        s = "CUBLAS_STATUS_EXECUTION_FAILED";
+
+      case CUBLAS_STATUS_INTERNAL_ERROR:
+        s = "CUBLAS_STATUS_INTERNAL_ERROR";
+
+      default:
+        s = "<unknown>";
+      }
+    fprintf(stderr, "[%s:%d] cuBLAS Runtime Error: %s\n", file, line, s);
+    exit(result);
+  }
+  // #endif
   return result;
 }
 
@@ -133,7 +179,7 @@ __global__ void reduce(Iterator first, Iterator last, T init, BinaryOperation bi
 template<typename Iterator, typename T, typename BinaryOperation, typename Pointer>
 __global__ void reduce_rows(Iterator first, const size_t width, const size_t n_rows, T init, BinaryOperation binary_op, Pointer results)
 {
-  // TODO consider thrust::reduce_by_key
+  // TODO use cuBlas gemv (with amortized plan)
   for (unsigned int i = 0; i < n_rows; ++i) {
     const size_t di = i * width;
     // from https://github.com/thrust/thrust/blob/master/examples/cuda/async_reduce.cu

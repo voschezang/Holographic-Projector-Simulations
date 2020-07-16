@@ -332,9 +332,14 @@ __global__ void per_block_naive(const Geometry p,
           y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
         }
         const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
+        // TODO if shared data:
+        // y_shared[] = y;
+        // else
         y_global_re[i] = y.x;
         y_global_im[i] = y.y;
       }
+      // TODO sum_columns(shared_data)
+      // https://github.com/thrust/thrust/blob/master/examples/sum_rows.cu
     }
   }
 }
