@@ -33,17 +33,9 @@
 /* #define ARBITRARY_PHASE2 1.321 */
 /* #define ARBITRARY_PHASE3 -0.814 */
 
-#define DOUBLE_PRECISION
-
-#ifdef DOUBLE_PRECISION
 #define WAVE cuDoubleComplex
 #define IO_PRECISION 8
-/* #define ABS(x) (cuCabs(x)) */
-#define SPACE double  // space type (for each cartesian coordinate)
-#else
-#define WAVE cuFloatComplex  // wave type
-#define SPACE float // space (coordinate) type
-#endif
+#define SPACE double // space type (for each cartesian coordinate)
 
 #ifndef NORM_3D
 #define NORM_3D norm3d // CUDA math api

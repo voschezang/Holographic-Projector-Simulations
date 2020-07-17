@@ -325,7 +325,7 @@ __global__ void per_block_naive(const Geometry p,
   }
   else {
     // TODO compare enums cub::BlockReduceAlgorithm: cub::BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY cub::BLOCK_REDUCE_WARP_REDUCTIONS
-    // typedef cub::BlockReduce<double, 16, cub::BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY, KERNEL_SIZE, 700> BlockReduceT;
+    typedef cub::BlockReduce<double, blockDim_x, cub::BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY, 700> BlockReduceT;
     // typedef cub::BlockReduce<double, blockDim_x> BlockReduceT;
     typedef cub::BlockReduce<double, blockDim_x> BlockReduce;
     __shared__ typename BlockReduce::TempStorage y_shared[blockDim_y];

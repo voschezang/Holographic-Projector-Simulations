@@ -23,7 +23,7 @@ Params read_args(int argc, char **argv) {
     {n_planes:     {obj: 1,
                     projector: 1, // unused
                     projection: 1},
-     n_per_plane:  {obj: 1,
+     n_per_plane:  {obj: 5,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,
@@ -35,8 +35,10 @@ Params read_args(int argc, char **argv) {
                    y: {min: 0., max: 0.},
                    z: obj_z_offset},
 
-     rel_obj_width: {min: 0.02 / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH
-     rel_projection_width: {min: 0.1, max: 1.1}, // 0.005 // N_sqrt * 8.01 * LAMBDA
+     /* rel_obj_width: {min: 0.02 / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH */
+     /* rel_projection_width: {min: 0.1, max: 1.1}, // 0.005 // N_sqrt * 8.01 * LAMBDA */
+     rel_obj_width: {min: 0.002 / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH
+     rel_projection_width: {min: 1.2, max: 1.1}, // 0.005 // N_sqrt * 8.01 * LAMBDA
      projection_z_offset: obj_z_offset,
 
      randomize: false

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <cuda_profiler_api.h>
 #include <thrust/host_vector.h> // unused in this file but causes error if omitted
+#include <thrust/system/cuda/experimental/pinned_allocator.h>
 
 #include "macros.h"
 #include "hyper_params.h"
@@ -49,6 +50,7 @@ int main(int argc, char** argv) {
   // const bool add_reference = false;
 
   // TODO rename non-spatial xyz,uvw to setup.obj, setup.projector etc
+
   auto
     u = std::vector<SPACE>(DIMS * n_per_plane.obj),
     v = std::vector<SPACE>(DIMS * n_per_plane.projector),
