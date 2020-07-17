@@ -35,9 +35,65 @@ inline void cp_batch_data_to_host(T *d_y, WAVE *y, const size_t len, cudaStream_
                         cudaMemcpyDeviceToHost, stream ) );
 }
 
+#define SuperpositionPerBlockNaive(blockDim_y) {                        \
+    superposition::per_block_naive<direction, blockDim_x, blockDim_y, algorithm, shared_memory> \
+      <<< gridDim, blockDim, 0, stream >>>                              \
+      (p, N, M, d_x_ptr, d_u_ptr, d_v,                                  \
+       d_y_block_re, d_y_block_im);                                     \
+  }
+
+#define SuperpositionPerBlockNaiveHelper(blockDim_x) {                  \
+    superposition_per_block_naive_helper<direction, blockDim_x, algorithm, shared_memory> \
+      (gridDim, blockDim, stream,                                       \
+       p, N, M, d_x_ptr, d_u_ptr, d_v,                                  \
+       d_y_block_re, d_y_block_im);                                     \
+  }
+
+template<Direction direction, unsigned int blockDim_x, Algorithm algorithm, bool shared_memory>
+inline void superposition_per_block_naive_helper(const dim3 gridDim, const dim3 blockDim, cudaStream_t stream,
+                                          const Geometry& p, const size_t N, const size_t M,
+                                          const WAVE *d_x_ptr, const SPACE *d_u_ptr, const SPACE *d_v,
+                                          double *d_y_block_re, double *d_y_block_im)
+{
+  // unrolled for loop to allow constant blockDim
+  switch (blockDim.y) {
+  case   1: SuperpositionPerBlockNaive(  1) break;
+  case   2: SuperpositionPerBlockNaive(  2) break;
+  case   4: SuperpositionPerBlockNaive(  4) break;
+  case   8: SuperpositionPerBlockNaive(  8) break;
+  case  16: SuperpositionPerBlockNaive( 16) break;
+  // case  32: SuperpositionPerBlockNaive( 32) break;
+  // case  64: SuperpositionPerBlockNaive( 64) break;
+  // case 128: SuperpositionPerBlockNaive(128) break;
+  // case 256: SuperpositionPerBlockNaive(256) break;
+  // case 512: SuperpositionPerBlockNaive(512) break;
+  default: {printf("BlockSize.y: %u not implemented\n", blockDim.y); exit(0);}
+  }
+}
+
+template<Direction direction, Algorithm algorithm, bool shared_memory>
+inline void superposition_per_block_naive(const dim3 gridDim, const dim3 blockDim, cudaStream_t stream,
+                                          const Geometry& p, const size_t N, const size_t M,
+                                          const WAVE *d_x_ptr, const SPACE *d_u_ptr, const SPACE *d_v,
+                                          double *d_y_block_re, double *d_y_block_im)
+{
+  // unrolled for loop to allow constant blockDim
+  switch (blockDim.x) {
+  case   1: SuperpositionPerBlockNaiveHelper(  1) break;
+  case   2: SuperpositionPerBlockNaiveHelper(  2) break;
+  case   4: SuperpositionPerBlockNaiveHelper(  4) break;
+  case   8: SuperpositionPerBlockNaiveHelper(  8) break;
+  case  16: SuperpositionPerBlockNaiveHelper( 16) break;
+  case  32: SuperpositionPerBlockNaiveHelper( 32) break;
+  case  64: SuperpositionPerBlockNaiveHelper( 64) break;
+  case 128: SuperpositionPerBlockNaiveHelper(128) break;
+  case 256: SuperpositionPerBlockNaiveHelper(256) break;
+  case 512: SuperpositionPerBlockNaiveHelper(512) break;
+  default: {printf("BlockSize.x: %u not implemented\n", blockDim.x); exit(0);}
+  }
+}
+
 #define SuperpositionPerBlock(size) {                                   \
-    /* const size_t local_memory_size = p.kernel_size * sizeof(WAVE);  */ \
-    /* TODO add SHARED_MEMORY_SIZE * sizeof(WAVE) */                    \
     superposition::per_block<direction, size><<< p.gridSize, p.blockSize, 0, stream >>> \
     (p, d_x, Nx, d_u, &d_v[k * DIMS], &d_y_block[j] );                  \
   }
@@ -78,15 +134,15 @@ inline void sum_rows(const size_t width, const size_t n_rows, cublasHandle_t han
                      double *d_y, const double beta = 0.) {
   // GEMV: GEneral Matrix Vector multiplication
   // y = alpha + op(A)x + beta y
+  // Note, argument width = lda = stride of matrix
+
   // TODO use y from previous y batch for 2D batch
-  // double *d_a = d_y_block[i_stream];
-  // const double *d_b = thrust::raw_pointer_cast(d_unit.data());
-  // double *d_y = d_y_batch[i_stream];
-  // const size_t
-  //   m = batch_out_size / p.n_per_batch,
-  //   n = p.n_per_batch;
+  // TODO use cublasCgemv
   const double alpha = 1;
-  cuB( cublasDgemv(handle, CUBLAS_OP_T, width, n_rows, &alpha, d_a, width, d_b, 1, &beta, d_y, 1) );
+  // printf("width: %lu, n_rows: %lu\n" , width, n_rows);
+  // cuB( cublasDgemv(handle, CUBLAS_OP_N, n_rows, width, &alpha, d_a, n_rows, d_b, 1, &beta, d_y, 1) );
+  cuB( cublasDgemv(handle, CUBLAS_OP_N, n_rows / 2, width, &alpha, d_a, n_rows / 2, d_b, 1, &beta, d_y, 1) );
+  cuB( cublasDgemv(handle, CUBLAS_OP_N, n_rows / 2, width, &alpha, d_a + width * n_rows / 2, n_rows/2, d_b, 1, &beta, d_y + n_rows / 2, 1) );
 }
 
 inline void sum_rows_thrust(const size_t width, const size_t n_rows, cudaStream_t stream,
@@ -177,7 +233,7 @@ void rm_phase(std::vector<WAVE> &c) {
 }
 
 
-template<Direction direction, Algorithm algorithm = Algorithm::Naive>
+template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
 inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
                                          const std::vector<SPACE> &u,
                                          const std::vector<SPACE> &v,
@@ -195,6 +251,9 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
   size_t batch_out_size = MIN(N, gridSize.x) * p.n_per_batch;
   if (algorithm == Algorithm::Naive)
     batch_out_size = N * p.n_per_batch;
+  else if (shared_memory)
+    batch_out_size = MIN(N, gridDim.x) * p.n_per_batch;
+
   printf("batch out size %lu\n", batch_out_size);
 
 #ifdef DEBUG
@@ -256,9 +315,9 @@ inline std::vector<WAVE> transform_naive(const std::vector<WAVE> &x,
                                      streams[i_stream]);
 
       // const size_t k = i_batch * p.n_per_batch;
-      superposition::per_block_naive<direction, algorithm>              \
-        <<< gridDim, blockDim, 0, streams[i_stream] >>>                 \
-        (p, N, p.n_per_batch, d_x_ptr, d_u_ptr, d_v[i_stream].data,
+      superposition_per_block_naive<direction, algorithm, shared_memory>  \
+        (gridDim, blockDim, streams[i_stream],
+         p, N, p.n_per_batch, d_x_ptr, d_u_ptr, d_v[i_stream].data,
          d_y_block[i_stream], d_y_block[i_stream] + batch_out_size );
     }
 
@@ -439,9 +498,11 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
                                       add_constant_wave ? 1 : 0,
                                       add_reference_wave ? 1 : 0};
   normalize(weights);
+  const bool shared_memory = true;
+  // const bool shared_memory = false;
   // auto y = transform<direction>(x, u, v, p);
   // auto y = transform_naive<direction, Algorithm::Naive>(x, u, v, p);
-  auto y = transform_naive<direction, Algorithm::Alt>(x, u, v, p);
+  auto y = transform_naive<direction, Algorithm::Alt, shared_memory>(x, u, v, p);
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 

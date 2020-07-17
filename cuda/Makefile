@@ -5,11 +5,12 @@
 # GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/9.2.0/x86_64-centos7/bin
 #-ccbin=$(GCC)
 FLAGS := -l curand -l cublas -std=c++14
+ARCH_FLAGS := -arch=compute_70 -code=sm_70
 EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
-HyperParams := KERNEL_SIZE='16' # 8
+HyperParams := KERNEL_SIZE='16' # 8 16
 	# TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE) test
 
@@ -18,7 +19,7 @@ build:
 	#  -ftz=true -prec-div=false -prec-sqrt=false
 	# TODO check -O2 vs. -O3 performance
 	# -g debug
-	nvcc -o $(EXE) main.cu $(FLAGS) -D$(HyperParams)
+	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS) -D$(HyperParams)
 
 debug:
 	nvcc -o $(EXE) main.cu $(FLAGS) -D$(HyperParams)

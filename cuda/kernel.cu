@@ -44,11 +44,7 @@ cublasStatus_t cudaBlasCheck(cublasStatus_t result, const char *file, int line)
   // #ifdef DEBUG
   if (result != CUBLAS_STATUS_SUCCESS) {
     auto s = std::string();
-    switch (result)
-      {
-      case CUBLAS_STATUS_SUCCESS:
-        s = "CUBLAS_STATUS_SUCCESS";
-
+    switch (result) {
       case CUBLAS_STATUS_NOT_INITIALIZED:
         s = "CUBLAS_STATUS_NOT_INITIALIZED";
 
@@ -73,7 +69,8 @@ cublasStatus_t cudaBlasCheck(cublasStatus_t result, const char *file, int line)
       default:
         s = "<unknown>";
       }
-    fprintf(stderr, "[%s:%d] cuBLAS Runtime Error: %s\n", file, line, s);
+    fprintf(stderr, "[%s:%d] cuBLAS Runtime Error: ", file, line);
+    std::cout << s << '\n';
     exit(result);
   }
   // #endif

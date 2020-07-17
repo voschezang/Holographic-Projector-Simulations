@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <cuComplex.h>
+#include <cub/cub.cuh>   // or equivalently <cub/block/block_reduce.cuh>
 
 #include "macros.h"
 #include "hyper_params.h"
@@ -293,7 +294,7 @@ __global__ void per_block(const Geometry p,
 }
 
 
-template<Direction direction, Algorithm algorithm>
+template<Direction direction, int blockDim_x, int blockDim_y, Algorithm algorithm, bool shared_memory = false>
 __global__ void per_block_naive(const Geometry p,
                                 const size_t N, const size_t M,
                                 const WAVE *__restrict__ x,
@@ -323,6 +324,12 @@ __global__ void per_block_naive(const Geometry p,
       } }
   }
   else {
+    // TODO compare enums cub::BlockReduceAlgorithm: cub::BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY cub::BLOCK_REDUCE_WARP_REDUCTIONS
+    // typedef cub::BlockReduce<double, 16, cub::BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY, KERNEL_SIZE, 700> BlockReduceT;
+    // typedef cub::BlockReduce<double, blockDim_x> BlockReduceT;
+    typedef cub::BlockReduce<double, blockDim_x> BlockReduce;
+    __shared__ typename BlockReduce::TempStorage y_shared[blockDim_y];
+
     // save results to Y[m, x] instead of Y[m, n]
     for (unsigned int m = tid.y; m < M; m += gridSize.y) {
       // cache v[n]? or auto
@@ -331,19 +338,32 @@ __global__ void per_block_naive(const Geometry p,
         for (unsigned int n = tid.x; n < N; n += gridSize.x) {
           y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
         }
-        const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
-        // TODO if shared data:
-        // y_shared[] = y;
-        // else
-        y_global_re[i] = y.x;
-        y_global_im[i] = y.y;
+        // https://github.com/thrust/thrust/blob/master/examples/sum_rows.cu
+        // http://nvlabs.github.io/cub/classcub_1_1_block_reduce.html
+        if (shared_memory && N > gridDim.x) {
+          // TODO use 2x as much shared memory and let CUB figure out the best performance?
+          // Real part .x
+          y.x = BlockReduce(y_shared[threadIdx.y]).Sum(y.x);
+          __syncthreads();
+          // Imaginary part .y
+          y.y = BlockReduce(y_shared[threadIdx.y]).Sum(y.y);
+          __syncthreads();
+
+          if (threadIdx.x == 0) {
+            const size_t i = Yidx(blockIdx.x, m, MIN(N, gridDim.x), M);
+            y_global_re[i] = y.x;
+            y_global_im[i] = y.y;
+          }
+        }
+        else {
+          const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
+          y_global_re[i] = y.x;
+          y_global_im[i] = y.y;
+        }
       }
-      // TODO sum_columns(shared_data)
-      // https://github.com/thrust/thrust/blob/master/examples/sum_rows.cu
     }
   }
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////

@@ -23,7 +23,7 @@ double flops(double runtime, size_t n, size_t m) {
   // Quadro GV100: peak 7.4 TFLOPS (dp), 14.8 (sp), 59.3 (int)
   // bandwidth 870 GB/s
   //  cores: 5120, tensor cores 640, memory: 32 GB
-  // generation Volta, compute capability 7.0
+  // generation Volta, compute capability 7.0 -arch=sm_72 or sm_72
   // max size: 49 152
   // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOP_PER_POINT, t, N*N * 1e-9);
   return 1e-12 * n * m * (double) FLOP_PER_POINT / runtime;

@@ -57,8 +57,8 @@
 /* #define Ix(i,j,k,n) (k + (j) * DIMS + (i) * DIMS * (n)) */
 #define Ix(i,j,k,n) ((k) + DIMS * ((j) + (i) * (n)))
 
-/* #define Yidx(n,m,N,M) ((m) + (n) * (M)) // TODO this requires a different agg kernel */
-#define Yidx(n,m,N,M) ((n) + (m) * (N))
+#define Yidx(n,m,N,M) ((m) + (n) * (M)) // TODO this requires a different agg kernel
+/* #define Yidx(n,m,N,M) ((n) + (m) * (N)) */
 
 // two variants: shape (DIMS, N) and (N, DIMS)
 /* #define Ix2(i,j,_) (j + i * DIMS) */
