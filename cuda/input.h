@@ -16,14 +16,14 @@ namespace input {
 
 Params read_args(int argc, char **argv) {
   const double z_offset = 0.35;
-  const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset};
-  /* const auto obj_z_offset = Range<double> {min: 0.35, max: 0.35}; */
+  /* const double z_offset = 0.01; */
+  const auto obj_z_offset = Range<double> {min: z_offset, max: 0.05};
   // projector z_offset is always zero
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
-                    projection: 1},
-     n_per_plane:  {obj: 5,
+                    projection: 2},
+     n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,

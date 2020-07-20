@@ -16,8 +16,8 @@
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
-#define N_sqrt 256
-/* #define N_sqrt 512 */
+/* #define N_sqrt 256 */
+#define N_sqrt 512
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 
@@ -31,7 +31,7 @@
 /* #define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch */
 // TODO compute optimal batch size as function of N
 
-#define N_STREAMS 16
+#define N_STREAMS 1
 /* #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream */
 /* #define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE) */
 /* #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM) */
@@ -40,17 +40,17 @@
 
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
 #if (N_sqrt <= 32)
-#define BLOCKDIM 8
+#define BLOCKDIM 4
 #elif (N_sqrt <= 64)
-#define BLOCKDIM 16
+#define BLOCKDIM 8
 #elif (N_sqrt <= 128)
-#define BLOCKDIM 64 // TODO blocksize >32 causes matrix-bug (in combination with PARALLEL_INTRA_WARP_AGG?)
+#define BLOCKDIM 16
 #elif (N_sqrt <= 256)
-#define BLOCKDIM 64
-#elif (N_sqrt <= 512)
-#define BLOCKDIM 128
+#define BLOCKDIM 32
+/* #elif (N_sqrt <= 512) */
+/* #define BLOCKDIM 64 */
 #else
-#define BLOCKDIM 128
+#define BLOCKDIM 64
 #endif
 /* #define BLOCKDIM 1 */
 
@@ -59,7 +59,7 @@
 #elif (N_sqrt <= 256)
 #define GRIDDIM (BLOCKDIM)
 #else
-#define GRIDDIM (BLOCKDIM / 2)
+#define GRIDDIM (BLOCKDIM * 2)
 #endif
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
 

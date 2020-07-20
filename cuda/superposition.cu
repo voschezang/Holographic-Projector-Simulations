@@ -293,7 +293,6 @@ __global__ void per_block(const Geometry p,
   // }
 }
 
-
 template<Direction direction, int blockDim_x, int blockDim_y, Algorithm algorithm, bool shared_memory = false>
 __global__ void per_block_naive(const Geometry p,
                                 const size_t N, const size_t M,
@@ -302,63 +301,75 @@ __global__ void per_block_naive(const Geometry p,
                                 // const double *__restrict__ phi,
                                 const SPACE *__restrict__ u,
                                 const SPACE *__restrict__ v,
-                                double *__restrict__ y_global_re,
-                                double *__restrict__ y_global_im) {
+                                WAVE *__restrict__ y_global) {
+#ifdef DEBUG
+  assert(blockDim.x * blockDim.y * blockDim.z <= 1024); // max number of threads per block
+#endif
   // const auto
   //   tid = blockIdx * blockDim + threadIdx,
   //   gridSize = blockDim * gridDim;
   const dim3
-    tid = {blockIdx.x * blockDim.x + threadIdx.x,
-           blockIdx.y * blockDim.y + threadIdx.y},
-    gridSize = {blockDim.x * gridDim.x,
-                blockDim.y * gridDim.y};
+    tid (blockIdx.x * blockDim.x + threadIdx.x,
+         blockIdx.y * blockDim.y + threadIdx.y),
+    gridSize (blockDim.x * gridDim.x,
+              blockDim.y * gridDim.y);
 
   if (algorithm == Algorithm::Naive) {
-    for (unsigned int n = tid.x; n < N; n += gridSize.x) {
-      // cache x[n], u[n]? or auto
-      for (unsigned int m = tid.y; m < M; m += gridSize.y) {
+    for (size_t n = tid.x; n < N; n += gridSize.x) {
+      for (size_t m = tid.y; m < M; m += gridSize.y) {
         const WAVE y = phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]);
         const size_t i = Yidx(n, m, N, M);
-        y_global_re[i] = y.x;
-        y_global_im[i] = y.y;
+        y_global[i] = y;
+#ifdef TEST_CONST_PHASE2
+        y_global[i] = from_polar(1., 0.);
+#endif
       } }
   }
   else {
     // TODO compare enums cub::BlockReduceAlgorithm: cub::BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY cub::BLOCK_REDUCE_WARP_REDUCTIONS
-    typedef cub::BlockReduce<double, blockDim_x, cub::BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY, 700> BlockReduceT;
-    // typedef cub::BlockReduce<double, blockDim_x> BlockReduceT;
-    typedef cub::BlockReduce<double, blockDim_x> BlockReduce;
-    __shared__ typename BlockReduce::TempStorage y_shared[blockDim_y];
+    typedef cub::BlockReduce<double, blockDim_x, cub::BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY, 1, 1, 700> BlockReduce;
+    // typedef cub::BlockReduce<double, blockDim_x> BlockReduce;
+    __shared__ typename BlockReduce::TempStorage y_shared[shared_memory ? blockDim_y : 1];
+    // __shared__ typename BlockReduce::TempStorage y_shared[blockDim_y];
 
     // save results to Y[m, x] instead of Y[m, n]
-    for (unsigned int m = tid.y; m < M; m += gridSize.y) {
-      // cache v[n]? or auto
-      if (tid.x < N) {
+    for (size_t m = tid.y; m < M; m += gridSize.y) {
+      // TODO cache u/v
+      if (tid.x < N) { // TODO this should cause deadlocks during BlockReduce
         WAVE y {0,0};
-        for (unsigned int n = tid.x; n < N; n += gridSize.x) {
+        for (size_t n = tid.x; n < N; n += gridSize.x) {
           y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
         }
+#ifdef TEST_CONST_PHASE2
+        y = from_polar(1., 0.);
+#endif
         // https://github.com/thrust/thrust/blob/master/examples/sum_rows.cu
         // http://nvlabs.github.io/cub/classcub_1_1_block_reduce.html
         if (shared_memory && N > gridDim.x) {
           // TODO use 2x as much shared memory and let CUB figure out the best performance?
+          // TODO don't save result to every thread, only thread 0
           // Real part .x
           y.x = BlockReduce(y_shared[threadIdx.y]).Sum(y.x);
           __syncthreads();
+          // TODO mv first global mem acces here? -> hide memory latency
           // Imaginary part .y
           y.y = BlockReduce(y_shared[threadIdx.y]).Sum(y.y);
           __syncthreads();
 
           if (threadIdx.x == 0) {
+#ifdef TEST_CONST_PHASE2
+            assert(blockDim_y == blockDim.y);
+            assert(y.x == blockDim_x);
+            assert(y.y == 0.);
+            y = from_polar(1., 0.);
+#endif
             const size_t i = Yidx(blockIdx.x, m, MIN(N, gridDim.x), M);
-            y_global_re[i] = y.x;
-            y_global_im[i] = y.y;
+            y_global[i] = y;
           }
         }
         else {
           const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
-          y_global_re[i] = y.x;
-          y_global_im[i] = y.y;
+          y_global[i] = y;
         }
       }
     }

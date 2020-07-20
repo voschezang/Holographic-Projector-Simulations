@@ -75,21 +75,21 @@ double memory_in_MB(size_t n) {
 
 void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
   printf("\nHyperparams:");
-  printf("\n CUDA geometry: <<<%i,%i>>>", p.gridSize, p.blockSize);
-  printf("\t(%.3fk threads)", p.gridSize * p.blockSize * 1e-3);
+  printf("\n CUDA geometry: <<<%i,%i>>>", p.gridDim, p.blockSize);
+  printf("\t(%.3fk threads)", p.gridDim * p.blockSize * 1e-3);
 
   printf("\n Input size (datapoints): objects: %i x %i, projectors: %i x %i, projections: %i x %i",
          n_planes.obj, n_per_plane.obj,
          n_planes.projector, n_per_plane.projector,
          n_planes.projection, n_per_plane.projection);
-  printf("\n E[n objects          (per plane) / thread]: %.4fk", n_per_plane.obj / (double) p.gridSize * p.blockSize * 1e-3);
-  printf("\n E[n projector pixels (per plane) / thread]: %.4fk", n_per_plane.projector / (double) p.gridSize * p.blockSize * 1e-3);
+  printf("\n E[n objects          (per plane) / thread]: %.4fk", n_per_plane.obj / (double) p.gridDim * p.blockSize * 1e-3);
+  printf("\n E[n projector pixels (per plane) / thread]: %.4fk", n_per_plane.projector / (double) p.gridDim * p.blockSize * 1e-3);
 
   printf("\nGeometry:\n n streams: \t%6i", p.n_streams);
   printf("\tstream size: \t%6i", p.stream_size);
   printf("\tbatch size: \t%6i", p.batch_size);
   printf("\n kernel size: \t%6i", p.kernel_size);
-  printf("\tgrid size: \t%6i", p.gridSize);
+  printf("\tgrid size: \t%6i", p.gridDim);
   printf("\tblockSize: \t%6i", p.blockSize);
 
   printf("\n\n (total) n batches: \t%6i", p.n_batches);
@@ -191,17 +191,6 @@ std::vector<T> read_bytes(std::string fn) {
   /* return unique_ptr<T>  */
   return std::vector<T>(ptr, ptr + size / sizeof(T));
 }
-/* printf("len: %i\n", *len); */
-/* for(auto i: contents) { */
-/*   int value = i; */
-/*   std::cout << "data: " << value << std::endl; */
-/* } */
-
-/* std::cout << "file size: " << contents.size() << std::endl; */
-
-/* struct {size_t len; std::string amp, pos; } read_meta(std::string fn) { */
-/*   size_t len; */
-/*   std::string amp, pos; */
 
 /**
  * (With lazy evaluation) Map/apply function `f` to each array element and write the result to file `out`.

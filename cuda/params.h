@@ -63,7 +63,7 @@ struct Params {
  */
 struct Geometry {
   size_t blockSize,   // prod(blockDim.x,y,z), i.e. threads per block
-         gridSize,    // prod(gridDim.x,y,z), i.e. n blocks per kernel
+         gridDim,     // prod(gridDim.x,y,z), i.e. n blocks per kernel
          kernel_size, // n output datapoints per kernel
          batch_size,  // n kernels per batch
          stream_size, // n batches per stream

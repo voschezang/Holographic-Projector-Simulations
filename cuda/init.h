@@ -40,7 +40,7 @@ namespace init {
 void derive_secondary_geometry(const size_t n, Geometry& p) {
   p.stream_size = n / (p.n_streams * p.batch_size * p.kernel_size);
 
-  assert(p.blockSize   > 0); assert(p.gridSize   > 0);
+  assert(p.blockSize   > 0); assert(p.gridDim   > 0);
   assert(p.kernel_size > 0); assert(p.batch_size > 0);
   assert(p.stream_size > 0); assert(p.n_streams  > 0);
   assert(n == p.kernel_size * p.batch_size * p.stream_size * p.n_streams);
@@ -51,7 +51,7 @@ void derive_secondary_geometry(const size_t n, Geometry& p) {
   p.n_per_stream = n / p.n_streams;
   p.n_per_batch = p.n_per_stream / p.stream_size;
   p.n_per_kernel = p.kernel_size;
-  p.n_per_block = p.n_per_kernel / (double) p.gridSize;
+  p.n_per_block = p.n_per_kernel / (double) p.gridDim;
   p.n_per_thread = p.n_per_block / (double) p.blockSize;
 
   p.kernels_per_stream = p.stream_size * p.batch_size;
@@ -78,7 +78,7 @@ void derive_secondary_geometry(const size_t n, Geometry& p) {
 Geometry simple_geometry(const size_t n) {
   Geometry p;
   p.blockSize = 1;
-  p.gridSize = 1;
+  p.gridDim = 1;
   p.kernel_size = 1;
   p.batch_size = n;
   p.n_streams = 1;
@@ -89,7 +89,8 @@ Geometry simple_geometry(const size_t n) {
 Geometry geometry(const size_t n) {
   Geometry p;
   p.blockSize = BLOCKDIM;
-  p.gridSize = GRIDDIM; // TODO rename to gridDim and use dim3 dtype
+  assert(p.blockSize == 64);
+  p.gridDim = GRIDDIM; // TODO rename to gridDim and use dim3 dtype
   p.kernel_size = KERNEL_SIZE;
   p.batch_size = BATCH_SIZE;
   p.n_streams = N_STREAMS;
@@ -256,8 +257,8 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
   return u;
 }
 
- template<typename T>
- std::vector<T*> malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
+template<typename T>
+std::vector<T*> malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
    // Return a host vector of pointers
    assert(dim1 >= 1); assert(dim2 >= 1);
    cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );

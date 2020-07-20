@@ -11,8 +11,8 @@
 #include "macros.h"
 #include "hyper_params.h"
 
-#define cu(result) { cudaCheck((result), __FILE__, __LINE__); }
-#define cuB(result) { cudaBlasCheck((result), __FILE__, __LINE__); }
+#define cu(result) cudaCheck((result), __FILE__, __LINE__)
+#define cuB(result) cudaBlasCheck((result), __FILE__, __LINE__)
 
 
 /** GPU version of std::vector
@@ -26,6 +26,7 @@ struct DeviceVector {
 inline
 cudaError_t cudaCheck(cudaError_t result, const char *file, int line)
 {
+  // Note that max total blockSize is 1024
   // check for cuda errors
 // #ifdef DEBUG
   if (result != cudaSuccess) {

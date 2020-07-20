@@ -11,7 +11,8 @@ DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
 HyperParams := KERNEL_SIZE='16' # 8 16
-	# TODO add stream size, kernel size, x distribution, Ny, Nz
+# HyperParams := KERNEL_SIZE='32' # 8 16
+# TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE) test
 
 build:
