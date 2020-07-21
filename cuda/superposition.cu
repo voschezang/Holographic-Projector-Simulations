@@ -348,6 +348,7 @@ __global__ void per_block_naive(const Geometry p,
         if (shared_memory && N > gridDim.x) {
           // TODO use 2x as much shared memory and let CUB figure out the best performance?
           // TODO don't save result to every thread, only thread 0
+          // TODO what about unused thread in reduction? -> should cause deadlock
           // Real part .x
           y.x = BlockReduce(y_shared[threadIdx.y]).Sum(y.x);
           __syncthreads();
