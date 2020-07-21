@@ -20,9 +20,9 @@ Params read_args(int argc, char **argv) {
   const auto obj_z_offset = Range<double> {min: z_offset, max: 0.05};
   // projector z_offset is always zero
   auto p = Params
-    {n_planes:     {obj: 1,
+    {n_planes:     {obj: 3,
                     projector: 1, // unused
-                    projection: 2},
+                    projection: 0},
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
@@ -31,14 +31,14 @@ Params read_args(int argc, char **argv) {
                     projection: 1.}, // 0.2
 
      /* obj_shape: Shape::DottedCircle, // TODO */
-     obj_offset:  {x: {min: 0., max: 0.}, // TODO make relative?
+     obj_offset:  {x: {min: 0., max: 0.05}, // TODO make relative?
                    y: {min: 0., max: 0.},
                    z: obj_z_offset},
 
      /* rel_obj_width: {min: 0.02 / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH */
      /* rel_projection_width: {min: 0.1, max: 1.1}, // 0.005 // N_sqrt * 8.01 * LAMBDA */
      rel_obj_width: {min: 0.002 / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH
-     rel_projection_width: {min: 1.2, max: 1.1}, // 0.005 // N_sqrt * 8.01 * LAMBDA
+     rel_projection_width: {min: 1.2, max: 1e3 * 21.01 * LAMBDA}, // 0.005 // N_sqrt * 8.01 * LAMBDA
      projection_z_offset: obj_z_offset,
 
      randomize: false
