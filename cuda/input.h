@@ -15,31 +15,31 @@ void show_help(const char *p) {
 namespace input {
 
 Params read_args(int argc, char **argv) {
-  const double z_offset = 0.35;
+  /* const double z_offset = 0.35; */
   /* const double z_offset = 0.01; */
-  const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset};
+  /* const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset}; */
+  const auto obj_z_offset = Range<double> {min: 0.01, max: 0.05};
+  const double projection_width = N_sqrt * 7e-6;
   // projector z_offset is always zero
   auto p = Params
-    {n_planes:     {obj: 3,
+    {n_planes:     {obj: 1,
                     projector: 1, // unused
-                    projection: 1},
+                    projection: 0},
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,
-                    projector: HD, // HD
+                    /* projector: 1., */
+                    projector: HD,
                     projection: 1.}, // 0.2
 
      /* obj_shape: Shape::DottedCircle, // TODO */
-     obj_offset:  {x: {min: 0.1, max: 0.1}, // TODO make relative?
-                   y: {min: 0.1, max: 0.1},
+     obj_offset:  {x: {min: 0.004, max: 0.004},
+                   y: {min: 0.006, max: 0.006},
                    z: obj_z_offset},
 
-     /* rel_obj_width: {min: 0.02 / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH */
-     /* rel_projection_width: {min: 0.1, max: 1.1}, // 0.005 // N_sqrt * 8.01 * LAMBDA */
-     /* rel_obj_width: {min: 0.002 / PROJECTOR_WIDTH, max: 0.3}, // relative to PROJECTOR_WIDTH */
-     rel_obj_width: {min: 0.3, max: 0.3},
-     rel_projection_width: {min: 1.2, max: 1e3 * 21.01 * LAMBDA}, // 0.005 // N_sqrt * 8.01 * LAMBDA
+     obj_width: {min: 0.1, max: 0.1},
+     projection_width: {min: projection_width, max: projection_width},
      projection_z_offset: obj_z_offset,
 
      randomize: false
@@ -47,6 +47,7 @@ Params read_args(int argc, char **argv) {
     };
 
   // TODO count n non-constant ranges and static_assert result is <= 1
+  // TODO add PROJECT_PHASE to cmd args
 
   // For all ranged params the max is set to min by default.
   int ch;
@@ -72,12 +73,12 @@ Params read_args(int argc, char **argv) {
       case 'w': p.obj_offset.z.min = p.obj_offset.z.max = strtod(optarg, 0); break;
       case 'W': p.obj_offset.z.max =                      strtod(optarg, 0); break;
 
-      case 'o': p.rel_obj_width.min = p.rel_obj_width.max =               strtod(optarg, 0); break;
-      case 'O': p.rel_obj_width.max =                                     strtod(optarg, 0); break;
-      case 'n': p.rel_projection_width.min = p.rel_projection_width.min = strtod(optarg, 0); break;
-      case 'N': p.rel_projection_width.max =                              strtod(optarg, 0); break;
-      case 'm': p.projection_z_offset.min = p.projection_z_offset.max =   strtod(optarg, 0); break;
-      case 'M': p.projection_z_offset.max =                               strtod(optarg, 0); break;
+      case 'o': p.obj_width.min = p.obj_width.max =                     strtod(optarg, 0); break;
+      case 'O': p.obj_width.max =                                       strtod(optarg, 0); break;
+      case 'n': p.projection_width.min = p.projection_width.min =       strtod(optarg, 0); break;
+      case 'N': p.projection_width.max =                                strtod(optarg, 0); break;
+      case 'm': p.projection_z_offset.min = p.projection_z_offset.max = strtod(optarg, 0); break;
+      case 'M': p.projection_z_offset.max =                             strtod(optarg, 0); break;
 
       case 'r': p.randomize = true; break;
       case 'h': default: show_help(argv[0]);
