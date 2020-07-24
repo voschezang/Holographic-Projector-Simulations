@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
 #endif
 
     const auto x_suffix = std::to_string(i);
-    write_arrays(x, u, "x" + x_suffix, "u" + x_suffix, x_plane);
+    write_arrays(x, u, "x" + x_suffix, "u" + x_suffix, x_plane, 0, 0);
     printf("--- --- ---   --- --- ---  --- --- --- \n");
 
     // The projector distribution is obtained by doing a single backwards transformation
@@ -133,7 +133,7 @@ int main(int argc, char** argv) {
     check_cvector(y);
 
     if (i == 0) summarize_c('y', y);
-    write_arrays(y, v, "y" + x_suffix, "v" + x_suffix, y_plane);
+    write_arrays(y, v, "y" + x_suffix, "v" + x_suffix, y_plane, dt[0], flops(dt[0], x.size(), y.size()));
 
     // The projection distributions at various locations are obtained using forward transformations
     for (auto& j : range(n_planes.projection)) {
@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
 
       const auto z_suffix = x_suffix + "_" + std::to_string(j);
       // TODO write this async, next loop can start already
-      write_arrays(z, w, "z" + z_suffix, "w" + z_suffix, z_plane);
+      write_arrays(z, w, "z" + z_suffix, "w" + z_suffix, z_plane, dt[j], flops(dt[j], y.size(), z.size()));
     }
 
     if (n_planes.projection)

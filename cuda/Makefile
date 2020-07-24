@@ -10,8 +10,7 @@ EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
-HyperParams := KERNEL_SIZE='16' # 8 16
-# HyperParams := KERNEL_SIZE='32' # 8 16
+# HyperParams := KERNEL_SIZE='16' # 8 16
 # TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE) test
 
@@ -20,7 +19,8 @@ build:
 	#  -ftz=true -prec-div=false -prec-sqrt=false
 	# TODO check -O2 vs. -O3 performance
 	# -g debug
-	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS) -D$(HyperParams)
+	# -D$(HyperParams)
+	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
 
 debug:
 	nvcc -o $(EXE) main.cu $(FLAGS) -D$(HyperParams)
@@ -85,6 +85,10 @@ test-nonphase-projector-reset:
 vprofile:
 	make build
 	nvvp ./$(EXE)
+
+profile:
+	make build
+	nvprof ./$(EXE)
 
 setup-profiler:
 	modprobe nvidia NVreg_RestrictProfilingToAdminUsers=0

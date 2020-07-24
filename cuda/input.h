@@ -21,6 +21,7 @@ Params read_args(int argc, char **argv) {
   const auto obj_z_offset = Range<double> {min: 0.01, max: 0.05};
   const double projection_width = N_sqrt * 7e-6;
   // projector z_offset is always zero
+  // TODO add rand seed
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
@@ -29,8 +30,8 @@ Params read_args(int argc, char **argv) {
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,
-                    /* projector: 1., */
-                    projector: HD,
+                    projector: 1.,
+                    /* projector: HD, */
                     projection: 1.}, // 0.2
 
      /* obj_shape: Shape::DottedCircle, // TODO */

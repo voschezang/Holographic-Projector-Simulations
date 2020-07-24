@@ -583,8 +583,8 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
   // const bool shared_memory = true;
   const bool shared_memory = false;
   // auto y = transform<direction>(x, u, v, p);
-  auto y = transform_naive<direction, Algorithm::Naive, shared_memory>(x, u, v, p);
-  // auto y = transform_naive<direction, Algorithm::Alt, shared_memory>(x, u, v, p);
+  // auto y = transform_naive<direction, Algorithm::Naive, shared_memory>(x, u, v, p);
+  auto y = transform_naive<direction, Algorithm::Alt, shared_memory>(x, u, v, p);
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
@@ -598,7 +598,9 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
     // TODO do this on CPU?
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     printf("ref v[2]: %e\n", v[2]);
-    auto y_reference = transform<Direction::Forwards>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
+    // auto y_reference = transform<Direction::Forwards>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
+    auto y_reference = transform_naive<direction, Algorithm::Naive, shared_memory>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
+    // auto y_reference = transform_naive<direction, Algorithm::Alt, shared_memory>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
     // let full reference wave (amp+phase) interfere with original wave
     add_complex(y, y_reference);

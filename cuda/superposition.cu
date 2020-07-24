@@ -336,6 +336,7 @@ __global__ void per_block_naive(const Geometry p,
     for (size_t m = tid.y; m < M; m += gridSize.y) {
       // TODO cache u/v
       if (tid.x < N) { // TODO this should cause deadlocks during BlockReduce
+        // TODO add subfunctions for profiler
         WAVE y {0,0};
         for (size_t n = tid.x; n < N; n += gridSize.x) {
           y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
