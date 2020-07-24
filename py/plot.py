@@ -31,9 +31,9 @@ def hist_2d_hd(phasor, pos, title='', filename=None,  ybins=10, ratio=1,
 
         # soft round required because hist2d is lossy
         # e.g. a constant input can become noisy
-        matrix = np.histogram2d(x, y, weights=color, bins=bins, density=True,
-                                **kwargs)[0]
-        matrix = util.soft_round(matrix)
+        matrix = np.histogram2d(x, y, weights=util.soft_round(color, verbose=1),
+                                bins=bins, density=True, **kwargs)[0]
+        matrix = util.soft_round(matrix, verbose=2)
         # matrix = plt.hist2d(x, y, weights=color, bins=bins, cmap=cmap, density=True, **kwargs)
         # plt.axis('off')
         # # force aspect ratio
@@ -145,7 +145,7 @@ def _hist2d_wrapper(x, y, z, density=True, bins=10, **kwargs):
     # plt.close(fig)
     hist = np.histogram2d(x, y, weights=z, density=density, bins=bins)[0]
     # supply bins as positions s.t. the axis range equals the bins range
-    _imshow_wrapper(bins[0], bins[1], util.soft_round(hist), **kwargs)
+    _imshow_wrapper(bins[0], bins[1], hist, **kwargs)
 
 
 def _imshow_wrapper(x, y, color, ratio=1., **kwargs):
@@ -156,7 +156,7 @@ def _imshow_wrapper(x, y, color, ratio=1., **kwargs):
     # return plt.imshow(x, y, weights=z, density=density, **kwargs)
     # vmin, vmax
     # plt.imshow(reshape(z[:, 0], hd), origin='lower', aspect='auto', **kwargs)
-    plt.imshow(util.soft_round(color).T, origin='lower', aspect=ratio,
+    plt.imshow(util.soft_round(color, verbose=3).T, origin='lower', aspect=ratio,
                extent=(x.min(), x.max(), y.min(), y.max()),
                **kwargs)
 
@@ -203,7 +203,7 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
         w = 5 * min(ratio, max_ratio)
 
     fig = plt.figure(figsize=(round(w), h))
-    title_y_offset = 1.05 if horizontal else 1.04
+    title_y_offset = 1.06 if horizontal else 1.04
     plt.suptitle(title, y=title_y_offset, fontsize=16, fontweight='bold')
 
     if horizontal:
@@ -234,9 +234,6 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
 
     markup(ax, unit='m')
     plt.title('Log Irradiance', fontsize=16)
-
-    # ax = plt.subplot(132)
-
     if horizontal:
         ax = plt.subplot(132)
     else:
@@ -247,11 +244,9 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
     plot_func(x, y, phi, **kwargs)
     markup(ax, unit='m')
     plt.title('Phase', fontsize=16)
-
-    # plt.text(0., 0.0015, 'abc', {'fontsize': 14})
     try:
         plt.tight_layout()
-
+        # add custom subtitle after tightening layout
         if horizontal:
             x, y = 0.5, 1.075
         else:
@@ -260,17 +255,11 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
                  horizontalalignment='center', verticalalignment='center',
                  transform=ax.transAxes)
 
-        # add custom subtitle after tightening layout
-        # plt.text(0.5, 0, 'sec', {'fontsize': 14})
-        # plt.text(0.5, 0, 'subtitle\nab\nasb\nasldkfjasldjfskdf asdfasdf',
-        #          {'fontsize': 18})
-        # plt.text(0.5, 0.5, 'subtitle\nab\nasb\nasldkfjasldjfskdf asdfasdf', {
-        #          'fontsize': 18})
-        if filename is not None:
-            save_fig(filename, ext='png')
-
     except ValueError as e:
         print(e)
+
+    if filename is not None:
+        save_fig(filename, ext='png')
     return fig
 
 

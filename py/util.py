@@ -1,6 +1,9 @@
 import numpy as np
+import pandas as pd
 import sys
 import os
+import hashlib
+import pickle
 # import struct
 # import functools
 import itertools
@@ -18,6 +21,8 @@ from numba import jit
 from typing import Tuple
 from multiprocessing import Pool
 from itertools import repeat
+
+import file
 
 # LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
 LAMBDA = 0.650e-6
@@ -608,7 +613,7 @@ def pendulum_range(*args):
         yield i
 
 
-def soft_round(matrix: np.ndarray, threshold=1e-9, decimals=9):
+def soft_round(matrix: np.ndarray, threshold=1e-9, decimals=9, verbose=0):
     """ Round values in `matrix` if data range is below `threshold`.
     """
     minmax = np.array([matrix.min(), matrix.max()])
@@ -620,7 +625,9 @@ def soft_round(matrix: np.ndarray, threshold=1e-9, decimals=9):
     # abs_min = minmax.abs().min()
     # min = minmax.abs().min()
     # if range != 0 and range / min < threshold:
-    if range != 0 and range < threshold:
+    if range < threshold:
+        if verbose:
+            print('range < threshold', verbose)
         # normalize and rm noise
         return matrix.round(decimals)
         # matrix = (matrix / min).round(decimals)
@@ -837,7 +844,7 @@ def _parse_complex(filename: str, n: int, precision=8):
 
 def _parse_doubles(filename: str, n: int, precision=8, sep='',
                    archive: zipfile.ZipFile = None):
-    if precision not in (8, 16):
+    if precision not in (4, 8, 16):
         raise NotImplementedError
 
     if archive is None:
@@ -872,7 +879,7 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
     return data
 
 
-def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out') -> Tuple[dict, dict]:
+def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out', read_data=True) -> Tuple[dict, dict]:
     """ Returns two tuples params and data """
     # TODO use better datastructure
     params = {k: [] for k in 'xyzuvw'}
@@ -887,6 +894,9 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out') -> Tuple[dict,
                     assert k in 'xyz'
                     params[k].append(p)
                     # params.append(json.loads(line))
+
+        if not read_data:
+            return params,
 
         for i, p in enumerate(itertools.chain.from_iterable(params.values())):
             print(i, p)
@@ -903,6 +913,10 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out') -> Tuple[dict,
 
                 data[k1].append(np.array([amp, phase]).T)
                 data[k2].append(pos.reshape(-1, DIMS))
+                for x in (amp, phase, pos):
+                    assert(not np.isnan(x.sum()))
+                    assert(not np.isnan(x.min()))
+                    assert(not np.isnan(x.max()))
 
             except SystemError as e:
                 print(f'Warning, missing data for keys: {k1}, {k2}')
@@ -910,3 +924,132 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out') -> Tuple[dict,
                 p['len'] = 0
 
     return params, data
+
+
+def param_table(params: dict) -> pd.DataFrame:
+    """ Convert set (dict) of unique param values to rows of param values.
+    params = {str: list of values}
+    """
+    for k, v in params.items():
+        assert(isinstance(k, str))
+        assert(isinstance(v, np.ndarray) or isinstance(v, list))
+
+    outer = itertools.product(*params.values())
+    rows = [param_row(params.keys(), values) for values in outer]
+    return pd.DataFrame(rows)
+
+
+def param_row(param_keys, param_values):
+    """ Returns a dict {param key: param value}
+    """
+    values = list(param_values)
+    return {k: values[i] for i, k in enumerate(param_keys)}
+
+
+def get_results(build_func, run_func,
+                build_params: pd.DataFrame, run_params: pd.DataFrame,
+                filename='results', tmp_dir='tmp_pkl',
+                n_trials=20, result_indices=[-2, -1],
+                v=0):
+    load_result = file.get_arg("--load_result", default_value=False, flag=True)
+    # Load or generate simulation results
+    # encoded = (str(build_params) + str(run_params)).encode('utf-8')
+    encoded = str.encode(str(build_params) + str(run_params), 'utf-8')
+    hash = int(int(hashlib.sha256(encoded).hexdigest(), 16) % 1e6)
+    filename += str(hash)
+    if load_result and os.path.isfile(f'{tmp_dir}/{filename}.pkl'):
+        with open(f'{tmp_dir}/{filename}.pkl', 'rb') as f:
+            results = pickle.load(f)
+
+        with open(f'{tmp_dir}/{filename}-build-params.pkl', 'rb') as f:
+            build_params = pickle.load(f)
+
+        with open(f'{tmp_dir}/{filename}-run-params.pkl', 'rb') as f:
+            run_params = pickle.load(f)
+
+    else:
+        if not os.path.isfile(f'{tmp_dir}/{filename}.pkl'):
+            print('Warning, results file not found')
+
+        if not os.path.isfile(f'{tmp_dir}/{filename}-build-params.pkl'):
+            print('Warning, params file not found')
+
+        if not os.path.isfile(f'{tmp_dir}/{filename}-run-params.pkl'):
+            print('Warning, params file not found')
+
+        print('Generate new results')
+        results = grid_search(build_func, run_func, build_params, run_params,
+                              n_trials=n_trials, result_indices=result_indices, verbose=v)
+        if v:
+            print("results:\n", build_params.join(run_params).join(results))
+
+        # Save results
+        with open(f'{tmp_dir}/{filename}.pkl', 'wb') as f:
+            pickle.dump(results, f)
+
+        with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
+            pickle.dump(build_params, f)
+
+        with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
+            pickle.dump(run_params, f)
+
+    return results
+
+
+def grid_search(build_func, run_func,
+                build_params: pd.DataFrame, run_params: pd.DataFrame,
+                n_trials=5, result_indices=[-2, -1], verbose=1):
+    results = []
+    if len(result_indices) == 1:
+        # compatiblity
+        result_indices.append(result_indices[0])
+
+    if verbose:
+        print('Grid search')
+    n_build_rows = build_params.shape[0]
+    n_run_rows = run_params.shape[0]
+    n_rows = n_build_rows * n_run_rows
+    for i, build_row in build_params.iterrows():
+        build_func(**build_row),
+        for j, run_row in run_params.iterrows():
+            if verbose and i % (1e3 / verbose) == 0:
+                print(f'i: {i}\t params: ', ', '.join(
+                    f'{k}: {v}' for k, v in run_row.items()))
+
+            time, flops = np.empty((2, n_trials))
+
+            # run n independent trials
+            for t in range(n_trials):
+                idx = i * n_build_rows + j
+                print_progress(idx, n_rows, t, n_trials, suffix=', '.join(
+                    f'{k}: {v}' for k, v in run_row.items()))
+                time[t], flops[t] = file.parse_result(
+                    run_func(**run_row), result_indices=result_indices)
+
+            # flops *= 1e-9
+            results.append({'Runtime mean': np.mean(time),
+                            'Runtime std': np.std(time),
+                            # 'Runtime rel std': np.std(time) / np.mean(time),
+                            'FLOPS mean': np.mean(flops),
+                            'FLOPS std': np.std(flops),
+                            # 'FLOPS rel std': np.std(flops) / np.mean(flops)
+                            })
+
+    print('')  # close progress bar
+    return pd.DataFrame(results)
+
+
+def print_progress(major_iter=0, n_major=100, minor_iter=0, n_minor=None,
+                   fill='█', nofill='-', bar_len=30, suffix_len=70, suffix='',
+                   end='\r'):
+    fill_length = round(bar_len * major_iter / n_major)
+    bar = fill * fill_length + nofill * (bar_len - fill_length)
+    minor = ''
+    if n_minor is not None:
+        minor = f' ({minor_iter:<4}/{n_minor})'
+
+    if len(suffix) > 1:
+        suffix = f' ({suffix[:suffix_len]}{".." if len(suffix) > suffix_len else ")"}'
+
+    print(f'\r > {round(major_iter/n_major * 100 ,3):<6}%{minor } |{bar}|{suffix}',
+          end=end)
