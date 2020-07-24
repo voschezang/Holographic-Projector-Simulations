@@ -43,6 +43,8 @@ if sys.stdout.encoding != 'UTF-8':
         PROGRESS_BAR_FILL = '#'
 
 # @jit(nopython=True)
+
+
 def compute_N_sqrt(n=None):
     if n is None:
         n = N
@@ -881,6 +883,7 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
         f"{filename}\tsize is {data.size} but should've been {n}"
     return data
 
+
 def parse_json(fn='out.json') -> dict:
     params = {k: [] for k in 'xyzuvw'}
     with open(fn, 'r') as f:
@@ -891,8 +894,6 @@ def parse_json(fn='out.json') -> dict:
                 assert k in 'xyz'
                 params[k].append(p)
     return params
-
-
 
 
 def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out', read_data=True) -> Tuple[dict, dict]:
@@ -964,38 +965,25 @@ def param_row(param_keys, param_values):
 
 def get_results(build_func, run_func,
                 build_params: pd.DataFrame, run_params: pd.DataFrame,
-                filename='results', tmp_dir='tmp_pkl',
-                n_trials=20, result_indices=[-2, -1],
-                v=0):
-    load_result = file.get_arg("--load_result", default_value=False, flag=True)
+                filename='results', tmp_dir='../tmp/py',
+                n_trials=20, v=0):
+    rerun = file.get_arg("-r", default_value=False, flag=True)
     # Load or generate simulation results
     # encoded = (str(build_params) + str(run_params)).encode('utf-8')
     encoded = str.encode(str(build_params) + str(run_params), 'utf-8')
     hash = int(int(hashlib.sha256(encoded).hexdigest(), 16) % 1e6)
     filename += str(hash)
-    if load_result and os.path.isfile(f'{tmp_dir}/{filename}.pkl') and 0:
+    if not rerun and os.path.isfile(f'{tmp_dir}/{filename}.pkl'):
         with open(f'{tmp_dir}/{filename}.pkl', 'rb') as f:
             results = pickle.load(f)
-
-        # with open(f'{tmp_dir}/{filename}-build-params.pkl', 'rb') as f:
-        #     build_params = pickle.load(f)
-
-        # with open(f'{tmp_dir}/{filename}-run-params.pkl', 'rb') as f:
-        #     run_params = pickle.load(f)
 
     else:
         if not os.path.isfile(f'{tmp_dir}/{filename}.pkl'):
             print('Warning, results file not found')
 
-        # if not os.path.isfile(f'{tmp_dir}/{filename}-build-params.pkl'):
-        #     print('Warning, build params file not found')
-
-        # if not os.path.isfile(f'{tmp_dir}/{filename}-run-params.pkl'):
-        #     print('Warning, run params file not found')
-
         print('Generate new results')
         results = grid_search(build_func, run_func, build_params, run_params,
-                              n_trials=n_trials, result_indices=result_indices, verbose=v)
+                              n_trials=n_trials, verbose=v)
         if v:
             print("results:\n", build_params.join(run_params).join(results))
 
@@ -1014,20 +1002,22 @@ def get_results(build_func, run_func,
 
 
 def grid_search(build_func, run_func,
-              build_params: pd.DataFrame, run_params: pd.DataFrame,
-              n_trials=5, result_indices=[-2, -1], verbose=1):
+                build_params: pd.DataFrame, run_params: pd.DataFrame,
+                n_trials=5, verbose=1):
     results = []
-    if len(result_indices) == 1:
-        # compatiblity
-        result_indices.append(result_indices[0])
-
     if verbose:
         print('Grid search')
     n_build_rows = build_params.shape[0]
     n_run_rows = run_params.shape[0]
     n_rows = n_build_rows * n_run_rows
     for i, build_row in build_params.iterrows():
-        build_func(**build_row),
+        # success = True
+        try:
+            build_func(**build_row)
+        except subprocess.CalledProcessError:
+            # success = False
+            print('\n  Error for params:', build_row.to_dict())
+
         for j, run_row in run_params.iterrows():
             if verbose and i % (1e3 / verbose) == 0:
                 print(f'i: {i}\t params: ', ', '.join(
@@ -1043,12 +1033,14 @@ def grid_search(build_func, run_func,
                 try:
                     run_func(**run_row)
                     out = parse_json('../tmp/out.json')
-                    values = lambda: itertools.chain.from_iterable(out.values())
-                    time = [r['runtime'] for r in values() if r['runtime'] > 0.]
+                    def values(): return itertools.chain.from_iterable(out.values())
+                    time = [r['runtime']
+                            for r in values() if r['runtime'] > 0.]
                     flops = [r['flops'] for r in values() if r['flops'] > 0.]
 
-                except subprocess.CalledProcessError as e:
-                    print('\n  Error for params:', build_row.combine_first(run_row).to_dict())
+                except subprocess.CalledProcessError:
+                    print('\n  Error for params:',
+                          build_row.combine_first(run_row).to_dict())
                     time = [0]
                     flops = [0]
 
