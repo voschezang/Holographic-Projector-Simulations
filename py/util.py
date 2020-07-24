@@ -7,15 +7,11 @@ import pickle
 # import struct
 # import functools
 import itertools
+import subprocess
 import json
 import zipfile
-# import matplotlib.pyplot as plt
 import scipy.optimize
 import scipy.linalg
-# import scipy.fftpack as spfft
-# import scipy.ndimage as spimg
-# from scipy.spatial.transform import Rotation as R
-# import cvxpy as cvx
 import halton
 from numba import jit
 from typing import Tuple
@@ -38,6 +34,13 @@ N = 80**(DIMS - 1)
 PROJECTOR_DISTANCE = -4
 PROJECTOR_DISTANCE = -1e3 * LAMBDA
 
+
+PROGRESS_BAR_FILL = '█'
+if sys.stdout.encoding != 'UTF-8':
+    try:
+        PROGRESS_BAR_FILL = PROGRESS_BAR_FILL.encode('ascii')
+    except UnicodeEncodeError:
+        PROGRESS_BAR_FILL = '#'
 
 # @jit(nopython=True)
 def compute_N_sqrt(n=None):
@@ -878,6 +881,19 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
         f"{filename}\tsize is {data.size} but should've been {n}"
     return data
 
+def parse_json(fn='out.json') -> dict:
+    params = {k: [] for k in 'xyzuvw'}
+    with open(fn, 'r') as f:
+        for line in f:
+            if line:
+                p = json.loads(line)
+                k = p['phasor'][:1]
+                assert k in 'xyz'
+                params[k].append(p)
+    return params
+
+
+
 
 def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out', read_data=True) -> Tuple[dict, dict]:
     """ Returns two tuples params and data """
@@ -957,25 +973,25 @@ def get_results(build_func, run_func,
     encoded = str.encode(str(build_params) + str(run_params), 'utf-8')
     hash = int(int(hashlib.sha256(encoded).hexdigest(), 16) % 1e6)
     filename += str(hash)
-    if load_result and os.path.isfile(f'{tmp_dir}/{filename}.pkl'):
+    if load_result and os.path.isfile(f'{tmp_dir}/{filename}.pkl') and 0:
         with open(f'{tmp_dir}/{filename}.pkl', 'rb') as f:
             results = pickle.load(f)
 
-        with open(f'{tmp_dir}/{filename}-build-params.pkl', 'rb') as f:
-            build_params = pickle.load(f)
+        # with open(f'{tmp_dir}/{filename}-build-params.pkl', 'rb') as f:
+        #     build_params = pickle.load(f)
 
-        with open(f'{tmp_dir}/{filename}-run-params.pkl', 'rb') as f:
-            run_params = pickle.load(f)
+        # with open(f'{tmp_dir}/{filename}-run-params.pkl', 'rb') as f:
+        #     run_params = pickle.load(f)
 
     else:
         if not os.path.isfile(f'{tmp_dir}/{filename}.pkl'):
             print('Warning, results file not found')
 
-        if not os.path.isfile(f'{tmp_dir}/{filename}-build-params.pkl'):
-            print('Warning, params file not found')
+        # if not os.path.isfile(f'{tmp_dir}/{filename}-build-params.pkl'):
+        #     print('Warning, build params file not found')
 
-        if not os.path.isfile(f'{tmp_dir}/{filename}-run-params.pkl'):
-            print('Warning, params file not found')
+        # if not os.path.isfile(f'{tmp_dir}/{filename}-run-params.pkl'):
+        #     print('Warning, run params file not found')
 
         print('Generate new results')
         results = grid_search(build_func, run_func, build_params, run_params,
@@ -985,6 +1001,7 @@ def get_results(build_func, run_func,
 
         # Save results
         with open(f'{tmp_dir}/{filename}.pkl', 'wb') as f:
+            # TODO join with params?
             pickle.dump(results, f)
 
         with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
@@ -997,8 +1014,8 @@ def get_results(build_func, run_func,
 
 
 def grid_search(build_func, run_func,
-                build_params: pd.DataFrame, run_params: pd.DataFrame,
-                n_trials=5, result_indices=[-2, -1], verbose=1):
+              build_params: pd.DataFrame, run_params: pd.DataFrame,
+              n_trials=5, result_indices=[-2, -1], verbose=1):
     results = []
     if len(result_indices) == 1:
         # compatiblity
@@ -1017,14 +1034,26 @@ def grid_search(build_func, run_func,
                     f'{k}: {v}' for k, v in run_row.items()))
 
             time, flops = np.empty((2, n_trials))
+            params = build_row.combine_first(run_row).to_dict()
 
             # run n independent trials
             for t in range(n_trials):
                 idx = i * n_build_rows + j
-                print_progress(idx, n_rows, t, n_trials, suffix=', '.join(
-                    f'{k}: {v}' for k, v in run_row.items()))
-                time[t], flops[t] = file.parse_result(
-                    run_func(**run_row), result_indices=result_indices)
+                print_progress(idx, n_rows, t, n_trials, suffix=str(params))
+                try:
+                    run_func(**run_row)
+                    out = parse_json('../tmp/out.json')
+                    values = lambda: itertools.chain.from_iterable(out.values())
+                    time = [r['runtime'] for r in values() if r['runtime'] > 0.]
+                    flops = [r['flops'] for r in values() if r['flops'] > 0.]
+
+                except subprocess.CalledProcessError as e:
+                    print('\n  Error for params:', build_row.combine_first(run_row).to_dict())
+                    time = [0]
+                    flops = [0]
+
+                # print(out.values())
+                # values = sum(raw.values(), [])
 
             # flops *= 1e-9
             results.append({'Runtime mean': np.mean(time),
@@ -1040,10 +1069,10 @@ def grid_search(build_func, run_func,
 
 
 def print_progress(major_iter=0, n_major=100, minor_iter=0, n_minor=None,
-                   fill='█', nofill='-', bar_len=30, suffix_len=70, suffix='',
+                   nofill='-', bar_len=30, suffix_len=70, suffix='',
                    end='\r'):
     fill_length = round(bar_len * major_iter / n_major)
-    bar = fill * fill_length + nofill * (bar_len - fill_length)
+    bar = PROGRESS_BAR_FILL * fill_length + nofill * (bar_len - fill_length)
     minor = ''
     if n_minor is not None:
         minor = f' ({minor_iter:<4}/{n_minor})'

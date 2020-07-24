@@ -2,12 +2,12 @@ import sys
 import pandas as pd
 
 
-def parse_result(result, line_index=-2, result_indices=[-3, -1]):
-    print('parse_result')
-    print(result)
-    line = result.split("\n")[line_index].split(' ')
-    line = [w for w in line if w not in ['', '\t', '\t\t']]
-    return (float(line[i]) for i in result_indices)
+# def parse_result(result, line_index=-2, result_indices=[-3, -1]):
+#     print('parse_result')
+#     print(result)
+#     line = result.split("\n")[line_index].split(' ')
+#     line = [w for w in line if w not in ['', '\t', '\t\t']]
+#     return (float(line[i]) for i in result_indices)
 
 
 def get_arg(name: str, default_value=None, flag=False, parse_func=int):
