@@ -51,10 +51,10 @@ int main(int argc, char** argv) {
 
   // TODO rename non-spatial xyz,uvw to setup.obj, setup.projector etc
 
-  auto
-    u = std::vector<SPACE>(DIMS * n_per_plane.obj),
-    v = std::vector<SPACE>(DIMS * n_per_plane.projector),
-    w = std::vector<SPACE>(DIMS * n_per_plane.projection);
+  std::vector<SPACE>
+    u (DIMS * n_per_plane.obj),
+    v (DIMS * n_per_plane.projector),
+    w (DIMS * n_per_plane.projection);
 
 #ifdef READ_INPUT
   print("Reading input files");
@@ -68,10 +68,9 @@ int main(int argc, char** argv) {
   assert(x.size() == u.size() / DIMS);
   {
     // scale pos, assume pos was normalized
-    const double width = rel_object_width * PROJECTOR_WIDTH;
     for (size_t i = 0; i < x.size(); ++i) {
-      u[i * DIMS + 0] *= width;
-      u[i * DIMS + 1] *= width;
+      u[i * DIMS + 0] *= object_width;
+      u[i * DIMS + 1] *= object_width;
     }
   }
 #else
@@ -108,18 +107,18 @@ int main(int argc, char** argv) {
 
     // linear/geometric interpolation
     const double ratio = i == 0 ? i : i / ((double) n_planes.obj - 1.);
-    const Cartesian<double> obj_offset = {x: lerp(params.obj_offset.x, ratio),
-                                          y: lerp(params.obj_offset.y, ratio),
-                                          z: gerp(params.obj_offset.z, ratio)};
+    Cartesian<double> obj_offset = {x: lerp(params.obj_offset.x, ratio),
+                                    y: lerp(params.obj_offset.y, ratio),
+                                    z: gerp(params.obj_offset.z, ratio)};
 
-    const auto x_plane = Plane {width: lerp(params.rel_obj_width, ratio) * PROJECTOR_WIDTH,
+    const auto x_plane = Plane {width: lerp(params.obj_width, ratio),
                                 offset: obj_offset,
                                 aspect_ratio: 1.,
                                 randomize: false};
     printf("x_plane: %i, width: %e\n", i, x_plane.width);
 #ifndef READ_INPUT
     const double modulate = i / (double) n_planes.obj;
-    init::sparse_plane(u, shape, x_plane.width, obj_offset, modulate);
+    init::sparse_plane(u, shape, x_plane.width, x_plane.offset, modulate);
 #endif
 
     const auto x_suffix = std::to_string(i);
@@ -143,13 +142,10 @@ int main(int argc, char** argv) {
       if (transformation == Transformation::Amplitude && n_planes.obj >= 4 && j % 2 == 1) continue;
       printf(" z plane #%i\n", j);
       const auto ratio = j == 0 ? 0 : j / ((double) n_planes.projection - 1.);
-      // TODO use rel z offset, s.t. value corresonds to obj z offset
-      const double width = gerp(params.rel_projection_width, ratio) * x_plane.width;
-      const auto offset = Cartesian<double> {x: obj_offset.x + 0 * 4/9. * width,
-                                             y: obj_offset.y + 0 * 4/9. * width / params.aspect_ratio.projection,
-                                             z: gerp(params.projection_z_offset, ratio)};
+      const double width = gerp(params.projection_width, ratio);
+      obj_offset.z = gerp(params.projection_z_offset, ratio);
       const auto z_plane = Plane {width: width,
-                                  offset: offset,
+                                  offset: obj_offset,
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
 

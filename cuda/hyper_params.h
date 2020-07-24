@@ -8,7 +8,7 @@
  */
 
 /* #define READ_INPUT */
-#define PROJECT_PHASE 0
+#define PROJECT_PHASE 1
 
 /* #define N_sqrt 4 */
 /* #define N_sqrt 8 */

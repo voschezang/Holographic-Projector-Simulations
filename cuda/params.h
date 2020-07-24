@@ -43,8 +43,8 @@ struct Params {
   Cartesian<Range<double>> obj_offset;
 
   Range<double>
-    rel_obj_width,        // relative to projector width, affects sampling density
-    rel_projection_width, // relative to object width
+    obj_width,        // relative to projector width, affects sampling density
+    projection_width, // relative to object width
     projection_z_offset;
 
   bool randomize; // TODO add option to compute local average

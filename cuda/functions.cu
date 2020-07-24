@@ -580,11 +580,11 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
   // (2.7 speedup)
   // for one-to-many input: speedup was at least ~10
 
-  const bool shared_memory = true;
-  // const bool shared_memory = false;
+  // const bool shared_memory = true;
+  const bool shared_memory = false;
   // auto y = transform<direction>(x, u, v, p);
-  // auto y = transform_naive<direction, Algorithm::Naive, shared_memory>(x, u, v, p);
-  auto y = transform_naive<direction, Algorithm::Alt, shared_memory>(x, u, v, p);
+  auto y = transform_naive<direction, Algorithm::Naive, shared_memory>(x, u, v, p);
+  // auto y = transform_naive<direction, Algorithm::Alt, shared_memory>(x, u, v, p);
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
