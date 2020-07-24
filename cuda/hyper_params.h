@@ -22,7 +22,7 @@
 /* #define N_sqrt 1440 */
 
 #ifndef KERNEL_SIZE
-#define KERNEL_SIZE 2 // n datapoints per kernel
+#define KERNEL_SIZE 16 // n datapoints per kernel
 #endif
 #ifndef BATCH_SIZE
 #define BATCH_SIZE 1 // n kernels per (stream) batch

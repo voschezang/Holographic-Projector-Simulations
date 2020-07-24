@@ -256,7 +256,8 @@ inline std::string quote(char c) {
  *            "k" <sep1> v <sep2>
  *            "k" <sep1> v}`
  */
-void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, std::ofstream& out) {
+void write_metadata(std::string phasor, std::string pos, Plane p, size_t len,
+                    double dt, double flops, std::ofstream& out) {
   // Use JSON-like separators with spaces for readiblity.
   const auto
     sep1 = ": ",
@@ -274,7 +275,9 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len, st
       << quote("z_offset")     << sep1 << p.offset.z     << sep2 \
       << quote("width")        << sep1 << p.width        << sep2 \
       << quote("randomized")   << sep1 << p.randomize    << sep2 \
-      << quote("aspect_ratio") << sep1 << p.aspect_ratio << "}\n";
+      << quote("aspect_ratio") << sep1 << p.aspect_ratio << sep2 \
+      << quote("runtime")      << sep1 << p.aspect_ratio << sep2 \
+      << quote("flops")        << sep1 << p.aspect_ratio << "}\n";
 }
 
 void write_dot(char name, WAVE *x, SPACE *u, size_t len) {
@@ -290,7 +293,8 @@ void write_dot(char name, WAVE *x, SPACE *u, size_t len) {
 }
 
 void write_arrays(std::vector<WAVE> &x, std::vector<SPACE> &u,
-                  std::string k1, std::string k2, Plane p) {
+                  std::string k1, std::string k2, Plane p,
+                  double dt, double flops) {
   static bool overwrite = true;
   if (overwrite)
     print("Save results as txt");
@@ -300,7 +304,7 @@ void write_arrays(std::vector<WAVE> &x, std::vector<SPACE> &u,
   std::ofstream out;
 
   out.open(dir + "out.json", mode);
-  write_metadata(k1, k2, p, x.size(), out);
+  write_metadata(k1, k2, p, x.size(), dt, flops, out);
   out.close();
 
   /* out << std::scientific; // to allow e.g. 1.0e-50 */
