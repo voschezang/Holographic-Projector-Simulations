@@ -46,15 +46,11 @@ init-path:
 	export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}
 	# export PATH=$(GCC)${PATH:+:${PATH}}
 
-profile:
-	make build
-	nvprof ./$(EXE)
-
 test:
 	nvcc -o test test.cu $(FLAGS) -DNORM_3D='norm3d_host' && ./test
 	rm -f test;
 
-test-nonphase-projector:
+test-phase-projector:
 	# params should be: 1440 hd nonrand screen, no PROJECT_PHASE=0, 1pt, offset 4mm 6mm 10mm, non
 	make build-run
 	diff ../tmp/x0_amp.dat   ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/x0_amp.dat
@@ -62,7 +58,7 @@ test-nonphase-projector:
 	diff ../tmp/y0_amp.dat   ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/y0_amp.dat
 	diff ../tmp/y0_phase.dat ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/y0_phase.dat
 
-test-nonphase-projector-reset:
+test-phase-projector-reset:
 	cp ../tmp/x0_amp.dat   ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/
 	cp ../tmp/x0_phase.dat ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/
 	cp ../tmp/y0_amp.dat   ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/
@@ -82,13 +78,13 @@ test-nonphase-projector-reset:
 	cp ../tmp/y0_amp.dat   ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/
 	cp ../tmp/y0_phase.dat ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/
 
-vprofile:
-	make build
-	nvvp ./$(EXE)
-
 profile:
 	make build
 	nvprof ./$(EXE)
+
+vprofile:
+	make build
+	nvvp ./$(EXE)
 
 setup-profiler:
 	modprobe nvidia NVreg_RestrictProfilingToAdminUsers=0

@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
   print_info(projector, n_planes, n_per_plane);
 
   struct timespec t0, t1, t2;
-  auto dt = std::vector<double>(max(n_planes.projection, 1L));
+  auto dt = std::vector<double>(max(n_planes.projection, 1L), 0.0);
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
   const auto y_plane = Plane {width: PROJECTOR_WIDTH,
@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
 #endif
 
     const auto x_suffix = std::to_string(i);
-    write_arrays(x, u, "x" + x_suffix, "u" + x_suffix, x_plane, 0, 0);
+    write_arrays(x, u, "x" + x_suffix, "u" + x_suffix, x_plane);
     printf("--- --- ---   --- --- ---  --- --- --- \n");
 
     // The projector distribution is obtained by doing a single backwards transformation

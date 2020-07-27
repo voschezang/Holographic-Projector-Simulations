@@ -276,8 +276,8 @@ void write_metadata(std::string phasor, std::string pos, Plane p, size_t len,
       << quote("width")        << sep1 << p.width        << sep2 \
       << quote("randomized")   << sep1 << p.randomize    << sep2 \
       << quote("aspect_ratio") << sep1 << p.aspect_ratio << sep2 \
-      << quote("runtime")      << sep1 << p.aspect_ratio << sep2 \
-      << quote("flops")        << sep1 << p.aspect_ratio << "}\n";
+      << quote("runtime")      << sep1 << dt             << sep2 \
+      << quote("flops")        << sep1 << flops          << "}\n";
 }
 
 void write_dot(char name, WAVE *x, SPACE *u, size_t len) {
@@ -294,7 +294,7 @@ void write_dot(char name, WAVE *x, SPACE *u, size_t len) {
 
 void write_arrays(std::vector<WAVE> &x, std::vector<SPACE> &u,
                   std::string k1, std::string k2, Plane p,
-                  double dt, double flops) {
+                  double dt = 0., double flops = 0.) {
   static bool overwrite = true;
   if (overwrite)
     print("Save results as txt");
