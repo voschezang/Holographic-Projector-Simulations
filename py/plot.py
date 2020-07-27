@@ -1,7 +1,9 @@
 import numpy as np
+import pandas as pd
 import os
+import scipy.stats
 import matplotlib.pyplot as plt
-from matplotlib.ticker import EngFormatter, LogLocator, LogFormatter, LogFormatterSciNotation
+import matplotlib.ticker as tck
 
 from _img_dir import IMG_DIR
 import util
@@ -11,6 +13,15 @@ plt.rcParams['font.family'] = 'serif'
 # cmap = 'rainbow'
 cmap = 'inferno'
 cyclic_cmap = 'twilight'
+
+COLORS = plt.rcParams['axes.prop_cycle'].by_key()['color']
+HATCHES = ('-', '+', 'x', '\\', '*', 'o', 'O', '.')
+# dot-dash syntax (0, (width_i, space_i, width_j, space_j, ..))
+dot1, dot2, dot3 = (1, 1), (1, 2), (1, 3)
+dash1, dash2, dash3 = (2, 1), (3, 1), (4, 1)
+LINESTYLES = ['-', '--', '-.', ':',
+              (0,  dot1 + dot1 + dash3), (0, dash3 + dash2 + dash1 + dot1),
+              (0, dot1 + dot3)]
 
 
 def hist_2d_hd(phasor, pos, title='', filename=None,  ybins=10, ratio=1,
@@ -263,15 +274,21 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
     return fig
 
 
-def sci_labels(ax, decimals=1, y=True, z=False, unit='', rotation=30):
-    formatter = EngFormatter(places=decimals, sep=u"\N{THIN SPACE}", unit=unit)
-    ax.xaxis.set_major_formatter(formatter)
-    plt.xticks(rotation=rotation)
-    if y:
-        ax.yaxis.set_major_formatter(formatter)
+def sci_labels(ax, decimals=1, x=True, y=True, z=False, unit='',
+               y_unit: str = None, rotation=30):
+    formatter = tck.EngFormatter(places=decimals, sep=u"\N{THIN SPACE}",
+                                 unit=unit)
+    if x:
+        ax.xaxis.set_major_formatter(formatter)
+        plt.xticks(rotation=rotation)
     if z:
         # 3D plot
         ax.zaxis.set_major_formatter(formatter)
+    if y:
+        if y_unit is not None:
+            formatter = tck.EngFormatter(places=decimals, sep=u"\N{THIN SPACE}",
+                                         unit=y_unit)
+        ax.yaxis.set_major_formatter(formatter)
 
 
 def markup(ax, unit=''):
@@ -304,16 +321,192 @@ def bitmap(x, discretize=0, filename=None, prefix='img/', scatter=0, pow=None):
                     transparent=True, bbox_inches='tight')
 
 
-def save_fig(filename, ext='pdf', dpi='figure',
+def save_fig(filename, ext='png', dpi='figure',
              transparent=True, bbox_inches='tight', interpolation='none',
              **kwargs):
     assert os.path.isdir(IMG_DIR), \
         '_img_dir.py/IMG_DIR is must be setup correctly'
     # plt.axis('off') # this only affects the current subplot
-    plt.savefig(f'{IMG_DIR}/{filename}.{ext}', dpi=dpi, transparent=True,
-                interpolation=interpolation, bbox_inches=bbox_inches,
-                **kwargs)
+    plt.savefig(f'{IMG_DIR}/{filename}.{ext}', dpi=dpi,
+                transparent=transparent, interpolation=interpolation,
+                bbox_inches=bbox_inches, **kwargs)
     plt.close()
+
+
+def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
+                       err_key=None, ylog=False, standard=True,
+                       interpolate=None, translate={}, baseline=None,
+                       ylim=(0, None), fig=None, x_func=lambda x: x,
+                       err_alpha=0.15, y_unit=None, bar=False, v=0):
+    """ Show a scatter-plot of Y as function of X,
+    with conditional var Z as a third variable
+
+    :standard: bool     interpolation with x in [0,1]. This also gives the
+                        legend more space
+
+    result = DataFrame with cols [x_key, y_key, z_key]
+    """
+    fit_regression_line = interpolate == 'regression'
+    distinct_param_values = result.loc[:, z_keys].drop_duplicates()
+    if ylog and err_key is not None:
+        print("Warning, plotting (symmetric) error bars on log axis may be incorrect")
+
+    if fig is None:
+        fig = plt.figure(figsize=(5, 4))
+    ax = plt.gca()
+
+    for i, (_, param_values) in enumerate(distinct_param_values.iterrows()):
+        if v:
+            print(param_values.to_dict())
+        inner = result.merge(pd.DataFrame([param_values]),
+                             how='inner', right_index=True,
+                             on=list(param_values.keys()))
+
+        x = result.loc[inner.index, x_key]
+        y = result.loc[inner.index, y_key]
+        indices = y.values.nonzero()[0]
+
+        x_values, y_values = x.values[indices], y.values[indices]
+        x_values = x_func(x_values)
+        if baseline is not None:
+            y_values = np.array(baseline)[indices] / y_values
+
+        if err_key is not None:
+            err = result.loc[inner.index, err_key].values[indices]
+        else:
+            err = None
+        if ylog:
+            print('TODO check log error bars')
+        # err = np.array([np.log10(err), 10 ** err]) if ylog else err
+
+        # fit regression line
+
+        # # log-normalize
+        # if x_key == 'lapda' and z_key == 'n':
+        #     # ignore invalid param values
+        #     upper_bound = Params.max_lapda(n=z)
+        #     indices = y.values[x.values < upper_bound].nonzero()[0]
+        # if x_key == 'rho' and z_key == 'n':
+        #     upper_bound = Params.max_rho()
+        #     indices = y.values[x.values < upper_bound].nonzero()[0]
+        # else:
+        #     indices = y.values.nonzero()[0]
+        #
+        # if indices.size == 0:
+        #     # nothing to plot
+        #     break
+        #
+        # if ylog:
+        #     y_values = np.log10(np.clip(y_values, 1e-15, None))
+
+        if fit_regression_line:
+            slope, intercept, _, p, error = scipy.stats.linregress(x_values,
+                                                                   y_values)
+
+            significant = p < 0.005
+
+        # label = f'{translate[z_key]}: {z}'
+        label = parse_label(param_values, z_keys, translate)
+        # label = ', '.join(
+        #     (f'{translate[k]}: {param_values[k]}' for k in z_keys))
+        if fit_regression_line and significant:
+            label += f' (slope: {slope:0.2f})'
+        # elif fit_regression_line:
+        #     print(f'Not significant! {z_key}: {z}, p:{p:0.3f}, {error:0.2f}')
+
+        # plot scatter
+        assert(i < len(COLORS))
+        assert(i < len(LINESTYLES))
+        if bar:
+            n_categories = distinct_param_values.shape[0]
+            inter_width = 1. / 3.
+            intra_width = 1 - inter_width  # group width
+            width = intra_width / n_categories
+            left_margin = 0.18 * n_categories / 2
+            x_offset = left_margin - intra_width / 2 + i * width + width / 2
+            # no need to use hatches because the order is preserved in the legend
+            plt.bar(np.arange(x_values.size) + x_offset, y_values, width=width,
+                    label=label, yerr=err, zorder=3)
+            if i == n_categories - 1:
+                # assume x_values are equal for all items
+                ax.set_xticks(left_margin + np.arange(x_values.size))
+                ax.set_xticklabels(x_values)
+
+        else:
+            if err_key is None:
+                plt.scatter(x_values, y_values, alpha=0.85, s=12,
+                            color=COLORS[i])
+            else:
+                scale = 1
+                if err_alpha > 0:
+                    # don't use hatches in combination with alpha
+                    plt.fill_between(x_values, y_values - err * scale,
+                                     y_values + err * scale, alpha=err_alpha)
+
+                plt.errorbar(x_values, y_values, yerr=err, fmt='x',
+                             alpha=0.6, color=COLORS[i])
+
+            plt.plot(x_values, y_values,  label=label, alpha=0.8,
+                     color=COLORS[i], linestyle=LINESTYLES[i])
+
+        # plot linear model
+        if fit_regression_line and significant:
+            # x_pred = np.linspace(0, 1) if standard else x.values
+            if standard:
+                x_pred = np.linspace(0, 1) if slope < 4 \
+                    else np.linspace(0, 0.75)
+            else:
+                x_pred = x.values[indices]
+            y_pred = slope * x_pred + intercept
+            if ylog:
+                y_pred = 10 ** y_pred
+
+            plt.plot(x_pred, y_pred, '-', alpha=0.5,
+                     linewidth=1, color=COLORS[i])
+
+        elif interpolate is True:
+            assert interpolate != 'regression', 'incorrect arg'
+            plt.plot(x, y, '-', alpha=0.5,
+                     linewidth=1, color=COLORS[i])
+
+    # Add markup
+    plt.xlabel(translate[x_key])
+    plt.ylabel(translate[y_key])
+    sci_labels(ax, x=False, y_unit=y_unit)
+    plt.legend()
+    # plt.xlim(xlim)
+    plt.ylim(ylim)
+    if ylog:
+        plt.yscale('log')
+        # plt.yscale('symlog')
+
+    # add grid
+    if not bar:
+        plt.grid(b=None, which='major', axis='x', linewidth=0.5)
+    plt.grid(b=None, which='major', linewidth=0.3, axis='y')
+    plt.grid(b=None, which='minor', linewidth=0.3, axis='y' if bar else 'both')
+    if not ylog:
+        ax.xaxis.set_minor_locator(tck.AutoMinorLocator())  # TODO tst
+        if not bar:
+            ax.yaxis.set_minor_locator(tck.AutoMinorLocator())  # TODO tst
+
+    # rm spines
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    return fig
+
+
+def parse_label(param_values, z_keys, translate: dict):
+    segments = []
+    for k in z_keys:
+        value = param_values[k]
+        # translate value
+        if value in translate.keys():
+            value = translate[value]
+
+        # translate label
+        segments.append(f'{translate[k]}: {value}' if translate[k] else value)
+    return ', '.join(segments)
 
 
 ###############################################################################

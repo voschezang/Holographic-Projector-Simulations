@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import sys
 import os
+import time
 import hashlib
 import pickle
 # import struct
@@ -20,6 +21,7 @@ from itertools import repeat
 
 import file
 
+
 # LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
 LAMBDA = 0.650e-6
 # LAMBDA = 1
@@ -34,8 +36,9 @@ N = 80**(DIMS - 1)
 PROJECTOR_DISTANCE = -4
 PROJECTOR_DISTANCE = -1e3 * LAMBDA
 
-
+SSH = 'ssh nikhef-g2'
 PROGRESS_BAR_FILL = '█'
+
 if sys.stdout.encoding != 'UTF-8':
     try:
         PROGRESS_BAR_FILL = PROGRESS_BAR_FILL.encode('ascii')
@@ -227,26 +230,6 @@ def f(amplitude, phase, w, v, direction=1,  weighted=0):
     # \hat phi = A exp(\i(omega t - xt + phi))
     next_phase = phase - direction * 2 * np.pi * delta / LAMBDA
     next_amplitude = amplitude / delta
-    # if weighted:
-    #     assert DIMS == 3
-    #     weights = np.empty(delta.shape)
-    #     n = int(np.sqrt(w.shape[0]))
-    #     # for i, j in np.ndindex((n, n)):
-    #     for i in range(n):
-    #         for j in range(n):
-    #             # indices of nearest neighbours for each w
-    #             points = lattice_nn(w, n, i, j)
-    #             a = points[0]
-    #             b = points[1]
-    #             c = points[2]
-    #             d = points[3]
-    #             area = quadrilateral_area(a, b, c, d)
-    #             # area = quadrilateral_area(*lattice_nn(w, n, i, j))
-    #             weights[idx_(n, i, j)] = area * 0.5
-    #             # TODO return area
-    #
-    #     return to_polar(next_amplitude, next_phase) * weights
-
     return to_polar(next_amplitude, next_phase)
 
 
@@ -288,13 +271,6 @@ def map_sum_kernel(x, y, w, v, direction=1, distance=1, weighted=0, plane_wave_i
                        plane_wave_intensity=plane_wave_intensity),
             distance=distance)
 
-# @jit(nopython=True)
-# def acc_kernel(x, w, v, direction=1, distance=1, weighted=0):
-#     y = np.empty(v.shape[0])
-#     # for-loop to prevent ambiguity in shape
-#     return f(x[:, 0], x[:, 1], w, v[m], direction=direction, weighted=weighted)
-#     return y
-
 
 def entropy(y, v, w):
     stats = [np.abs, np.angle]
@@ -317,13 +293,6 @@ def projector_setup(x, y, z, w, v, u, plane_wave_intensity=1, parallel=0):
     assert y.shape[0] == v.shape[0]
     map_sum_kernel(x, y, w, v, direction=-1,
                    plane_wave_intensity=plane_wave_intensity, parallel=parallel)
-    # for m in range(v.shape[0]):
-    #     # source object
-    #     c = sum_kernel(x, w, v[m], direction=-1)
-    #     # plane wave
-    #     c += f(plane_wave_intensity, 0, 0, np.ones(3).reshape(1, -1))
-    #     y[m, :] = from_polar(c, distance=1)
-
     normalize_amplitude(y)
 
     # projection
@@ -782,6 +751,12 @@ def solve_xy_is_a(n: int, ratio=1.):
     return x, y
 
 
+def concat(items=[], lazy=True):
+    if not lazy:
+        return sum(items, [])
+    return itertools.chain.from_iterable(items)
+
+
 def fileinfo(archive: zipfile.ZipFile, filename: str):
     return next(filter(lambda x: x.filename == filename, archive.infolist()))
 
@@ -884,19 +859,25 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
     return data
 
 
-def parse_json(fn='out.json') -> dict:
+def parse_json(lines) -> dict:
+    """ lines = list of strings containing json encoded data """
     params = {k: [] for k in 'xyzuvw'}
-    with open(fn, 'r') as f:
-        for line in f:
-            if line:
+    for line in lines:
+        if line:
+            try:
                 p = json.loads(line)
                 k = p['phasor'][:1]
                 assert k in 'xyz'
                 params[k].append(p)
+            except json.decoder.JSONDecodeError as e:
+                print(e)
+                print(line)
+
     return params
 
 
-def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out', read_data=True) -> Tuple[dict, dict]:
+def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
+               read_data=True) -> Tuple[dict, dict]:
     """ Returns two tuples params and data """
     # TODO use better datastructure
     params = {k: [] for k in 'xyzuvw'}
@@ -915,7 +896,7 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out', read_data=True
         if not read_data:
             return params,
 
-        for i, p in enumerate(itertools.chain.from_iterable(params.values())):
+        for i, p in enumerate(concat(params.values())):
             print(i, p)
             # TODO try read, if fail then clear params[i]
             k1 = p['phasor'][:1]
@@ -963,9 +944,22 @@ def param_row(param_keys, param_values):
     return {k: values[i] for i, k in enumerate(param_keys)}
 
 
+def remote_file(fn='tmp/out.json'):
+    content = f"""
+{SSH} << EOF
+source ~/.profile
+cat {fn}
+EOF
+"""
+    # raw = subprocess.check_output(content, shell=True)
+    raw = subprocess.run(content, shell=True, check=True,
+                         capture_output=True).stdout
+    return raw.decode('utf-8').split('\n')
+
+
 def get_results(build_func, run_func,
                 build_params: pd.DataFrame, run_params: pd.DataFrame,
-                filename='results', tmp_dir='../tmp/py',
+                filename='results', tmp_dir='tmp_pkl',
                 n_trials=20, v=0):
     rerun = file.get_arg("-r", default_value=False, flag=True)
     # Load or generate simulation results
@@ -985,20 +979,55 @@ def get_results(build_func, run_func,
         results = grid_search(build_func, run_func, build_params, run_params,
                               n_trials=n_trials, verbose=v)
         if v:
-            print("results:\n", build_params.join(run_params).join(results))
+            # print("results:\n", build_params.join(run_params).join(results))
+            print("results:\n", results)
 
         # Save results
         with open(f'{tmp_dir}/{filename}.pkl', 'wb') as f:
             # TODO join with params?
             pickle.dump(results, f)
 
-        with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
-            pickle.dump(build_params, f)
-
-        with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
-            pickle.dump(run_params, f)
+        # with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
+        #     pickle.dump(build_params, f)
+        #
+        # with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
+        #     pickle.dump(run_params, f)
 
     return results
+
+
+def run_trial(run_func, run_kwargs):
+    """
+    Return a tuple (runtime, flops).
+    An `subprocess.CalledProcessError` in case of incorrect params
+    """
+    run_func(**run_kwargs)
+    # TODO manually cp file, don't use mounted dir
+    out = parse_json(remote_file())
+    runtimes = [r['runtime']
+                for r in concat(out.values())
+                if r['runtime'] > 0.]
+    for r in runtimes:
+        assert 0 <= r <= 1e10
+        if r == 0.:
+            print('r = 0.', r)
+        elif not r or r is float('nan') or r is np.nan:
+            print('pre r is nan', [f'{r:e}', r == 0.], r and True,
+                  r is float('nan'), r is np.nan, '\n')
+        elif not r:
+            print('r is false', r)
+        elif r < 1e-6:
+            print('runtime << 1', f'{r:e}')
+    if sum(runtimes) == 0:
+        print('err, sum:', sum(runtimes))
+
+    runtime = sum((r['runtime']
+                   for r in concat(out.values())
+                   if r['runtime'] > 0.))
+    flops = np.mean([r['flops']
+                     for r in concat(out.values())
+                     if r['flops'] > 0.])
+    return runtime, flops
 
 
 def grid_search(build_func, run_func,
@@ -1011,52 +1040,72 @@ def grid_search(build_func, run_func,
     n_run_rows = run_params.shape[0]
     n_rows = n_build_rows * n_run_rows
     for i, build_row in build_params.iterrows():
-        # success = True
+        success = True
         try:
             build_func(**build_row)
         except subprocess.CalledProcessError:
-            # success = False
-            print('\n  Error for params:', build_row.to_dict())
+            success = False
+            print('\n  Error for build params:', build_row.to_dict())
 
         for j, run_row in run_params.iterrows():
             if verbose and i % (1e3 / verbose) == 0:
-                print(f'i: {i}\t params: ', ', '.join(
+                print(f'\ni: {i}\t params: ', ', '.join(
                     f'{k}: {v}' for k, v in run_row.items()))
 
-            time, flops = np.empty((2, n_trials))
+            runtime, flops = np.zeros((2, n_trials))
             params = build_row.combine_first(run_row).to_dict()
 
-            # run n independent trials
             for t in range(n_trials):
+                if not success:
+                    break
                 idx = i * n_build_rows + j
-                print_progress(idx, n_rows, t, n_trials, suffix=str(params))
+                print_progress(idx, n_rows, t, n_trials,
+                               suffix=str(params))
                 try:
-                    run_func(**run_row)
-                    out = parse_json('../tmp/out.json')
-                    def values(): return itertools.chain.from_iterable(out.values())
-                    time = [r['runtime']
-                            for r in values() if r['runtime'] > 0.]
-                    flops = [r['flops'] for r in values() if r['flops'] > 0.]
-
+                    runtime[t], flops[t] = run_trial(run_func, run_row)
                 except subprocess.CalledProcessError:
+                    success = False
                     print('\n  Error for params:',
                           build_row.combine_first(run_row).to_dict())
-                    time = [0]
-                    flops = [0]
-
-                # print(out.values())
-                # values = sum(raw.values(), [])
+            if not success:
+                # invalidate all results in case of a single error for this parameter set
+                runtime[:] = 0
+                flops[:] = 0
 
             # flops *= 1e-9
-            results.append({'Runtime mean': np.mean(time),
-                            'Runtime std': np.std(time),
-                            # 'Runtime rel std': np.std(time) / np.mean(time),
-                            'FLOPS mean': np.mean(flops),
-                            'FLOPS std': np.std(flops),
-                            # 'FLOPS rel std': np.std(flops) / np.mean(flops)
-                            })
+            for r in runtime:
+                assert 0 <= r <= 1e10
+                if r == 0.:
+                    print('r = 0.', r)
+                elif not r or r is float('nan') or r is np.nan:
+                    print('post r is nan', [f'{r:e}', r == 0.], r and True,
+                          r is float('nan'), r is np.nan, '\n')
+                elif not r:
+                    print('r is false', r)
+                elif r < 1e-6:
+                    print('runtime << 1', f'{r:e}')
+            for r in [np.mean(runtime), np.std(runtime)]:
+                if not r or r is float('nan') or r is np.nan:
+                    print(r)
+                elif not r:
+                    print('r is false', r)
+                elif r < 1e-6:
+                    print('runtime << 1', f'{r:e}')
+
+            print('\n runtimes {}', runtime, np.mean(runtime), np.std(runtime),
+                  '\n')
+            # Append valid and invalid results for consistency with input params
+            params.update({'Runtime mean': np.mean(runtime),
+                           'Runtime std': np.std(runtime),
+                           # 'Runtime rel std': np.std(time) / np.mean(time),
+                           'FLOPS mean': np.mean(flops),
+                           'FLOPS std': np.std(flops),
+                           # 'FLOPS rel std': np.std(flops) / np.mean(flops)
+                           })
+            results.append(params)
 
     print('')  # close progress bar
+    # return pd.DataFrame(results).join(build_params).join(run_params)
     return pd.DataFrame(results)
 
 

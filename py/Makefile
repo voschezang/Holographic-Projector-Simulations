@@ -39,6 +39,9 @@ surf:
 	# plot surface
 	python3 surf.py
 
+experiment:
+	python3 experiment.py
+
 deps:
 	# make sure python, python-pip are installed
 	pip --user install -r requirements.txt
