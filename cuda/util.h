@@ -26,7 +26,7 @@ double flops(double runtime, size_t n, size_t m) {
   // generation Volta, compute capability 7.0 -arch=sm_72 or sm_72
   // max size: 49 152
   // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOP_PER_POINT, t, N*N * 1e-9);
-  return 1e-12 * n * m * (double) FLOP_PER_POINT / runtime;
+  return n * m * (double) FLOP_PER_POINT / runtime;
 }
 
 double bandwidth(double runtime, size_t n, size_t m, bool include_tmp) {
@@ -109,7 +109,7 @@ void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
 void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
   // n,m : number of input, output datapoints per transformation
   const double mu = mean(dt);
-  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT) \t E[runtime]: %f s\n",  \
+  printf("FLOPS:   \t%0.5f \t (%i FLOP_PER_POINT) \t E[runtime]: %f s\n",  \
          flops(mu, n, m), FLOP_PER_POINT, mu);
   // TODO correct bandwidth datasize
   // TODO multiply dt.size() with n,m inside func instead of outside?
@@ -256,16 +256,23 @@ inline std::string quote(char c) {
  *            "k" <sep1> v <sep2>
  *            "k" <sep1> v}`
  */
-void write_metadata(std::string phasor, std::string pos, Plane p, size_t len,
+void write_metadata(std::string phasor, std::string pos, Plane p, const std::vector<WAVE> &x,
                     double dt, double flops, std::ofstream& out) {
   // Use JSON-like separators with spaces for readiblity.
   const auto
     sep1 = ": ",
     sep2 = ", ";
+  const auto len = (double) x.size();
+  /* const auto sum = sum_amp_phase(x); */
+  const auto
+    amp = transform_reduce(x, cuCabs),
+    phase = transform_reduce(x, angle);
 
   // TODO replace phasor by amp and phase
   out << "{" \
       << quote("phasor")       << sep1 << quote(phasor)  << sep2 \
+      << quote("amp sum")      << sep1 << amp            << sep2 \
+      << quote("phase sum")    << sep1 << phase          << sep2 \
       << quote("pos")          << sep1 << quote(pos)     << sep2 \
       << quote("len")          << sep1 << len            << sep2 \
       << quote("precision")    << sep1 << IO_PRECISION   << sep2 \
@@ -304,7 +311,7 @@ void write_arrays(std::vector<WAVE> &x, std::vector<SPACE> &u,
   std::ofstream out;
 
   out.open(dir + "out.json", mode);
-  write_metadata(k1, k2, p, x.size(), dt, flops, out);
+  write_metadata(k1, k2, p, x, dt, flops, out);
   out.close();
 
   /* out << std::scientific; // to allow e.g. 1.0e-50 */

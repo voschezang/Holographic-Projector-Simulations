@@ -98,6 +98,14 @@ inline T sum(const std::vector<T> &x) {
   return std::accumulate(x.begin(), x.end(), (T) 0);
 }
 
+template<typename T = cuDoubleComplex>
+inline double transform_reduce(const std::vector<T> &x, double (*f)(T)) {
+  // transform input vector with function f and sum the result
+  // will be included in c++17
+  auto op = [f](double acc, T next) { return acc + f(next); };
+  return std::accumulate(x.begin(), x.end(), (double) 0., op);
+}
+
 template<typename T = double>
 inline double mean(const std::vector<T> &x) {
   assert(x.size() > 0);
