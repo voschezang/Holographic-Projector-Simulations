@@ -24,10 +24,6 @@ translate_latex = translate.copy()
 translate_latex['n'] = 'N'
 
 
-def fig():
-    return plt.figure(figsize=(6, 4))
-
-
 def build(kernel_size=16):
     flags = '-l curand -l cublas -std=c++14'
     arch_flags = '-arch=compute_70 -code=sm_70'
@@ -84,9 +80,15 @@ if __name__ == '__main__':
                                     bar=bar,
                                     interpolate=0,
                                     # interpolate=0 if bar else 'regression',
-                                    fig=fig(), err_alpha=0., v=v)
+                                    err_alpha=0., v=v)
             # plt.ylim((0, None))
             if metric == 'FLOPS':
+                print('axhline')
+                # hlim = 1e11  # 7.4e12
+                # plt.axhline(hlim, label='Theoretical limit', ls='--', lw=1,
+                #             alpha=0.4, color='0')
+                # plt.ylim(0, hlim * 1.01)
+                # plt.legend()
                 plt.title(f'Efficiency')
             else:
                 plt.title(f'{metric}')

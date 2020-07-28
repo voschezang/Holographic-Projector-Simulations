@@ -352,7 +352,8 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
         print("Warning, plotting (symmetric) error bars on log axis may be incorrect")
 
     if fig is None:
-        fig = plt.figure(figsize=(5, 4))
+        # fig = plt.figure(figsize=(6, 4))
+        fig = plt.figure(figsize=(4, 5))
     ax = plt.gca()
 
     for i, (_, param_values) in enumerate(distinct_param_values.iterrows()):
@@ -482,7 +483,7 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
 
     # add grid
     if not bar:
-        plt.grid(b=None, which='major', axis='x', linewidth=0.5)
+        plt.grid(b=None, which='major', axis='x', linewidth=0.7)
     plt.grid(b=None, which='major', linewidth=0.3, axis='y')
     plt.grid(b=None, which='minor', linewidth=0.3, axis='y' if bar else 'both')
     if not ylog:

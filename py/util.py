@@ -978,56 +978,9 @@ def get_results(build_func, run_func,
         print('Generate new results')
         results = grid_search(build_func, run_func, build_params, run_params,
                               n_trials=n_trials, verbose=v)
-        if v:
-            # print("results:\n", build_params.join(run_params).join(results))
-            print("results:\n", results)
-
-        # Save results
         with open(f'{tmp_dir}/{filename}.pkl', 'wb') as f:
-            # TODO join with params?
             pickle.dump(results, f)
-
-        # with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
-        #     pickle.dump(build_params, f)
-        #
-        # with open(f'{tmp_dir}/{filename}-params.pkl', 'wb') as f:
-        #     pickle.dump(run_params, f)
-
     return results
-
-
-def run_trial(run_func, run_kwargs):
-    """
-    Return a tuple (runtime, flops).
-    An `subprocess.CalledProcessError` in case of incorrect params
-    """
-    run_func(**run_kwargs)
-    # TODO manually cp file, don't use mounted dir
-    out = parse_json(remote_file())
-    runtimes = [r['runtime']
-                for r in concat(out.values())
-                if r['runtime'] > 0.]
-    for r in runtimes:
-        assert 0 <= r <= 1e10
-        if r == 0.:
-            print('r = 0.', r)
-        elif not r or r is float('nan') or r is np.nan:
-            print('pre r is nan', [f'{r:e}', r == 0.], r and True,
-                  r is float('nan'), r is np.nan, '\n')
-        elif not r:
-            print('r is false', r)
-        elif r < 1e-6:
-            print('runtime << 1', f'{r:e}')
-    if sum(runtimes) == 0:
-        print('err, sum:', sum(runtimes))
-
-    runtime = sum((r['runtime']
-                   for r in concat(out.values())
-                   if r['runtime'] > 0.))
-    flops = np.mean([r['flops']
-                     for r in concat(out.values())
-                     if r['flops'] > 0.])
-    return runtime, flops
 
 
 def grid_search(build_func, run_func,
@@ -1052,7 +1005,7 @@ def grid_search(build_func, run_func,
                 print(f'\ni: {i}\t params: ', ', '.join(
                     f'{k}: {v}' for k, v in run_row.items()))
 
-            runtime, flops = np.zeros((2, n_trials))
+            runtime, flops, amp, phase = np.zeros((4, n_trials))
             params = build_row.combine_first(run_row).to_dict()
 
             for t in range(n_trials):
@@ -1062,51 +1015,63 @@ def grid_search(build_func, run_func,
                 print_progress(idx, n_rows, t, n_trials,
                                suffix=str(params))
                 try:
-                    runtime[t], flops[t] = run_trial(run_func, run_row)
+                    runtime[t], flops[t], amp[t], phase[t] = run_trial(
+                        run_func, run_row)
                 except subprocess.CalledProcessError:
                     success = False
                     print('\n  Error for params:',
                           build_row.combine_first(run_row).to_dict())
             if not success:
                 # invalidate all results in case of a single error for this parameter set
-                runtime[:] = 0
-                flops[:] = 0
+                runtime[:] = flops[:] = amp[:] = phase[:] = 0
 
-            # flops *= 1e-9
-            for r in runtime:
-                assert 0 <= r <= 1e10
-                if r == 0.:
-                    print('r = 0.', r)
-                elif not r or r is float('nan') or r is np.nan:
-                    print('post r is nan', [f'{r:e}', r == 0.], r and True,
-                          r is float('nan'), r is np.nan, '\n')
-                elif not r:
-                    print('r is false', r)
-                elif r < 1e-6:
-                    print('runtime << 1', f'{r:e}')
-            for r in [np.mean(runtime), np.std(runtime)]:
-                if not r or r is float('nan') or r is np.nan:
-                    print(r)
-                elif not r:
-                    print('r is false', r)
-                elif r < 1e-6:
-                    print('runtime << 1', f'{r:e}')
-
-            print('\n runtimes {}', runtime, np.mean(runtime), np.std(runtime),
-                  '\n')
             # Append valid and invalid results for consistency with input params
             params.update({'Runtime mean': np.mean(runtime),
                            'Runtime std': np.std(runtime),
-                           # 'Runtime rel std': np.std(time) / np.mean(time),
+                           # 'Runtime rel std': np.std(time) / np.mean(runtime),
                            'FLOPS mean': np.mean(flops),
                            'FLOPS std': np.std(flops),
                            # 'FLOPS rel std': np.std(flops) / np.mean(flops)
+                           'amp std': np.std(amp),
+                           'phase std': np.std(phase),
+                           'amp mean': np.mean(amp)
                            })
+            # std of amp/phase for all trials should be zero
+            if params['amp std'] > 1e-3 or params['phase std'] > 1e-3:
+                print(f"\nWarning, amp std: {params['amp std']:e},",
+                      f" phase std: {params['amp std']:e}")
             results.append(params)
 
-    print('')  # close progress bar
-    # return pd.DataFrame(results).join(build_params).join(run_params)
+    # print('')  # close progress bar
     return pd.DataFrame(results)
+
+
+def run_trial(run_func, run_kwargs, std_key='y'):
+    """
+    Return a tuple (runtime, flops).
+    An `subprocess.CalledProcessError` in case of incorrect params
+    """
+    run_func(**run_kwargs)
+    # TODO manually cp file, don't use mounted dir
+    out = parse_json(remote_file())
+    # print('amp sum', [p['amp sum'] for p in concat(out.values())])
+    runtimes = [r['runtime']
+                for r in concat(out.values())
+                if r['runtime'] > 0.]
+    if sum(runtimes) == 0:
+        print('err, sum:', sum(runtimes))
+
+    runtime = sum((r['runtime']
+                   for r in concat(out.values())
+                   if r['runtime'] > 0.))
+    flops = np.mean([r['flops']
+                     for r in concat(out.values())
+                     if r['flops'] > 0.])
+    amp = np.mean([r['amp sum']
+                   for r in out['y']])
+    phase = np.mean([r['phase sum']
+                     for r in out['y']])
+    return runtime, flops, amp, phase
 
 
 def print_progress(major_iter=0, n_major=100, minor_iter=0, n_minor=None,
