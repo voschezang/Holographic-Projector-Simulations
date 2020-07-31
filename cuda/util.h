@@ -42,7 +42,7 @@ double bandwidth(double runtime, size_t n, size_t m, bool include_tmp) {
   return unit * (input + output) / runtime;
 }
 
-void check(WAVE  z) {
+void check(WAVE z) {
   /* double a = creal(z), b = cimag(z); */
   if (isnan(z.x)) printf("found nan re\n");
   if (isinf(z.x)) printf("found inf re\n");
@@ -271,8 +271,8 @@ void write_metadata(std::string phasor, std::string pos, Plane p, const std::vec
   // TODO replace phasor by amp and phase
   out << "{" \
       << quote("phasor")       << sep1 << quote(phasor)  << sep2 \
-      << quote("amp sum")      << sep1 << amp            << sep2 \
-      << quote("phase sum")    << sep1 << phase          << sep2 \
+      << quote("amp_sum")      << sep1 << amp            << sep2 \
+      << quote("phase_sum")    << sep1 << phase          << sep2 \
       << quote("pos")          << sep1 << quote(pos)     << sep2 \
       << quote("len")          << sep1 << len            << sep2 \
       << quote("precision")    << sep1 << IO_PRECISION   << sep2 \
@@ -285,6 +285,12 @@ void write_metadata(std::string phasor, std::string pos, Plane p, const std::vec
       << quote("aspect_ratio") << sep1 << p.aspect_ratio << sep2 \
       << quote("runtime")      << sep1 << dt             << sep2 \
       << quote("flops")        << sep1 << flops          << "}\n";
+
+  // check after writing to allow debugging of written result
+  assert(!isnan(amp));
+  assert(!isnan(phase));
+  assert(!isinf(amp));
+  assert(!isinf(phase));
 }
 
 void write_dot(char name, WAVE *x, SPACE *u, size_t len) {

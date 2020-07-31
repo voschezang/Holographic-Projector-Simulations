@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
   }
 #else
   // TODO use cmd arg for x length
+  // const auto shape = Shape::LogLine;
   const auto shape = Shape::DottedCircle;
   // const auto shape = Shape::Circle;
   auto x = std::vector<WAVE>(n_per_plane.obj, from_polar(1.0));
@@ -137,21 +138,21 @@ int main(int argc, char** argv) {
 
     // The projection distributions at various locations are obtained using forward transformations
     for (auto& j : range(n_planes.projection)) {
-      // skip half of forward transformations when simulating for prototype
-      // TODO allow to disable forward transformation
-      if (transformation == Transformation::Amplitude && n_planes.obj >= 4 && j % 2 == 1) continue;
       printf(" z plane #%i\n", j);
       const auto ratio = j == 0 ? 0 : j / ((double) n_planes.projection - 1.);
-      const double width = gerp(params.projection_width, ratio);
-      obj_offset.z = gerp(params.projection_z_offset, ratio);
+      const double
+        width = gerp(params.projection_width, ratio),
+        height = width / params.aspect_ratio.projection;
+      const Cartesian<double> projection_offset = {x: params.quadrant_projection ? width / 2. : 0.,
+                                                   y: params.quadrant_projection ? height / 2. : 0.,
+                                                   z: lerp(params.projection_z_offset, ratio)};
       const auto z_plane = Plane {width: width,
-                                  offset: obj_offset,
+                                  offset: {x: obj_offset.x + projection_offset.x,
+                                           y: obj_offset.y + projection_offset.y,
+                                           z: obj_offset.z + projection_offset.z},
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
-
-      printf("z_plane: %i, width: %e\n", j, z_plane.width);
       init::plane(w, z_plane);
-      // init::plane(w, z_plane, {obj_offset.x, obj_offset.y, z_plane.z_offset});
 
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WAVE>(n.z);

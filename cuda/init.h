@@ -89,7 +89,6 @@ Geometry simple_geometry(const size_t n) {
 Geometry geometry(const size_t n) {
   Geometry p;
   p.blockSize = BLOCKDIM;
-  assert(p.blockSize == 64);
   p.gridDim = GRIDDIM; // TODO rename to gridDim and use dim3 dtype
   p.kernel_size = KERNEL_SIZE;
   p.batch_size = BATCH_SIZE;
@@ -198,6 +197,12 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
     for (unsigned int i = 0; i < n; ++i)
       u[i*DIMS] = i * du - half_width;
 
+    break;
+  }
+  case Shape::LogLine: {
+    const auto x = geomspace(n, 1, 1 + width);
+    for (auto& i : range(n))
+      u[i*DIMS] = x[i] - 1 + width / 2.;
     break;
   }
   case Shape::Cross: {

@@ -75,7 +75,7 @@ std::vector<double> linspace(size_t len, double min = 0., double max = 1.) {
 }
 
 std::vector<double> logspace(size_t len, double a, double b, double base = 10.) {
-  // Return a sequence from 10^a to 10^b, spaced evenly over a logarithmic scaling.
+  // Return a sequence from 10^a to 10^b, spaced evenly over a logarithmic scale.
   // TODO change argument order to (a,b,len,base), idem for linspace, geomspace
   assert(len > 0);
   auto values = linspace(len, a, b);
@@ -146,6 +146,9 @@ inline double lerp(Range<double> x, double ratio) {
 
 inline double gerp(double a, double b, double ratio) {
   // Geometric interpolation of two numbers a, b. Lazy version of geomspace
+  if (a == b) return a;
+  if (a == 0) a = 1e-12;
+  if (b == 0) b = 1e-12;
   return pow(10, lerp(log10(a), log10(b), ratio));
 }
 inline double gerp(Range<double> x, double ratio) {
@@ -160,6 +163,8 @@ namespace algebra {
 //////////////////////////////////////////////////////////////////////////////////
 
 void test() {
+  // TODO check nan + inf values
+
   // empty vector has zero sum
   assert(sum(std::vector<int>{}) == 0);
 
@@ -167,6 +172,8 @@ void test() {
   assert(sum(std::vector<double>{1.0, 0.5}) == 1.5);
   assert(mean(std::vector<double>{0,1}) == 0.5);
   assert(sample_variance(std::vector<double>{0,1}) == 0.25);
+
+  assert(transform_reduce({{1,0}, {2.5,0}, {6.5,0}}, cuCabs) == 10.0);
 
   assert(lerp(0, 1, 0.9) == 0.9);
   assert(lerp(0, 2, 1) == 2);
@@ -177,6 +184,7 @@ void test() {
   assert(lerp(4, 4, 0.8) - 4 < 1e-6);
   assert(gerp(3, 3, 0.3) - 3 < 1e-6);
   assert(gerp(4, 4, 0.8) - 4 < 1e-6);
+  assert(gerp(0, 0, 0.8) < 1e-6);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

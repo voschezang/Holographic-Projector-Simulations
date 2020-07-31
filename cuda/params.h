@@ -6,7 +6,7 @@
 
 enum class Algorithm {Naive, Alt};
 
-enum class Shape {Line, Cross, Circle, DottedCircle};
+enum class Shape {Line, LogLine, Cross, Circle, DottedCircle};
 enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
 
 template<typename T>
@@ -47,7 +47,9 @@ struct Params {
     projection_width, // relative to object width
     projection_z_offset;
 
-  bool randomize; // TODO add option to compute local average
+  bool
+    quadrant_projection,
+    randomize; // TODO add option to compute local average
   /* std::string input_filename; // input filename or empty string, positions will be scaled to `obj_width` */
 };
 

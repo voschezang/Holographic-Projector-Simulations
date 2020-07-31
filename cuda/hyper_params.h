@@ -15,9 +15,9 @@
 /* #define N_sqrt 16 */
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
-/* #define N_sqrt 128 */
+#define N_sqrt 128
 /* #define N_sqrt 256 */
-#define N_sqrt 512
+/* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 
@@ -31,7 +31,7 @@
 /* #define KERNELS_PER_BATCH (STREAM_BATCH_SIZE / KERNEL_BATCH_SIZE) // n kernel calls per stream batch */
 // TODO compute optimal batch size as function of N
 
-#define N_STREAMS 16
+#define N_STREAMS 1
 /* #define STREAM_SIZE (N / N_STREAMS) // datapoints per stream */
 /* #define BATCHES_PER_STREAM CEIL(STREAM_SIZE, STREAM_BATCH_SIZE) */
 /* #define N_BATCHES (N_STREAMS * BATCHES_PER_STREAM) */

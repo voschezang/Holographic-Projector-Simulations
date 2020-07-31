@@ -596,6 +596,7 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
      * adding the planar wave should happen before squaring the amplitude
     */
     // TODO do this on CPU?
+    assert(0);
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     printf("ref v[2]: %e\n", v[2]);
     // auto y_reference = transform<Direction::Forwards>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
