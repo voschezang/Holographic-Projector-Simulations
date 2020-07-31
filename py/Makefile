@@ -42,6 +42,10 @@ surf:
 experiment:
 	python3 experiment.py
 
+clean:
+	rm -rf tmp_pkl/*
+	rm -rf tmp_local/*
+
 deps:
 	# make sure python, python-pip are installed
 	pip --user install -r requirements.txt

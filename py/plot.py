@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import scipy.stats
+import scipy.signal
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
@@ -331,6 +332,71 @@ def save_fig(filename, ext='png', dpi='figure',
                 transparent=transparent, interpolation=interpolation,
                 bbox_inches=bbox_inches, **kwargs)
     plt.close()
+
+
+def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=True,
+                   range=True, range_alpha=0.3,
+                   convolve=False,
+                   xlog=False, ylog=True, labels=[]):
+    """ X,Y: lists of x,y data """
+    n_subplots = len(Y)
+    cols, rows = figshape
+    assert cols * rows >= n_subplots, \
+        f'figsize: {cols} x {rows} < {n_subplots}'
+    fig = plt.figure(figsize=(4 * cols, 3 * rows))
+    for i_col, i_row in np.ndindex(figshape):
+        i = i_col + i_row * cols
+        if i >= n_subplots:
+            continue
+
+        plt.subplot(rows, cols, 1 + i)
+        x = X[i][:, 0]
+        y = Y[i]
+        if scatter:
+            if y.size > 100:
+                plt.scatter(x, y, s=0.1, alpha=0.1)
+            else:
+                plt.scatter(x, y, s=5, alpha=1)
+
+        if mean or range:
+            n_samples = 128
+            assert y.size % n_samples == 0, 'pad input to fit reduction'
+            sample_size = round(y.size / n_samples)
+            y_samples = y.reshape((n_samples, sample_size))
+            x_reduced = x[::sample_size]
+            assert x_reduced.shape == y_samples.mean(axis=1).shape
+            assert n_samples == y_samples.mean(axis=1).size
+            if mean:
+                plt.plot(x_reduced, y_samples.mean(axis=1))
+            if range:
+                plt.fill_between(x_reduced, y_samples.min(axis=1),
+                                 y_samples.max(axis=1), alpha=range_alpha)
+
+        if convolve and y.size > 100:
+            n = round(y.size / 100)
+            c = scipy.signal.hann(n)
+            z = scipy.signal.convolve(y, c / c.sum(), mode='same')
+            plt.plot(X[i][:, 0], z, alpha=0.8, color='orange')
+
+        if xlog:
+            plt.xscale('log')
+        if ylog:
+            plt.yscale('log')
+        plt.ylim(y.min(), y.max())
+        plt.title(labels[i], fontsize=12)
+        ax = plt.gca()
+        sci_labels(ax, unit='m', y=False)
+        plt.xlabel('Space')
+        plt.margins(0)
+        plt.grid(b=None, which='major', axis='x', linewidth=0.7)
+        plt.grid(b=None, which='major', linewidth=0.3, axis='y')
+        plt.grid(b=None, which='minor', linewidth=0.3, axis='both')
+
+    # plt.suptitle(title, y=1.04, fontsize=14, fontweight='bold')
+    plt.suptitle(title, y=1.02, fontsize=14, fontweight='bold')
+    # plt.legend()
+    plt.tight_layout()
+    return fig
 
 
 def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
@@ -694,7 +760,7 @@ if __name__ == '__main__':
     Nx, Ny = util.solve_xy_is_a(N, ratio)
     Nxy = Nx * Ny
     for k in 'yv':
-        data[k] = data[k][:Nxy]
+        data[k] = data[k][: Nxy]
 
     print({'N': N, 'Nx': Nx, 'Ny': Ny, 'eq': Nx * Ny == N})
     N_sqrt = int(np.sqrt(N))

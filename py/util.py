@@ -20,6 +20,7 @@ from multiprocessing import Pool
 from itertools import repeat
 
 import file
+import remote
 
 
 # LAMBDA = 0.6328e-6  # wavelength in vacuum: 632.8 nm (HeNe laser)
@@ -36,7 +37,6 @@ N = 80**(DIMS - 1)
 PROJECTOR_DISTANCE = -4
 PROJECTOR_DISTANCE = -1e3 * LAMBDA
 
-SSH = 'ssh nikhef-g2'
 PROGRESS_BAR_FILL = '█'
 
 if sys.stdout.encoding != 'UTF-8':
@@ -897,7 +897,7 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
             return params,
 
         for i, p in enumerate(concat(params.values())):
-            print(i, p)
+            print(f'#{i}:', p)
             # TODO try read, if fail then clear params[i]
             k1 = p['phasor'][:1]
             k2 = p['pos'][:1]
@@ -929,6 +929,9 @@ def param_table(params: dict) -> pd.DataFrame:
     params = {str: list of values}
     """
     for k, v in params.items():
+        if isinstance(v, int) or isinstance(v, float):
+            v = [v]
+            params[k] = v
         assert(isinstance(k, str))
         assert(isinstance(v, np.ndarray) or isinstance(v, list))
 
@@ -944,43 +947,41 @@ def param_row(param_keys, param_values):
     return {k: values[i] for i, k in enumerate(param_keys)}
 
 
-def remote_file(fn='tmp/out.json'):
-    content = f"""
-{SSH} << EOF
-source ~/.profile
-cat {fn}
-EOF
-"""
-    # raw = subprocess.check_output(content, shell=True)
-    raw = subprocess.run(content, shell=True, check=True,
-                         capture_output=True).stdout
-    return raw.decode('utf-8').split('\n')
-
-
 def get_results(build_func, run_func,
                 build_params: pd.DataFrame, run_params: pd.DataFrame,
                 filename='results', tmp_dir='tmp_pkl',
-                n_trials=20, v=0):
+                n_trials=20, copy_data=False, v=0):
+    """
+    Compile & run a c-style program
+    build_func (run_func) should accept build_params (run_params) and must
+    return a `subprocess.CompletedProcess`
+    """
+    if copy_data:
+        assert n_trials == 1, 'use multiple planes instead of multiple trials'
     rerun = file.get_arg("-r", default_value=False, flag=True)
     # Load or generate simulation results
-    # encoded = (str(build_params) + str(run_params)).encode('utf-8')
     encoded = str.encode(str(build_params) + str(run_params), 'utf-8')
-    hash = int(int(hashlib.sha256(encoded).hexdigest(), 16) % 1e6)
+    hash = int(int(hashlib.sha256(encoded).hexdigest(), 16) % 1e9)
     filename += str(hash)
-    if not rerun and os.path.isfile(f'{tmp_dir}/{filename}.pkl'):
+    zip_fn = f'{tmp_dir}/{filename}.zip'
+
+    if not rerun \
+            and os.path.isfile(f'{tmp_dir}/{filename}.pkl') \
+            and (not copy_data or os.path.isfile(zip_fn)):
         with open(f'{tmp_dir}/{filename}.pkl', 'rb') as f:
             results = pickle.load(f)
-
     else:
-        if not os.path.isfile(f'{tmp_dir}/{filename}.pkl'):
-            print('Warning, results file not found')
-
-        print('Generate new results')
+        if v:
+            print('Generate new results')
         results = grid_search(build_func, run_func, build_params, run_params,
                               n_trials=n_trials, verbose=v)
         with open(f'{tmp_dir}/{filename}.pkl', 'wb') as f:
             pickle.dump(results, f)
-    return results
+
+        if copy_data:
+            remote.cp_file(target=zip_fn)
+
+    return results, filename
 
 
 def grid_search(build_func, run_func,
@@ -998,7 +999,7 @@ def grid_search(build_func, run_func,
             build_func(**build_row)
         except subprocess.CalledProcessError:
             success = False
-            print('\n  Error for build params:', build_row.to_dict())
+            print('\n - Error for build params:', build_row.to_dict())
 
         for j, run_row in run_params.iterrows():
             if verbose and i % (1e3 / verbose) == 0:
@@ -1019,11 +1020,13 @@ def grid_search(build_func, run_func,
                         run_func, run_row)
                 except subprocess.CalledProcessError:
                     success = False
-                    print('\n  Error for params:',
+                    print('\n - Error for params:',
                           build_row.combine_first(run_row).to_dict())
             if not success:
                 # invalidate all results in case of a single error for this parameter set
                 runtime[:] = flops[:] = amp[:] = phase[:] = 0
+                if n_rows == 1:
+                    raise RuntimeError('Single param-set experiment failed')
 
             # Append valid and invalid results for consistency with input params
             params.update({'Runtime mean': np.mean(runtime),
@@ -1042,19 +1045,19 @@ def grid_search(build_func, run_func,
                       f" phase std: {params['amp std']:e}")
             results.append(params)
 
-    # print('')  # close progress bar
     return pd.DataFrame(results)
 
 
 def run_trial(run_func, run_kwargs, std_key='y'):
     """
     Return a tuple (runtime, flops).
-    An `subprocess.CalledProcessError` in case of incorrect params
+    An `subprocess.CalledProcessError` is raised in case of incorrect params
     """
-    run_func(**run_kwargs)
+    out: subprocess.CompletedProcess = run_func(**run_kwargs)
+    assert out.stderr == b'', out.stderr.decode('utf-8')
+    out.check_returncode()
     # TODO manually cp file, don't use mounted dir
-    out = parse_json(remote_file())
-    # print('amp sum', [p['amp sum'] for p in concat(out.values())])
+    out = parse_json(remote.read_file())
     runtimes = [r['runtime']
                 for r in concat(out.values())
                 if r['runtime'] > 0.]
@@ -1067,9 +1070,9 @@ def run_trial(run_func, run_kwargs, std_key='y'):
     flops = np.mean([r['flops']
                      for r in concat(out.values())
                      if r['flops'] > 0.])
-    amp = np.mean([r['amp sum']
+    amp = np.mean([r['amp_sum']
                    for r in out['y']])
-    phase = np.mean([r['phase sum']
+    phase = np.mean([r['phase_sum']
                      for r in out['y']])
     return runtime, flops, amp, phase
 
