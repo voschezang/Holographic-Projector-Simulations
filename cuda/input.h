@@ -18,9 +18,10 @@ Params read_args(int argc, char **argv) {
   /* const double z_offset = 0.35; */
   /* const double z_offset = 0.01; */
   /* const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset}; */
-  const auto obj_z_offset = Range<double> {min: 0.01, max: 0.05};
+  const auto obj_z_offset = Range<double> {min: 0.1, max: 0.05};
   const double projection_width = N_sqrt * 7e-6;
   // projector z_offset is always zero
+  // TODO use json file (similar to meta data)
   // TODO add rand seed
   auto p = Params
     {n_planes:     {obj: 1,
@@ -35,8 +36,8 @@ Params read_args(int argc, char **argv) {
                     projection: 1.}, // 0.2
 
      /* obj_shape: Shape::DottedCircle, // TODO */
-     obj_offset:  {x: {min: 0.004, max: 0.004},
-                   y: {min: 0.006, max: 0.006},
+     obj_offset:  {x: {min: 0.0, max: 0.0},
+                   y: {min: 0.0, max: 0.0},
                    z: obj_z_offset},
 
      obj_width: {min: 0.1, max: 0.1},

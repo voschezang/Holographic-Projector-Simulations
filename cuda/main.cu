@@ -146,6 +146,7 @@ int main(int argc, char** argv) {
       const Cartesian<double> projection_offset = {x: params.quadrant_projection ? width / 2. : 0.,
                                                    y: params.quadrant_projection ? height / 2. : 0.,
                                                    z: lerp(params.projection_z_offset, ratio)};
+      assert(!params.quadrant_projection);
       const auto z_plane = Plane {width: width,
                                   offset: {x: obj_offset.x + projection_offset.x,
                                            y: obj_offset.y + projection_offset.y,
@@ -153,6 +154,8 @@ int main(int argc, char** argv) {
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
       init::plane(w, z_plane);
+      printf("x offsets obj: %f, projector: %f\n", obj_offset.x, z_plane.offset.x);
+      printf("z offsets obj: %f, projector: %f\n", obj_offset.z, z_plane.offset.z);
 
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WAVE>(n.z);

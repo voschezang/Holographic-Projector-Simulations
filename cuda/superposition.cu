@@ -92,7 +92,7 @@ inline __device__ void per_thread(const WAVE *__restrict__ x, const size_t N_x,
     // cache v[batch] because it is read by every thread
     // v_cached is constant and equal for each block
     __shared__ SPACE v_cached[KERNEL_SIZE * DIMS];
-    // use strides when BLOCKDIM < BATCH_SIZE * DIMS
+    // use strides when BLOCKDIM < BATCH_SIZE * DIMS // BATCH_SIZE == KERNEL_SIZE?
     for (unsigned int i = threadIdx.x; i < KERNEL_SIZE * DIMS; i+=blockDim.x)
       v_cached[i] = v[i];
 
@@ -247,7 +247,7 @@ inline __device__ void aggregate_blocks(WAVE *__restrict__ y_shared, double *__r
     const auto i = blockIdx.x + m * gridDim.x;
     const auto sum = y_shared[SIdx(m, 0, size)];
     y_global[i] = sum.x;
-    y_global[i + gridDim.x * BATCH_SIZE * KERNEL_SIZE] = sum.y; // note the use of stream batch size
+    y_global[i + gridDim.x * KERNEL_SIZE] = sum.y; // note the use of stream batch size
   }
 
   // do not sync blocks, exit kernel and agg block results locally or in different kernel
@@ -286,7 +286,7 @@ __global__ void per_block(const Geometry p,
   superposition::aggregate_blocks<blockSize>(y_shared, y_global);
   // {
   //   __syncthreads();
-  //   size_t m = gridDim.x * BATCH_SIZE * KERNEL_SIZE;
+  //   size_t m = gridDim.x * KERNEL_SIZE;
   //   printf("N_x: %lu, m: %lu\n", N_x, m);
   //   WAVE c = {y_global[0], y_global[m]};
   //   printf("tid: %i \t y[0]: a: %f phi: %f (shared)\n", threadIdx.x, cuCabs(c), angle(c));
@@ -301,6 +301,7 @@ __global__ void per_block_naive(const Geometry p,
                                 // const double *__restrict__ phi,
                                 const SPACE *__restrict__ u,
                                 const SPACE *__restrict__ v,
+                                const bool append_result,
                                 WAVE *__restrict__ y_global) {
 #ifdef DEBUG
   assert(blockDim.x * blockDim.y * blockDim.z <= 1024); // max number of threads per block
@@ -319,7 +320,11 @@ __global__ void per_block_naive(const Geometry p,
       for (size_t m = tid.y; m < M; m += gridSize.y) {
         const WAVE y = phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]);
         const size_t i = Yidx(n, m, N, M);
-        y_global[i] = y;
+        // TODO add bool to template and use: y[] = y + int(append) y
+        if (append_result)
+          {y_global[i].x += y.x; y_global[i].y += y.y;}
+        else
+          y_global[i] = y;
 #ifdef TEST_CONST_PHASE2
         y_global[i] = from_polar(1., 0.);
 #endif
@@ -366,12 +371,18 @@ __global__ void per_block_naive(const Geometry p,
             y = from_polar(1., 0.);
 #endif
             const size_t i = Yidx(blockIdx.x, m, MIN(N, gridDim.x), M);
-            y_global[i] = y;
+            if (append_result)
+              {y_global[i].x += y.x; y_global[i].y += y.y;}
+            else
+              y_global[i] = y;
           }
         }
         else {
           const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
-          y_global[i] = y;
+          if (append_result)
+            {y_global[i].x += y.x; y_global[i].y += y.y;}
+          else
+            y_global[i] = y;
         }
       }
     }

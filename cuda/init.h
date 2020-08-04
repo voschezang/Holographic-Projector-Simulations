@@ -91,7 +91,7 @@ Geometry geometry(const size_t n) {
   p.blockSize = BLOCKDIM;
   p.gridDim = GRIDDIM; // TODO rename to gridDim and use dim3 dtype
   p.kernel_size = KERNEL_SIZE;
-  p.batch_size = BATCH_SIZE;
+  p.batch_size = 1;
   p.n_streams = N_STREAMS;
 
   derive_secondary_geometry(n, p);

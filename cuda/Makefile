@@ -48,7 +48,7 @@ init-path:
 
 test:
 	nvcc -o test test.cu $(FLAGS) -DNORM_3D='norm3d_host' && ./test
-	rm -f test;
+	rm test;
 
 test-phase-projector:
 	# params should be: 1440 hd nonrand screen, no PROJECT_PHASE=0, 1pt, offset 4mm 6mm 10mm, non
