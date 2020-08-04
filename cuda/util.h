@@ -35,10 +35,10 @@ double bandwidth(double runtime, size_t n, size_t m, bool include_tmp) {
   const double unit = 1e-6; // MB/s
   double input = n * (sizeof(WAVE) + 3 * sizeof(SPACE));
   double output = m * 3 * sizeof(SPACE);
-  if (include_tmp) {
-    double tmp = GRIDDIM * SHARED_MEMORY_SIZE(BLOCKDIM) * sizeof(WAVE);
-    return unit * (input + output + tmp) / runtime;
-  }
+  /* if (include_tmp) { */
+  /*   double tmp = GRIDDIM * SHARED_MEMORY_SIZE(BLOCKDIM) * sizeof(WAVE); */
+  /*   return unit * (input + output + tmp) / runtime; */
+  /* } */
   return unit * (input + output) / runtime;
 }
 
@@ -51,12 +51,12 @@ void check(WAVE z) {
   if (isinf(z.x)) exit(1);
 }
 
-void check_hyper_params(Geometry p) {
-  assert(DIMS == 3);
-  assert(SHARED_MEMORY_SIZE(p.blockSize) > 0);
-  assert(REDUCE_SHARED_MEMORY >= 1);
-  assert(REDUCE_SHARED_MEMORY <= CEIL(p.blockSize, 2));
-}
+/* void check_hyper_params(Geometry p) { */
+/*   assert(DIMS == 3); */
+/*   /\* assert(SHARED_MEMORY_SIZE(p.blockSize) > 0); *\/ */
+/*   assert(REDUCE_SHARED_MEMORY >= 1); */
+/*   assert(REDUCE_SHARED_MEMORY <= CEIL(p.blockSize, 2)); */
+/* } */
 
 void check_cvector(std::vector<WAVE> x) {
 #ifdef DEBUG
@@ -99,18 +99,18 @@ void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
   printf("\t kernels per stream: \t%6i", p.kernels_per_stream); printf("\n");
 
   printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(n_per_plane.projector));
-  {
-    size_t n = SHARED_MEMORY_SIZE(p.blockSize);
-    double m = n * sizeof(WAVE) * 1e-3;
-    printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m);
-  }
+  /* { */
+  /*   size_t n = SHARED_MEMORY_SIZE(p.blockSize); */
+  /*   double m = n * sizeof(WAVE) * 1e-3; */
+  /*   printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m); */
+  /* } */
 }
 
 void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
   // n,m : number of input, output datapoints per transformation
   const double mu = mean(dt);
-  printf("FLOPS:   \t%0.5f \t (%i FLOP_PER_POINT) \t E[runtime]: %f s\n",  \
-         flops(mu, n, m), FLOP_PER_POINT, mu);
+  printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT) \t E[runtime]: %f s\n",  \
+         flops(mu, n, m) * 1e-12, FLOP_PER_POINT, mu);
   // TODO correct bandwidth datasize
   // TODO multiply dt.size() with n,m inside func instead of outside?
   printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(mu, n, m, false));

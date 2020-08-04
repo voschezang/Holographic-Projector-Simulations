@@ -19,14 +19,14 @@ Params read_args(int argc, char **argv) {
   /* const double z_offset = 0.01; */
   /* const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset}; */
   const auto obj_z_offset = Range<double> {min: 0.1, max: 0.05};
-  const double projection_width = N_sqrt * 7e-6;
+  /* const double projection_width = N_sqrt * 7e-6; */
   // projector z_offset is always zero
   // TODO use json file (similar to meta data)
   // TODO add rand seed
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
-                    projection: 1}, // number of projection planes per obj plane
+                    projection: 3}, // number of projection planes per obj plane
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
@@ -40,9 +40,10 @@ Params read_args(int argc, char **argv) {
                    y: {min: 0.0, max: 0.0},
                    z: obj_z_offset},
 
-     obj_width: {min: 0.1, max: 0.1},
-     projection_width: {min: projection_width, max: projection_width},
-     /* projection_z_offset: {min: 0.1, max: 0.1}, // added to obj offset */
+     obj_width: {min: 0.003, max: 0.01},
+     /* projection_width: {min: projection_width, max: projection_width}, */
+     projection_width: {min: 0.0031, max: 0.01},
+     /* projection_z_offset: {min: 0.01, max: 0.01}, // added to obj offset */
      projection_z_offset: {min: 0., max: 0.}, // added to obj offset
 
      quadrant_projection: false,

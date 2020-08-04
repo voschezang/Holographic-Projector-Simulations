@@ -19,7 +19,10 @@ template<typename T = double>
 struct Polar { T amp, phi; }; // phasor TODO use to avoid ambiguity in cuda code
 
 template<typename T = double>
-struct Range {T min, max; };
+struct Range { T min, max; };
+
+// similar to CUDA dim3 but fewer dims and larger size
+struct dim2 { size_t x, y; };
 
 struct Plane {
   // TODO simplify this struct, avoid duplicate data?

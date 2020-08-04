@@ -4,6 +4,7 @@
 # GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/8.3.0.1/x86_64-centos7/bin
 # GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/9.2.0/x86_64-centos7/bin
 #-ccbin=$(GCC)
+# last performance measurement: -O2 was 3% faster than -O3, with 1024^2 x 1024^2 datapoints (0.80 vs 0.77 TFLOPS)
 FLAGS := -l curand -l cublas -std=c++14
 ARCH_FLAGS := -arch=compute_70 -code=sm_70
 EXE := run

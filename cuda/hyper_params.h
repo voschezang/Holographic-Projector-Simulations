@@ -29,7 +29,6 @@
 #define N_STREAMS 16
 #endif
 
-#define WARP_SIZE 32
 
 // BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
 #if (N_sqrt <= 32)
@@ -55,37 +54,5 @@
 #define GRIDDIM (BLOCKDIM * 2)
 #endif
 /* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
-
-#define CACHE_BATCH 0 // this includes a threads sync and only improves speedup for certain params (BLOCKDIM must be larger than warp size, but many threads may increase sync time(?), and more blocks cause duplicate work)
-
-/* #define CACHE_U 0 // TODO */
-/* #define CACHE_V 0 // TODO */
-
-/* #if (BLOCKDIM >= 16) */
-/* #define REDUCE_SHARED_MEMORY 4 */
-/* #elif (BLOCKDIM >= 32) */
-/* #define REDUCE_SHARED_MEMORY 2 // reduce shared memory by this factor */
-/* #else */
-/* #define REDUCE_SHARED_MEMORY 1 */
-/* #endif */
-
-#define REDUCE_SHARED_MEMORY MIN(4, BLOCKDIM) // reduce shared memory by this factor
-
-#define SHARED_MEMORY_LAYOUT 0
-
-#if SHARED_MEMORY_LAYOUT
-/* kid: kernel index, tid: thread index */
-#define SIdx(kid, tid, size) ((kid) + (tid) * KERNEL_SIZE)
-#else
-#define SIdx(kid, tid, size) ((tid) + (kid) * (size))
-#endif
-
-#define PARALLEL_INTRA_WARP_AGG 0 // TODO reimplement
-
-#if (REDUCE_SHARED_MEMORY > 1 && KERNEL_SIZE >= REDUCE_SHARED_MEMORY)
-#define SHARED_MEMORY_SIZE(blockSize) ((KERNEL_SIZE * blockSize) / REDUCE_SHARED_MEMORY)
-#else
-#define SHARED_MEMORY_SIZE(blockSize) (KERNEL_SIZE * blockSize)
-#endif
 
 #endif

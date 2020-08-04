@@ -72,7 +72,7 @@ void derive_secondary_geometry(const size_t n, Geometry& p) {
   if (p.n_per_thread < 1)
     print("Warning, not all _threads_ are used");
 
-  check_hyper_params(p);
+  /* check_hyper_params(p); */
 }
 
 Geometry simple_geometry(const size_t n) {
