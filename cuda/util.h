@@ -51,12 +51,30 @@ void check(WAVE z) {
   if (isinf(z.x)) exit(1);
 }
 
-/* void check_hyper_params(Geometry p) { */
-/*   assert(DIMS == 3); */
+void check_hyper_params(Geometry p) {
+  assert(DIMS == 3);
+  assert(p.thread_size.x > 0);
+  assert(p.thread_size.y > 0);
+  assert(p.batch_size.x > 0);
+  assert(p.batch_size.y > 0);
+  assert(p.n_batches.x > 0);
+  assert(p.n_batches.y > 0);
+  assert(p.gridDim.x > 0);
+  assert(p.gridDim.y > 0);
+  assert(p.blockDim.x > 0);
+  assert(p.blockDim.y > 0);
+  assert(p.n_streams  > 0);
+  assert(p.n.x <= p.n_batches.x * p.batch_size.x);
+  assert(p.n.y <= p.n_batches.y * p.batch_size.y);
+
+  /* if (p.n_per_block < 1) */
+  /*   print("Warning, not all _blocks_ are used"); */
+  /* if (p.n_per_thread < 1) */
+  /*   print("Warning, not all _threads_ are used"); */
 /*   /\* assert(SHARED_MEMORY_SIZE(p.blockSize) > 0); *\/ */
 /*   assert(REDUCE_SHARED_MEMORY >= 1); */
 /*   assert(REDUCE_SHARED_MEMORY <= CEIL(p.blockSize, 2)); */
-/* } */
+}
 
 void check_cvector(std::vector<WAVE> x) {
 #ifdef DEBUG
@@ -75,30 +93,28 @@ double memory_in_MB(size_t n) {
 
 void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
   printf("\nHyperparams:");
-  printf("\n CUDA geometry: <<<%i,%i>>>", p.gridDim, p.blockSize);
-  printf("\t(%.3fk threads)", p.gridDim * p.blockSize * 1e-3);
+  printf("\n CUDA geometry: <<<{%u, %u}, {%i, %i}>>> with threadsize: {%u, %u}", p.gridDim.x, p.gridDim.y, p.blockDim.x, p.blockDim.y, p.thread_size.x, p.thread_size.y);
+  printf("\t(%.3fk threads)", p.gridSize.x * p.gridSize.y * 1e-3);
 
   printf("\n Input size (datapoints): objects: %i x %i, projectors: %i x %i, projections: %i x %i",
          n_planes.obj, n_per_plane.obj,
          n_planes.projector, n_per_plane.projector,
          n_planes.projection, n_per_plane.projection);
-  printf("\n E[n objects          (per plane) / thread]: %.4fk", n_per_plane.obj / (double) p.gridDim * p.blockSize * 1e-3);
-  printf("\n E[n projector pixels (per plane) / thread]: %.4fk", n_per_plane.projector / (double) p.gridDim * p.blockSize * 1e-3);
 
   printf("\nGeometry:\n n streams: \t%6i", p.n_streams);
-  printf("\tstream size: \t%6i", p.stream_size);
-  printf("\tbatch size: \t%6i", p.batch_size);
-  printf("\n kernel size: \t%6i", p.kernel_size);
-  printf("\tgrid size: \t%6i", p.gridDim);
-  printf("\tblockSize: \t%6i", p.blockSize);
+  /* printf("\tstream size: \t%6i", p.stream_size); */
+  /* printf("\tbatch size: \t%6i", p.batch_size); */
+  /* printf("\n kernel size: \t%6i", p.kernel_size); */
+  /* printf("\tgrid size: \t%6i", p.gridDim); */
+  /* printf("\tblockSize: \t%6i", p.blockSize); */
 
-  printf("\n\n (total) n batches: \t%6i", p.n_batches);
-  printf("\t n per batch: \t%6i", p.n_per_batch);
-  printf("\n (total) n kernels: \t%6i", p.n_kernels);
-  printf("\t n per kernel: \t%6i", p.n_per_kernel);
-  printf("\t kernels per stream: \t%6i", p.kernels_per_stream); printf("\n");
+  /* printf("\n\n (total) n batches: \t%6i", p.n_batches); */
+  /* printf("\t n per batch: \t%6i", p.n_per_batch); */
+  /* printf("\n (total) n kernels: \t%6i", p.n_kernels); */
+  /* printf("\t n per kernel: \t%6i", p.n_per_kernel); */
+  /* printf("\t kernels per stream: \t%6i", p.kernels_per_stream); printf("\n"); */
 
-  printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(n_per_plane.projector));
+  /* printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(n_per_plane.projector)); */
   /* { */
   /*   size_t n = SHARED_MEMORY_SIZE(p.blockSize); */
   /*   double m = n * sizeof(WAVE) * 1e-3; */

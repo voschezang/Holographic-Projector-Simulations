@@ -82,8 +82,8 @@ int main(int argc, char** argv) {
 #endif
 
   const Geometry
-    projector = init::geometry(n_per_plane.projector),
-    projection = init::geometry(n_per_plane.projection);
+    projector = init::geometry(n_per_plane.obj, n_per_plane.projector),
+    projection = init::geometry(n_per_plane.projector, n_per_plane.projection);
   print_info(projector, n_planes, n_per_plane);
 
   struct timespec t0, t1, t2;

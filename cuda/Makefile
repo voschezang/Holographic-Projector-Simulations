@@ -18,7 +18,6 @@ REL_OUTPUT_FILES := *.dat
 build:
 	# -ftz=true // flush dernormal to zero
 	#  -ftz=true -prec-div=false -prec-sqrt=false
-	# TODO check -O2 vs. -O3 performance
 	# -g debug
 	# -D$(HyperParams)
 	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)

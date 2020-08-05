@@ -231,42 +231,29 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
                                    const std::vector<SPACE> &u,
                                    const std::vector<SPACE> &v,
                                    const Geometry& p) {
-  assert(u[2] != v[2]);
   const size_t N = u.size() / DIMS;
   const size_t M = v.size() / DIMS;
-  const dim3
-    gridDim (p.gridDim),
-    blockDim (p.blockSize, p.kernel_size),
-    gridSize (blockDim.x * gridDim.x,
-              blockDim.y * gridDim.y);
-
   // x = input or source data, y = output or target data
-  const dim2
-    // datapoints_per_thread (MIN(N, 4), 1),
-    batch_size {MIN(N, 4 * gridSize.x), MIN(M, 1 * gridSize.y)},
-    n_batches {CEIL(N, batch_size.x), CEIL(M, batch_size.y)};
 
-  assert(p.n_per_batch == batch_size.y);
-  assert(batch_size.x * n_batches.x == N);
-  assert(batch_size.y * n_batches.y == M);
-
-  size_t batch_out_size = batch_size.x * batch_size.y;
+  size_t batch_out_size = p.batch_size.x * p.batch_size.y;
   if (algorithm == Algorithm::Alt)
     if (shared_memory)
-      batch_out_size = MIN(n_batches.x, gridDim.x) * batch_size.y; // TODO rename => kernel_out_size
+      batch_out_size = MIN(p.batch_size.x, p.gridDim.x) * p.batch_size.y; // TODO rename => kernel_out_size
     else
-      batch_out_size = MIN(N, gridSize.x) * batch_size.y;
+      batch_out_size = MIN(N, p.gridSize.x) * p.batch_size.y;
 
+  assert(u[2] != v[2]);
+  assert(N == p.n.x); assert(M == p.n.y);
   printf("batch out size %lu\n", batch_out_size);
-  printf("gridSize: %u, %u\n", gridSize.x, gridSize.y);
-  printf("geometry new: <<< {%u, %u}, {%u, %u} >>>\n", gridDim.x, gridDim.y, blockDim.x, blockDim.y);
+  printf("gridSize: %u, %u\n", p.gridSize.x, p.gridSize.y);
+  printf("geometry new: <<< {%u, %u}, {%u, %u} >>>\n", p.gridDim.x, p.gridDim.y, p.blockDim.x, p.blockDim.y);
 
 #ifdef DEBUG
   assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
   assert(x.size() >= 1);
 #endif
-  if (x.size() < gridSize.x)
-    printf("Warning, suboptimal input size: %u < %u\n", x.size(), gridSize.x);
+  if (x.size() < p.gridSize.x)
+    printf("Warning, suboptimal input size: %u < %u\n", x.size(), p.gridSize.x);
 
   // TODO duplicate stream batches to normal memory if too large
   auto y = std::vector<WAVE>(M);
@@ -284,9 +271,9 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
   SPACE *v_pinned_ptr, *d_v_ptr;
   // TODO don't use pinned memory for d_y_
   auto d_y_block = init::malloc_vectors<WAVE>(&d_y_block_ptr, p.n_streams, batch_out_size);
-  auto d_v       = init::malloc_matrix<SPACE>(&d_v_ptr, p.n_streams, batch_size.y * DIMS);
-  auto v_pinned  = init::pinned_malloc_vectors<SPACE>(&v_pinned_ptr, p.n_streams, batch_size.y * DIMS);
-  auto y_pinned  = init::pinned_malloc_vectors<WAVE>( &y_pinned_ptr, p.n_streams, batch_size.y);
+  auto d_v       = init::malloc_matrix<SPACE>(&d_v_ptr, p.n_streams, p.batch_size.y * DIMS);
+  auto v_pinned  = init::pinned_malloc_vectors<SPACE>(&v_pinned_ptr, p.n_streams, p.batch_size.y * DIMS);
+  auto y_pinned  = init::pinned_malloc_vectors<WAVE>( &y_pinned_ptr, p.n_streams, p.batch_size.y);
 
   const auto d_unit = thrust::device_vector<WAVE>(batch_out_size, {1., 0.}); // unit vector for blas
   const auto *d_b = thrust::raw_pointer_cast(d_unit.data());
@@ -301,45 +288,45 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
       cublasSetStream(handles[i], streams[i]);
   }
 
-  for (size_t i = 0; i < n_batches.y; i+=p.n_streams) {
-    for (size_t n = 0; n < n_batches.x; ++n) {
+  for (size_t i = 0; i < p.n_batches.y; i+=p.n_streams) {
+    for (size_t n = 0; n < p.n_batches.x; ++n) {
       if (i == 0) {
         // cp x batch data for all streams and sync
         // TODO
       }
       for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
         const auto m = i + i_stream;
-        if (m >= n_batches.y) break;
-        if (n_batches.y > 10 && m % (int) (n_batches.y / 10) == 0 && n == 0)
-          printf("\tbatch %0.3fk / %0.3fk\n", m * 1e-3, n_batches.y * 1e-3);
+        if (m >= p.n_batches.y) break;
+        if (p.n_batches.y > 10 && m % (int) (p.n_batches.y / 10) == 0 && n == 0)
+          printf("\tbatch %0.3fk / %0.3fk\n", m * 1e-3, p.n_batches.y * 1e-3);
 
         if (n == 0)
-          cp_batch_data_to_device<SPACE>(&v[m * batch_size.y * DIMS],
+          cp_batch_data_to_device<SPACE>(&v[m * p.batch_size.y * DIMS],
                                          v_pinned[i_stream], d_v[i_stream],
                                          streams[i_stream]);
 
         const bool append_result = n > 0;
         superposition_per_block<direction, algorithm, shared_memory> \
-          (gridDim, blockDim, streams[i_stream],
-           batch_size.x, batch_size.y, d_x_ptr, d_u_ptr, d_v[i_stream].data,
+          (p.gridDim, p.blockDim, streams[i_stream],
+           p.batch_size.x, p.batch_size.y, d_x_ptr, d_u_ptr, d_v[i_stream].data,
            d_y_block[i_stream], append_result);
       }
-    } // end for n in [0,n_batches.x)
+    } // end for n in [0,p.n_batches.x)
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-      sum_rows<false>(batch_out_size / batch_size.y, batch_size.y,
+      sum_rows<false>(batch_out_size / p.batch_size.y, p.batch_size.y,
                       handles[i_stream], d_y_block[i_stream], d_b, d_y_block[i_stream]);
       // TODO transfrom `re, im => a, phi ` (complex to polar) (and immediately add to prev results)?
       cp_batch_data_to_host<WAVE>(d_y_block[i_stream], y_pinned[i_stream],
-                                  batch_size.y, streams[i_stream]);
+                                  p.batch_size.y, streams[i_stream]);
     }
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto m = i + i_stream;
-      if (m < n_batches.y) {
+      if (m < p.n_batches.y) {
         cudaStreamSynchronize(streams[i_stream]);
         // TODO stage copy-phase of next batch before copy?
-        for (size_t j = 0; j < batch_size.y; ++j)
-          y[j + m * batch_size.y] = y_pinned[i_stream][j];
+        for (size_t j = 0; j < p.batch_size.y; ++j)
+          y[j + m * p.batch_size.y] = y_pinned[i_stream][j];
       }
     }
   }
