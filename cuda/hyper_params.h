@@ -16,43 +16,33 @@
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
-/* #define N_sqrt 256 */
-#define N_sqrt 512
+#define N_sqrt 256
+/* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 
-#ifndef KERNEL_SIZE
-#define KERNEL_SIZE 16 // n datapoints per kernel
-#endif
-
-#ifndef N_STREAMS
-#define N_STREAMS 16
-#endif
-
-
-// BLOCKDIM, BLOCKIDM are independent of N, but max. for the GPU
 #if (N_sqrt <= 32)
-#define BLOCKDIM 4
+#define BLOCKDIMX 4
 #elif (N_sqrt <= 64)
-#define BLOCKDIM 8
+#define BLOCKDIMX 8
 #elif (N_sqrt <= 128)
-#define BLOCKDIM 16
-#elif (N_sqrt <= 256)
-#define BLOCKDIM 32
-/* #elif (N_sqrt <= 512) */
-/* #define BLOCKDIM 64 */
+#define BLOCKDIMX 16
 #else
-#define BLOCKDIM 64
+#define BLOCKDIMX 32
 #endif
-/* #define BLOCKDIM 1 */
+
+#if (BLOCKDIMX <= 32)
+#define BLOCKDIMY BLOCKDIMX
+#else
+#define BLOCKDIMY CEIL(1024, BLOCKDIMX)
+#endif
 
 #if (N_sqrt <= 64)
-#define GRIDDIM 4
-#elif (N_sqrt <= 256)
-#define GRIDDIM (BLOCKDIM)
+#define GRIDDIMX 4
 #else
-#define GRIDDIM (BLOCKDIM * 2)
+#define GRIDDIMX 8
 #endif
-/* #define GRIDDIM (N + BLOCKDIM-1) / BLOCKDIM */
+
+#define GRIDDIMY CEIL(GRIDDIMX, 2)
 
 #endif

@@ -11,7 +11,6 @@ EXE := run
 DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
-# HyperParams := KERNEL_SIZE='16' # 8 16
 # TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE) test
 
@@ -23,7 +22,7 @@ build:
 	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
 
 debug:
-	nvcc -o $(EXE) main.cu $(FLAGS) -D$(HyperParams)
+	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
 	make run
 
 build-run:
@@ -48,6 +47,7 @@ init-path:
 
 test:
 	nvcc -o test test.cu $(FLAGS) -DNORM_3D='norm3d_host' && ./test
+	nvcc -o test test_gpu.cu $(FLAGS) && ./test
 	rm test;
 
 test-phase-projector:

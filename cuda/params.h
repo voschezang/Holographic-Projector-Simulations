@@ -50,9 +50,14 @@ struct Params {
     projection_width, // relative to object width
     projection_z_offset;
 
+  int algorithm;
   bool
     quadrant_projection,
     randomize; // TODO add option to compute local average
+
+  size_t n_streams;
+  dim2 thread_size;
+  dim3 blockDim, gridDim;
   /* std::string input_filename; // input filename or empty string, positions will be scaled to `obj_width` */
 };
 
@@ -61,45 +66,21 @@ struct Params {
  * CUDA params
  *
  * Geometry Hierarchy (parameters)
- * thread < block < grid < kernel < batch < stream
- * (hyper parameters are defined using macro's, to avoid dynamic memory)
- *
- * note that 1 kernel computes 1 or more superpositions w.r.t all input datapoints.
+ * thread_size -> batch_size -> n
+ * note that 1 kernel computes 1 or more superpositions of source datapoints (y) w.r.t all input datapoints (x).
  */
 struct Geometry {
+  int algorithm;
   dim3
     blockDim,
     gridDim,
     gridSize; // gridDim * blockDim
   dim2
-    n, // number of source, target datapoints // TODO rm to avoid redundancy
+    n, // number of source, target datapoints // TODO rm to avoid redundancy?
     batch_size, // number of datapoints per batch
     n_batches,
-    /* n_per_kernel, */
-    /* n_per_block, // (per kernel) */
     thread_size; // number of datapoints per thread (per kernel)
-
   size_t n_streams;
-
-  /* size_t */
-  /*   blockSize,   // prod(blockDim.x,y,z), i.e. threads per block */
-  /*   gridDim,     // prod(gridDim.x,y,z), i.e. n blocks per kernel */
-  /*   kernel_size, // n output datapoints per kernel */
-  /*   batch_size,  // n kernels per batch */
-  /*   stream_size, // n batches per stream */
-  /*   n_streams; */
-
-  // secondary settings, derived from settings above
-  // TODO use class with lazy getter methods
-  // total number of ..
-  /* size_t n_batches, // total n stream batches */
-  /*        n_kernels; // total n kernel calls (excl. agg) */
-  /* size_t n_per_stream, n_per_batch, n_per_kernel; // n datapoints per stream/batch/kernel (grid) */
-  /* double n_per_block, n_per_thread; // expected values, e.g. `0.5` means half of the blocks/threads do nothing */
-
-  /* /\* double n_per_block; // can be < 1, i.e. not all blocks are used *\/ */
-  /* /\* double n_per_thread; // can be < 1, i.e. not all threads are used *\/ */
-  /* size_t kernels_per_stream; */
 };
 
 #endif

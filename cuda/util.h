@@ -17,6 +17,8 @@
 #include "algebra.h"
 #include "kernel.cu"
 
+#define check(x) check_complex(x, __FILE__, __LINE__)
+
 double flops(double runtime, size_t n, size_t m) {
   // Tera or Giga FLOP/s
   // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache
@@ -42,13 +44,20 @@ double bandwidth(double runtime, size_t n, size_t m, bool include_tmp) {
   return unit * (input + output) / runtime;
 }
 
-void check(WAVE z) {
+inline
+bool equals(double a, double b, double max_rel_error=1e-6) {
+  // T : float or double
+  // ignore near-zero values
+  const double non_zero_scalar = abs(a) >= 1e-9 ? abs(a): 1.;
+  return abs(a - b) < max_rel_error * non_zero_scalar;
+}
+
+void check_complex(WAVE z, const char *file, int line) {
   /* double a = creal(z), b = cimag(z); */
-  if (isnan(z.x)) printf("found nan re\n");
-  if (isinf(z.x)) printf("found inf re\n");
-  if (isnan(z.y)) printf("found nan I\n");
-  if (isinf(z.y)) printf("found inf I\n");
-  if (isinf(z.x)) exit(1);
+  if (isnan(z.x)) {fprintf(stderr, "[%s:%d] complex.re is nan\n", file, line); exit(1);}
+  if (isinf(z.x)) {fprintf(stderr, "[%s:%d] complex.re is inf\n", file, line); exit(1);}
+  if (isnan(z.y)) {fprintf(stderr, "[%s:%d] complex.im is nan\n", file, line); exit(1);}
+  if (isinf(z.y)) {fprintf(stderr, "[%s:%d] complex.im is inf\n", file, line); exit(1);}
 }
 
 void check_hyper_params(Geometry p) {
@@ -66,6 +75,8 @@ void check_hyper_params(Geometry p) {
   assert(p.n_streams  > 0);
   assert(p.n.x <= p.n_batches.x * p.batch_size.x);
   assert(p.n.y <= p.n_batches.y * p.batch_size.y);
+  assert(p.n.x == p.n_batches.x * p.batch_size.x); // assume powers of 2
+  assert(p.n.y == p.n_batches.y * p.batch_size.y);
 
   /* if (p.n_per_block < 1) */
   /*   print("Warning, not all _blocks_ are used"); */
@@ -91,35 +102,20 @@ double memory_in_MB(size_t n) {
   return bytes * 1e-6;
 }
 
-void print_info(Geometry p, Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
-  printf("\nHyperparams:");
-  printf("\n CUDA geometry: <<<{%u, %u}, {%i, %i}>>> with threadsize: {%u, %u}", p.gridDim.x, p.gridDim.y, p.blockDim.x, p.blockDim.y, p.thread_size.x, p.thread_size.y);
-  printf("\t(%.3fk threads)", p.gridSize.x * p.gridSize.y * 1e-3);
-
-  printf("\n Input size (datapoints): objects: %i x %i, projectors: %i x %i, projections: %i x %i",
+void print_setup(Setup<size_t> n_planes, Setup<size_t> n_per_plane) {
+  printf("\n<< Setup >>");
+  printf("\n Input size (datapoints): objects: %i x %i, projectors: %i x %i, projections: %i x %i\n",
          n_planes.obj, n_per_plane.obj,
          n_planes.projector, n_per_plane.projector,
          n_planes.projection, n_per_plane.projection);
+}
 
-  printf("\nGeometry:\n n streams: \t%6i", p.n_streams);
-  /* printf("\tstream size: \t%6i", p.stream_size); */
-  /* printf("\tbatch size: \t%6i", p.batch_size); */
-  /* printf("\n kernel size: \t%6i", p.kernel_size); */
-  /* printf("\tgrid size: \t%6i", p.gridDim); */
-  /* printf("\tblockSize: \t%6i", p.blockSize); */
-
-  /* printf("\n\n (total) n batches: \t%6i", p.n_batches); */
-  /* printf("\t n per batch: \t%6i", p.n_per_batch); */
-  /* printf("\n (total) n kernels: \t%6i", p.n_kernels); */
-  /* printf("\t n per kernel: \t%6i", p.n_per_kernel); */
-  /* printf("\t kernels per stream: \t%6i", p.kernels_per_stream); printf("\n"); */
-
-  /* printf("\n"); printf("Memory lb: %0.2f MB\n", memory_in_MB(n_per_plane.projector)); */
-  /* { */
-  /*   size_t n = SHARED_MEMORY_SIZE(p.blockSize); */
-  /*   double m = n * sizeof(WAVE) * 1e-3; */
-  /*   printf("Shared data (per block) (tmp): %i , i.e. %0.3f kB\n", n, m); */
-  /* } */
+void print_geometry(Geometry p) {
+  printf("\n<< Hyperparams >>");
+  printf("\n CUDA geometry: <<<{%u, %u}, {%i, %i}>>> with threadsize: {%u, %u}", p.gridDim.x, p.gridDim.y, p.blockDim.x, p.blockDim.y, p.thread_size.x, p.thread_size.y);
+  printf("\t(%.3fk threads)", p.gridSize.x * p.gridSize.y * 1e-3);
+  printf("\n n streams: \t%4i \t n_batches: <%lu, %lu>", p.n_streams, p.n_batches.x, p.n_batches.y);
+  printf("\t batch size: \t <%lu, %lu>\n", p.batch_size.x, p.batch_size.y);
 }
 
 void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
@@ -284,6 +280,9 @@ void write_metadata(std::string phasor, std::string pos, Plane p, const std::vec
     amp = transform_reduce(x, cuCabs),
     phase = transform_reduce(x, angle);
 
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+
   // TODO replace phasor by amp and phase
   out << "{" \
       << quote("phasor")       << sep1 << quote(phasor)  << sep2 \
@@ -299,6 +298,7 @@ void write_metadata(std::string phasor, std::string pos, Plane p, const std::vec
       << quote("width")        << sep1 << p.width        << sep2 \
       << quote("randomized")   << sep1 << p.randomize    << sep2 \
       << quote("aspect_ratio") << sep1 << p.aspect_ratio << sep2 \
+      << quote("timestamp")    << sep1 << t.tv_nsec      << sep2 \
       << quote("runtime")      << sep1 << dt             << sep2 \
       << quote("flops")        << sep1 << flops          << "}\n";
 

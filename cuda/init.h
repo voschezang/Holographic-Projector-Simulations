@@ -37,7 +37,7 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-void derive_secondary_geometry(Geometry& p) {
+void derive_secondary_geometry(struct Geometry& p) {
   p.gridSize = {p.blockDim.x * p.gridDim.x,
                 p.blockDim.y * p.gridDim.y,
                 1};
@@ -50,8 +50,8 @@ void derive_secondary_geometry(Geometry& p) {
 
 Geometry simple_geometry(const size_t x, const size_t y) {
   Geometry p;
-  p.blockDim = {1,1};
-  p.gridDim = {1,1};
+  p.blockDim = {1,1,1};
+  p.gridDim = {1,1,1};
   p.n = {x, y};
   p.thread_size = {1,1};
   p.n_streams = 1;
@@ -59,14 +59,14 @@ Geometry simple_geometry(const size_t x, const size_t y) {
   return p;
 }
 
-Geometry geometry(const size_t x, const size_t y) {
+Geometry geometry(struct Params& params, const size_t x, const size_t y) {
   Geometry p;
-  // TODO set in input.h
-  p.blockDim = {BLOCKDIM, KERNEL_SIZE, 1};
-  p.gridDim = {GRIDDIM, 1, 1};
+  p.algorithm = params.algorithm;
+  p.blockDim = params.blockDim;
+  p.gridDim = params.gridDim;
   p.n = {x, y};
-  p.thread_size = {4, 1};
-  p.n_streams = N_STREAMS;
+  p.thread_size = params.thread_size;
+  p.n_streams = params.n_streams;
 
   derive_secondary_geometry(p);
   return p;
@@ -238,7 +238,7 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
 
 template<typename T>
 std::vector<T*> malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
-   // Return a host vector of pointers
+   // Return a host vector of device pointers
    assert(dim1 >= 1); assert(dim2 >= 1);
    cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
    auto vec = std::vector<T*>(dim1);

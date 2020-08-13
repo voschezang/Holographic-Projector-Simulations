@@ -7,7 +7,7 @@
 
 /* #define DEBUG */
 /* #define TEST_CONST_PHASE */
-/* #define TEST_CONST_PHASE2 */
+#define STREAM_DATA
 
 #define ZERO make_cuDoubleComplex(0,0)
 /* #define VOL(type, x) *((type *) &x) */

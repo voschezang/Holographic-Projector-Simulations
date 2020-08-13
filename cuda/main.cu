@@ -81,10 +81,14 @@ int main(int argc, char** argv) {
   auto x = std::vector<WAVE>(n_per_plane.obj, from_polar(1.0));
 #endif
 
+  if (params.randomize) print("Randomize positions");
   const Geometry
-    projector = init::geometry(n_per_plane.obj, n_per_plane.projector),
-    projection = init::geometry(n_per_plane.projector, n_per_plane.projection);
-  print_info(projector, n_planes, n_per_plane);
+    projector = init::geometry(params, n_per_plane.obj, n_per_plane.projector),
+    projection = init::geometry(params, n_per_plane.projector, n_per_plane.projection);
+  print_setup(n_planes, n_per_plane);
+  print_geometry(projector);
+  if (n_planes.projection > 0)
+    print_geometry(projection);
 
   struct timespec t0, t1, t2;
   auto dt = std::vector<double>(max(n_planes.projection, 1L), 0.0);

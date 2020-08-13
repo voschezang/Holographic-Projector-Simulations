@@ -45,21 +45,30 @@ inline __host__ __device__ WAVE phasor_displacement(const WAVE x, const SPACE *u
     distance = NORM_3D(v[0] - u[0], v[1] - u[1], v[2] - u[2]),
     a = cuCabs(x),
     phi = angle(x);
+#if DEBUG
+  assert(distance > 1e-9);
+#endif
   if (direction == Direction::Forwards)
     return from_polar(a / distance, phi + distance * TWO_PI_OVER_LAMBDA);
   else
     return from_polar(a / distance, phi - distance * TWO_PI_OVER_LAMBDA);
 }
 
+template<const Direction direction>
+__global__ void phasor_displacement(const WAVE x, const SPACE *u, const SPACE *v, WAVE *y) {
+  // in place
+  y[0] = phasor_displacement<direction>(x, u, v);
+}
+
 template<Direction direction, int blockDim_x, int blockDim_y, Algorithm algorithm, bool shared_memory = false>
 __global__ void per_block(const size_t N, const size_t M,
-                                const WAVE *__restrict__ x,
-                                // const double *__restrict__ a,
-                                // const double *__restrict__ phi,
-                                const SPACE *__restrict__ u,
-                                const SPACE *__restrict__ v,
-                                WAVE *__restrict__ y_global,
-                                const bool append_result = false) {
+                          const WAVE *__restrict__ x,
+                          // const double *__restrict__ a,
+                          // const double *__restrict__ phi,
+                          const SPACE *__restrict__ u,
+                          const SPACE *__restrict__ v,
+                          WAVE *__restrict__ y_global,
+                          const bool append_result = false) {
 #ifdef DEBUG
   assert(blockDim.x * blockDim.y * blockDim.z <= 1024); // max number of threads per block
 #endif
@@ -75,16 +84,19 @@ __global__ void per_block(const size_t N, const size_t M,
   if (algorithm == Algorithm::Naive) {
     for (size_t n = tid.x; n < N; n += gridSize.x) {
       for (size_t m = tid.y; m < M; m += gridSize.y) {
+#ifndef TEST_CONST_PHASE
         const WAVE y = phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]);
+#else
+        const WAVE y = from_polar(1., 0.);
+#endif
         const size_t i = Yidx(n, m, N, M);
         // TODO add bool to template and use: y[] = y + int(append) y
         if (append_result)
           {y_global[i].x += y.x; y_global[i].y += y.y;}
         else
           y_global[i] = y;
-#ifdef TEST_CONST_PHASE2
-        y_global[i] = from_polar(1., 0.);
-#endif
+        assert(!isinf(cuCabs(y_global[i])));
+        assert(!isnan(cuCabs(y_global[i])));
       } }
   }
   else {
@@ -97,18 +109,19 @@ __global__ void per_block(const size_t N, const size_t M,
     // save results to Y[m, x] instead of Y[m, n]
     for (size_t m = tid.y; m < M; m += gridSize.y) {
       // TODO cache u/v
+      // TODO mv condition to start of func
       if (tid.x < N) { // TODO this should cause deadlocks during BlockReduce
         // TODO add subfunctions for profiler
         WAVE y {0,0};
         for (size_t n = tid.x; n < N; n += gridSize.x) {
           y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
         }
-#ifdef TEST_CONST_PHASE2
-        y = from_polar(1., 0.);
+#ifdef TEST_CONST_PHASE
+        for (size_t n = tid.x; n < N; n += gridSize.x)
+          y = cuCadd(y, from_polar(1., 0.));
 #endif
-        // https://github.com/thrust/thrust/blob/master/examples/sum_rows.cu
-        // http://nvlabs.github.io/cub/classcub_1_1_block_reduce.html
-        if (shared_memory && N > gridDim.x) {
+        // alt // https://github.com/thrust/thrust/blob/master/examples/sum_rows.cu
+        if (shared_memory) {
           // TODO use 2x as much shared memory and let CUB figure out the best performance?
           // TODO don't save result to every thread, only thread 0
           // TODO what about unused thread in reduction? -> should cause deadlock
@@ -121,11 +134,10 @@ __global__ void per_block(const size_t N, const size_t M,
           __syncthreads();
 
           if (threadIdx.x == 0) {
-#ifdef TEST_CONST_PHASE2
+#ifdef TEST_CONST_PHASE
             assert(blockDim_y == blockDim.y);
             assert(y.x == blockDim_x);
             assert(y.y == 0.);
-            y = from_polar(1., 0.);
 #endif
             const size_t i = Yidx(blockIdx.x, m, MIN(N, gridDim.x), M);
             if (append_result)
@@ -136,6 +148,7 @@ __global__ void per_block(const size_t N, const size_t M,
         }
         else {
           const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
+          // printf("y[%i] or y[%i, %i]: amp = %e, \tangle = %e\n", i, tid.x, m, cuCabs(y), angle(y));
           if (append_result)
             {y_global[i].x += y.x; y_global[i].y += y.y;}
           else

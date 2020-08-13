@@ -6,11 +6,8 @@
 
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
-#include <thrust/reduce.h>
 
 #include <cuda_runtime.h>
-#include <cublas_v2.h>
-#include <cusolverDn.h>
 
 #include "macros.h"
 #include "hyper_params.h"
@@ -42,21 +39,21 @@ inline void cp_batch_data_to_host(const T *d_y, T *y_pinned, const size_t len, c
     assert(blockDim_x * blockDim_y <= 1024);                            \
     superposition::per_block<direction, blockDim_x, blockDim_y, algorithm, shared_memory> \
       <<< gridDim, blockDim, 0, stream >>>                              \
-      (N, M, d_x_ptr, d_u_ptr, d_v, d_y_block, append_result);          \
+      (N, M, d_x_ptr, d_u_ptr, d_v, d_y_tmp, append_result);          \
   }
 
 #define SuperpositionPerBlockHelper(blockDim_x) {                       \
     superposition_per_block_helper<direction, blockDim_x, algorithm, shared_memory> \
       (gridDim, blockDim, stream,                                       \
-       N, M, d_x_ptr, d_u_ptr, d_v, d_y_block, append_result);          \
+       N, M, d_x_ptr, d_u_ptr, d_v, d_y_tmp, append_result);          \
   }
 
 template<Direction direction, unsigned int blockDim_x, Algorithm algorithm, bool shared_memory>
 inline void superposition_per_block_helper(const dim3 gridDim, const dim3 blockDim, cudaStream_t stream,
                                            const size_t N, const size_t M,
                                            const WAVE *d_x_ptr, const SPACE *d_u_ptr, const SPACE *d_v,
-                                           WAVE *d_y_block, const bool append_result)
-// double *d_y_block_re, double *d_y_block_im)
+                                           WAVE *d_y_tmp, const bool append_result)
+// double *d_y_tmp_re, double *d_y_tmp_im)
 {
   // unrolled for loop to allow constant blockDim
   // TODO add computation for shared memory size
@@ -67,23 +64,24 @@ inline void superposition_per_block_helper(const dim3 gridDim, const dim3 blockD
   // case   8: SuperpositionPerBlock(  8) break;
   // case  16: SuperpositionPerBlock( 16) break;
   // case  32: SuperpositionPerBlock( 32) break;
-#if KERNEL_SIZE >= 4
+// #if KERNEL_SIZE >= 4
   case   4: SuperpositionPerBlock(  4) break;
-#endif
-#if KERNEL_SIZE >= 8
+// #endif
+// #if KERNEL_SIZE >= 8
   case   8: SuperpositionPerBlock(  8) break;
-#endif
-#if KERNEL_SIZE >= 16
+// #endif
+// #if KERNEL_SIZE >= 16
   case  16: SuperpositionPerBlock( 16) break;
-#endif
-#if KERNEL_SIZE >= 32
+// #endif
+// #if KERNEL_SIZE >= 32
   case  32: SuperpositionPerBlock( 32) break;
-#endif
-  // case  64: SuperpositionPerBlock( 64) break;
+// #endif
+  case  64: SuperpositionPerBlock( 64) break;
+  // case  64: { if (!shared_memory) SuperpositionPerBlock( 64) } break; // TODO
   // case 128: SuperpositionPerBlock(128) break;
   // case 256: SuperpositionPerBlock(256) break;
   // case 512: SuperpositionPerBlock(512) break;
-  default: {printf("BlockSize.y: %u not implemented\n", blockDim.y); exit(1);}
+  default: {fprintf(stderr, "BlockSize.y: %u not implemented\n", blockDim.y); exit(1);}
   }
 }
 
@@ -91,8 +89,8 @@ template<Direction direction, Algorithm algorithm, bool shared_memory>
 inline void superposition_per_block(const dim3 gridDim, const dim3 blockDim, cudaStream_t stream,
                                     const size_t N, const size_t M,
                                     const WAVE *d_x_ptr, const SPACE *d_u_ptr, const SPACE *d_v,
-                                    WAVE *d_y_block, const bool append_result)
-  // double *d_y_block_re, double *d_y_block_im)
+                                    WAVE *d_y_tmp, const bool append_result)
+  // double *d_y_tmp_re, double *d_y_tmp_im)
 {
   // unrolled for loop to allow constant blockDim
   // Note that the max number of threads per block is 1024
@@ -100,91 +98,30 @@ inline void superposition_per_block(const dim3 gridDim, const dim3 blockDim, cud
   case   1: SuperpositionPerBlockHelper(  1) break;
   case   2: SuperpositionPerBlockHelper(  2) break;
   case   4: SuperpositionPerBlockHelper(  4) break;
-#if KERNEL_SIZE <= 128
+// #if KERNEL_SIZE <= 128
   case   8: SuperpositionPerBlockHelper(  8) break;
-#endif
-#if KERNEL_SIZE <= 64
+// #endif
+// #if KERNEL_SIZE <= 64
   case  16: SuperpositionPerBlockHelper( 16) break;
-#endif
-#if KERNEL_SIZE <= 32
+// #endif
+// #if KERNEL_SIZE <= 32
   case  32: SuperpositionPerBlockHelper( 32) break;
-#endif
-#if KERNEL_SIZE <= 16
+// #endif
+// #if KERNEL_SIZE <= 16
   case  64: SuperpositionPerBlockHelper( 64) break;
-#endif
-#if KERNEL_SIZE <= 8
-  case 128: SuperpositionPerBlockHelper(128) break;
-#endif
-#if KERNEL_SIZE <= 4
-  case 256: SuperpositionPerBlockHelper(256) break;
-#endif
-#if KERNEL_SIZE <= 2
-  case 512: SuperpositionPerBlockHelper(512) break;
-#endif
-  default: {printf("BlockSize.x: %u not implemented\n", blockDim.x); exit(1);}
+// #endif
+// #if KERNEL_SIZE <= 8
+  // case 128: SuperpositionPerBlockHelper(128) break;
+// #endif
+// #if KERNEL_SIZE <= 4
+  // case 256: SuperpositionPerBlockHelper(256) break;
+// #endif
+// #if KERNEL_SIZE <= 2
+  // case 512: SuperpositionPerBlockHelper(512) break;
+// #endif
+  default: {fprintf(stderr, "BlockSize.x: %u not implemented\n", blockDim.x); exit(1);}
   }
 }
-
-template<bool transpose = false>
-inline void sum_rows(const size_t width, const size_t n_rows, cublasHandle_t handle,
-                     WAVE *d_a, const WAVE *d_b,
-                     WAVE *d_y, const WAVE beta = {0., 0.}) {
-  /**
-   * GEMV: GEneral Matrix Vector multiplication
-   * y = alpha * op(A)x + beta y
-   * Note, argument width = lda = stride of matrix
-   * Note, cublasDgemw should be at least as fast as cublasCgemw because of data alignment
-   * However, it may require an additional transpose of the the aggregated data
-   */
-  // TODO use y from previous y batch for 2D batch
-  // TODO use cublasCgemv?
-  const WAVE alpha = {1.};
-#ifdef TEST_CONST_PHASE2
-  {
-    cudaDeviceSynchronize();
-    size_t n = width * n_rows;
-    // printf("n: %lu\n", n);
-    thrust::device_vector<WAVE> d (d_a, d_a + n);
-    thrust::host_vector<WAVE> h = d;
-    for (size_t i = 0; i < n; ++i) {
-      // printf("i: %lu, x: %f, y: %f\n", i, h[i].x, h[i].y);
-      if (h[i].x - 1. > 1e-6 || h[i].y > 1e-6)
-        printf("err: i: %lu, x: %f, y: %f\n", i, h[i].x, h[i].y);
-      assert(h[i].x == 1.);
-      assert(h[i].y == 0.);
-    }
-  }
-#endif
-
-  if (transpose)
-    cuB( cublasZgemv(handle, CUBLAS_OP_T, width, n_rows, &alpha, d_a, width, d_b, 1, &beta, d_y, 1) );
-  else
-    cuB( cublasZgemv(handle, CUBLAS_OP_N, n_rows, width, &alpha, d_a, n_rows, d_b, 1, &beta, d_y, 1) );
-
-#ifdef TEST_CONST_PHASE2
-  {
-    cudaDeviceSynchronize();
-    size_t n = n_rows;
-    thrust::device_vector<WAVE> d (d_y, d_y + n);
-    thrust::host_vector<WAVE> h = d;
-    for (size_t i = 0; i < n; ++i) {
-      assert(h[i].x == (double) width);
-      assert(h[i].y == 0.);
-    }
-  }
-#endif
-}
-
-inline void sum_rows_thrust(const size_t width, const size_t n_rows, cudaStream_t stream,
-                            double *d_x, double *d_y) {
-  // launch 1x1 kernel in the specified selected stream, from which multiple thrust are called indirectly
-  // auto ptr = thrust::device_ptr<double>(d_x);
-  thrust::device_ptr<double>
-    x_ptr (d_x),
-    y_ptr (d_y);
-  kernel::reduce_rows<<< 1,1,0, stream >>>(x_ptr, width, n_rows, 0.0, thrust::plus<double>(), y_ptr);
-}
-
 
 template<bool add_constant = false>
 void normalize_amp(std::vector<WAVE> &c, double to = 1., bool log_normalize = false) {
@@ -226,27 +163,32 @@ void rm_phase(std::vector<WAVE> &c) {
     c[i] = {cuCabs(c[i]), 0.};
 }
 
+
 template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
 inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
                                    const std::vector<SPACE> &u,
                                    const std::vector<SPACE> &v,
                                    const Geometry& p) {
-  const size_t N = u.size() / DIMS;
-  const size_t M = v.size() / DIMS;
+#ifdef TEST_CONST_PHASE
+  const size_t N = p.n.x;
+  const size_t M = p.n.y;
+#endif
   // x = input or source data, y = output or target data
+  if (algorithm == Algorithm::Naive) assert(!shared_memory);
 
-  size_t batch_out_size = p.batch_size.x * p.batch_size.y;
+  // derive size of matrix y_tmp
+  size_t tmp_out_size = p.batch_size.x * p.batch_size.y;
   if (algorithm == Algorithm::Alt)
     if (shared_memory)
-      batch_out_size = MIN(p.batch_size.x, p.gridDim.x) * p.batch_size.y; // TODO rename => kernel_out_size
+      tmp_out_size = MIN(p.batch_size.x, p.gridDim.x) * p.batch_size.y;
     else
-      batch_out_size = MIN(N, p.gridSize.x) * p.batch_size.y;
+      tmp_out_size = MIN(p.batch_size.x, p.gridSize.x) * p.batch_size.y;
 
+  assert(tmp_out_size > 0);
   assert(u[2] != v[2]);
-  assert(N == p.n.x); assert(M == p.n.y);
-  printf("batch out size %lu\n", batch_out_size);
-  printf("gridSize: %u, %u\n", p.gridSize.x, p.gridSize.y);
-  printf("geometry new: <<< {%u, %u}, {%u, %u} >>>\n", p.gridDim.x, p.gridDim.y, p.blockDim.x, p.blockDim.y);
+  // printf("batch out size %lu\n", tmp_out_size);
+  // printf("gridSize: %u, %u\n", p.gridSize.x, p.gridSize.y);
+  // printf("geometry new: <<< {%u, %u}, {%u, %u} >>>\n", p.gridDim.x, p.gridDim.y, p.blockDim.x, p.blockDim.y);
 
 #ifdef DEBUG
   assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
@@ -256,26 +198,28 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
     printf("Warning, suboptimal input size: %u < %u\n", x.size(), p.gridSize.x);
 
   // TODO duplicate stream batches to normal memory if too large
-  auto y = std::vector<WAVE>(M);
+  auto y = std::vector<WAVE>(p.n.y);
 
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   const thrust::device_vector<WAVE> d_x = x;
   const thrust::device_vector<SPACE> d_u = u;
   // cast to pointers to allow usage in non-thrust kernels
-  const auto d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
+  const WAVE* d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
   const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
 
   // malloc data using pinned memory for all batches before starting streams
   // TODO consider std::unique_ptr<>
-  WAVE *y_pinned_ptr, *d_y_block_ptr;
+  WAVE *y_pinned_ptr, *d_y_tmp_ptr;
   SPACE *v_pinned_ptr, *d_v_ptr;
   // TODO don't use pinned memory for d_y_
-  auto d_y_block = init::malloc_vectors<WAVE>(&d_y_block_ptr, p.n_streams, batch_out_size);
-  auto d_v       = init::malloc_matrix<SPACE>(&d_v_ptr, p.n_streams, p.batch_size.y * DIMS);
-  auto v_pinned  = init::pinned_malloc_vectors<SPACE>(&v_pinned_ptr, p.n_streams, p.batch_size.y * DIMS);
-  auto y_pinned  = init::pinned_malloc_vectors<WAVE>( &y_pinned_ptr, p.n_streams, p.batch_size.y);
+  auto d_y_tmp  = init::malloc_vectors<WAVE>(        &d_y_tmp_ptr,  p.n_streams, tmp_out_size);
+  auto d_v      = init::malloc_matrix<SPACE>(        &d_v_ptr,      p.n_streams, p.batch_size.y * DIMS);
+  auto v_pinned = init::pinned_malloc_vectors<SPACE>(&v_pinned_ptr, p.n_streams, p.batch_size.y * DIMS);
+  auto y_pinned = init::pinned_malloc_vectors<WAVE>( &y_pinned_ptr, p.n_streams, p.batch_size.y);
 
-  const auto d_unit = thrust::device_vector<WAVE>(batch_out_size, {1., 0.}); // unit vector for blas
+  // TODO d_b is too large
+  // const auto d_unit = thrust::device_vector<WAVE>(p.batch_size.y, {1., 0.}); // unit vector for blas
+  const auto d_unit = thrust::device_vector<WAVE>(tmp_out_size / p.batch_size.y, {1., 0.}); // unit vector for blas
   const auto *d_b = thrust::raw_pointer_cast(d_unit.data());
 
   cudaStream_t streams[p.n_streams];
@@ -283,13 +227,16 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
   for (auto& stream : streams)
     cu( cudaStreamCreate(&stream) );
 
-  for (unsigned int i = 0; i < p.n_streams; ++i) {
-      cuB( cublasCreate(&handles[i]) );
-      cublasSetStream(handles[i], streams[i]);
+  for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+    cuB( cublasCreate(&handles[i_stream]) );
+    cublasSetStream(handles[i_stream], streams[i_stream]);
   }
 
   for (size_t i = 0; i < p.n_batches.y; i+=p.n_streams) {
+    // size_t batch_size_x = p.batch_size.x;
     for (size_t n = 0; n < p.n_batches.x; ++n) {
+      // // each final x-batch may be under-used/occupied
+      // if (n == p.n_batches.x - 1) batch_size_x = N - n * p.batch_size.x;
       if (i == 0) {
         // cp x batch data for all streams and sync
         // TODO
@@ -306,33 +253,60 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
                                          streams[i_stream]);
 
         const bool append_result = n > 0;
+        const size_t xu_offset = n * p.batch_size.x;
         superposition_per_block<direction, algorithm, shared_memory> \
-          (p.gridDim, p.blockDim, streams[i_stream],
-           p.batch_size.x, p.batch_size.y, d_x_ptr, d_u_ptr, d_v[i_stream].data,
-           d_y_block[i_stream], append_result);
+          (p.gridDim, p.blockDim, streams[i_stream], p.batch_size.x, p.batch_size.y,
+           d_x_ptr + xu_offset, d_u_ptr + xu_offset * DIMS,
+           d_v[i_stream].data, d_y_tmp[i_stream], append_result);
       }
+#ifdef TEST_CONST_PHASE
+      for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+        const auto m = i + i_stream;
+        if (m >= p.n_batches.y) break;
+        cudaStreamSynchronize(streams[i_stream]);
+        auto d = thrust::device_vector<WAVE> (d_y_tmp[i_stream], d_y_tmp[i_stream] + tmp_out_size);
+        auto h = thrust::host_vector<WAVE> (d);
+        auto x_per_batch = p.batch_size.x * p.batch_size.y / tmp_out_size;
+        // printf("%lu \t %lu \t %lu\n", tmp_out_size, p.batch_size.x * p.batch_size.y, x_per_batch);
+        assert(x_per_batch > 0);
+        for (size_t j = 0; j < tmp_out_size; ++j)
+          assert(cuCabs(h[j]) == (1. + n % p.n_batches.x) * x_per_batch);
+        for (size_t j = 0; j < tmp_out_size; ++j)
+          assert(cuCabs(h[j]) == (1. + n ) * x_per_batch);
+        }
+#endif
     } // end for n in [0,p.n_batches.x)
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-      sum_rows<false>(batch_out_size / p.batch_size.y, p.batch_size.y,
-                      handles[i_stream], d_y_block[i_stream], d_b, d_y_block[i_stream]);
-      // TODO transfrom `re, im => a, phi ` (complex to polar) (and immediately add to prev results)?
-      cp_batch_data_to_host<WAVE>(d_y_block[i_stream], y_pinned[i_stream],
+      const auto m = i + i_stream;
+      if (m >= p.n_batches.y) break;
+      kernel::sum_rows<false>(tmp_out_size / p.batch_size.y, p.batch_size.y,
+                              handles[i_stream], d_y_tmp[i_stream], d_b, d_y_tmp[i_stream]);
+      // TODO transform `re, im => a, phi ` (complex to polar)
+      cp_batch_data_to_host<WAVE>(d_y_tmp[i_stream], y_pinned[i_stream],
                                   p.batch_size.y, streams[i_stream]);
+#ifdef TEST_CONST_PHASE
+      cudaStreamSynchronize(streams[i_stream]);
+      for (size_t j = 0; j < p.batch_size.y; ++j)
+        assert(cuCabs(y_pinned[i_stream][j]) == N);
+#endif
     }
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const auto m = i + i_stream;
-      if (m < p.n_batches.y) {
-        cudaStreamSynchronize(streams[i_stream]);
-        // TODO stage copy-phase of next batch before copy?
-        for (size_t j = 0; j < p.batch_size.y; ++j)
-          y[j + m * p.batch_size.y] = y_pinned[i_stream][j];
-      }
+      if (m >= p.n_batches.y) break;
+      cudaStreamSynchronize(streams[i_stream]);
+      // TODO stage copy-phase of next batch before copy/sync?
+      for (size_t j = 0; j < p.batch_size.y; ++j)
+        y[j + m * p.batch_size.y] = y_pinned[i_stream][j];
     }
   }
 
   // sync all streams before returning
   cudaDeviceSynchronize();
+#ifdef TEST_CONST_PHASE
+  for (size_t j = 0; j < M; ++j)
+    assert(cuCabs(y[j]) == N);
+#endif
 
 #ifdef DEBUG
   printf("done, destroy streams\n");
@@ -348,7 +322,7 @@ inline std::vector<WAVE> transform(const std::vector<WAVE> &x,
   for (auto& handle : handles)
     cuB( cublasDestroy(handle) );
 
-  cu( cudaFree(d_y_block_ptr ) );
+  cu( cudaFree(d_y_tmp_ptr ) );
   cu( cudaFree(d_v_ptr       ) );
   cu( cudaFreeHost(v_pinned_ptr ) );
   cu( cudaFreeHost(y_pinned_ptr ) );
@@ -383,10 +357,18 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
   // (2.7 speedup)
   // for one-to-many input: speedup was at least ~10
 
+  std::vector<WAVE> y;
+  switch (p.algorithm) {
+  case 1: y = transform<direction, Algorithm::Naive, false>(x, u, v, p); break;
+  case 2: y = transform<direction, Algorithm::Alt, false>(x, u, v, p); break;
+  case 3: y = transform<direction, Algorithm::Alt, true>(x, u, v, p); break;
+  default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
+  }
+
   const bool shared_memory = true;
   // const bool shared_memory = false;
-  // auto y = transform<direction, Algorithm::Naive, shared_memory>(x, u, v, p);
-  auto y = transform<direction, Algorithm::Alt, shared_memory>(x, u, v, p);
+  // // auto y = transform<direction, Algorithm::Naive, shared_memory>(x, u, v, p);
+  // auto y = transform<direction, Algorithm::Alt, shared_memory>(x, u, v, p);
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
@@ -398,7 +380,6 @@ std::vector<WAVE> time_transform(const std::vector<WAVE> &x,
      * adding the planar wave should happen before squaring the amplitude
     */
     // TODO do this on CPU?
-    assert(0);
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     printf("ref v[2]: %e\n", v[2]);
     // auto y_reference = transform<direction, Algorithm::Naive, shared_memory>({from_polar(1.)}, {{0.,0., z_offset}}, v, p);
