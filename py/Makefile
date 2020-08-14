@@ -14,11 +14,7 @@ init:
 
 plot:
 	echo '$(IMG_DIR)/$(SEQUENCE_DIR)y'
-	rm -rf $(IMG_DIR)/*.png
-	mkdir -p $(IMG_DIR)/$(SEQUENCE_DIR)y
-	mkdir -p $(IMG_DIR)/$(SEQUENCE_DIR)z
-	rm -rf $(IMG_DIR)/$(SEQUENCE_DIR)y/*
-	rm -rf $(IMG_DIR)/$(SEQUENCE_DIR)z/*
+	make clean-plot
 	$(PY) main.py --sequence_dir $(SEQUENCE_DIR)
 
 animate:
@@ -45,6 +41,14 @@ experiment:
 clean:
 	rm -rf tmp_pkl/*
 	rm -rf tmp_local/*
+	make clean-plot
+
+clean-plot:
+	rm -rf $(IMG_DIR)/*.png
+	mkdir -p $(IMG_DIR)/$(SEQUENCE_DIR)y
+	mkdir -p $(IMG_DIR)/$(SEQUENCE_DIR)z
+	rm -rf $(IMG_DIR)/$(SEQUENCE_DIR)y/*
+	rm -rf $(IMG_DIR)/$(SEQUENCE_DIR)z/*
 
 deps:
 	# make sure python, python-pip are installed
