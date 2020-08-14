@@ -37,65 +37,39 @@ namespace init {
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-void derive_secondary_geometry(const size_t n, Geometry& p) {
-  p.stream_size = n / (p.n_streams * p.batch_size * p.kernel_size);
-
-  assert(p.blockSize   > 0); assert(p.gridDim   > 0);
-  assert(p.kernel_size > 0); assert(p.batch_size > 0);
-  assert(p.stream_size > 0); assert(p.n_streams  > 0);
-  assert(n == p.kernel_size * p.batch_size * p.stream_size * p.n_streams);
-
-  p.n_batches = p.n_streams * p.stream_size;
-  p.n_kernels = p.n_batches * p.batch_size;
-
-  p.n_per_stream = n / p.n_streams;
-  p.n_per_batch = p.n_per_stream / p.stream_size;
-  p.n_per_kernel = p.kernel_size;
-  p.n_per_block = p.n_per_kernel / (double) p.gridDim;
-  p.n_per_thread = p.n_per_block / (double) p.blockSize;
-
-  p.kernels_per_stream = p.stream_size * p.batch_size;
-
-  assert(n == p.n_per_kernel * p.n_kernels);
-  assert(n == p.n_per_batch * p.n_batches);
-  assert(p.n_batches >= 1);
-  assert(p.n_kernels >= 1);
-  assert(p.n_per_stream >= 1);
-  assert(p.n_per_batch >= 1);
-  assert(p.n_per_kernel >= 1);
-  assert(p.n_per_block > 0.0);
-  assert(p.n_per_thread > 0.0);
-  assert(p.kernels_per_stream > 0);
-
-  if (p.n_per_block < 1)
-    print("Warning, not all _blocks_ are used");
-  if (p.n_per_thread < 1)
-    print("Warning, not all _threads_ are used");
-
+void derive_secondary_geometry(struct Geometry& p) {
+  p.gridSize = {p.blockDim.x * p.gridDim.x,
+                p.blockDim.y * p.gridDim.y,
+                1};
+  p.batch_size = {MIN(p.n.x, p.thread_size.x * p.gridSize.x),
+                  MIN(p.n.y, p.thread_size.y * p.gridSize.y)};
+  p.n_batches = {CEIL(p.n.x, p.batch_size.x),
+                 CEIL(p.n.y, p.batch_size.y)};
   check_hyper_params(p);
 }
 
-Geometry simple_geometry(const size_t n) {
+Geometry simple_geometry(const size_t x, const size_t y) {
   Geometry p;
-  p.blockSize = 1;
-  p.gridDim = 1;
-  p.kernel_size = 1;
-  p.batch_size = n;
+  p.blockDim = {1,1,1};
+  p.gridDim = {1,1,1};
+  p.n = {x, y};
+  p.thread_size = {1,1};
   p.n_streams = 1;
-  derive_secondary_geometry(n, p);
+  derive_secondary_geometry(p);
   return p;
 }
 
-Geometry geometry(const size_t n) {
+Geometry geometry(struct Params& params, const size_t x, const size_t y) {
   Geometry p;
-  p.blockSize = BLOCKDIM;
-  p.gridDim = GRIDDIM; // TODO rename to gridDim and use dim3 dtype
-  p.kernel_size = KERNEL_SIZE;
-  p.batch_size = BATCH_SIZE;
-  p.n_streams = N_STREAMS;
+  p.algorithm = params.algorithm;
+  p.blockDim = params.blockDim;
+  p.gridDim = params.gridDim;
+  p.n = {x, y};
+  p.thread_size = params.thread_size;
+  p.n_streams = params.n_streams;
 
-  derive_secondary_geometry(n, p);
-  return p; // copy on return is permissible
+  derive_secondary_geometry(p);
+  return p;
 }
 
 /**
@@ -264,7 +238,7 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
 
 template<typename T>
 std::vector<T*> malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
-   // Return a host vector of pointers
+   // Return a host vector of device pointers
    assert(dim1 >= 1); assert(dim2 >= 1);
    cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
    auto vec = std::vector<T*>(dim1);

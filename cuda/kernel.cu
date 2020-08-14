@@ -7,6 +7,12 @@
 #include <cuComplex.h>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <thrust/reduce.h>
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+#include <cusolverDn.h>
 
 #include "macros.h"
 #include "hyper_params.h"
@@ -103,8 +109,6 @@ inline __device__ void warp_reduce(volatile T *s, unsigned int i) {
   if (blockSize >=  2) s[i] += s[i +  1]; // TODO rm last line
 }
 
-// volatile WAVE& operator=(volatile WAVE&) volatile;
-
 template <unsigned int blockSize>
 inline __device__ void warp_reduce_complex(WAVE *s, const unsigned int i) {
   // TODO assert size <= 2*WARP_SIZE
@@ -131,6 +135,7 @@ inline __device__ void warp_reduce_complex(WAVE *s, const unsigned int i) {
   // if (size >=  2) s[i] = cuCadd(s[i], s[i +  1]);
   // __threadfence();
 }
+
 
 inline __host__ __device__ void cos_sin(double x, double *cos, double *sin) {
   // Save cosine(x), sine(x) to &cos, &sin.
@@ -183,6 +188,65 @@ __global__ void reduce_rows(Iterator first, const size_t width, const size_t n_r
     // from https://github.com/thrust/thrust/blob/master/examples/cuda/async_reduce.cu
     results[i] = thrust::reduce(thrust::cuda::par, first + di, first + di + width, init, binary_op);
   }
+}
+
+
+template<bool transpose = false>
+inline void sum_rows(const size_t width, const size_t n_rows, cublasHandle_t handle,
+                     const WAVE *A, const WAVE *x,
+                     WAVE *y, const WAVE beta = {0., 0.}) {
+  /**
+   * Sum all rows of matrix A. `A,x,y` must be device pointers.
+   *
+   * GEMV: GEneral Matrix Vector multiplication
+   * `y = alpha * op(A)x + beta y`
+   * Note, argument width = lda = stride of matrix
+   */
+  const WAVE alpha = {1., 0.};
+// #ifdef TEST_CONST_PHASE
+//   {
+//     cudaDeviceSynchronize();
+//     size_t n = width * n_rows;
+//     // printf("n: %lu\n", n);
+//     thrust::device_vector<WAVE> d (A, A + n);
+//     thrust::host_vector<WAVE> h = d;
+//     for (size_t i = 0; i < n; ++i) {
+//       // printf("i: %lu, x: %f, y: %f\n", i, h[i].x, h[i].y);
+//       if (h[i].x - 1. > 1e-6 || h[i].y > 1e-6)
+//         printf("err: i: %lu, x: %f, y: %f\n", i, h[i].x, h[i].y);
+//       assert(h[i].x == 1.);
+//       assert(h[i].y == 0.);
+//     }
+//   }
+// #endif
+
+  if (transpose)
+    cuB( cublasZgemv(handle, CUBLAS_OP_T, width, n_rows, &alpha, A, width, x, 1, &beta, y, 1) );
+  else
+    cuB( cublasZgemv(handle, CUBLAS_OP_N, n_rows, width, &alpha, A, n_rows, x, 1, &beta, y, 1) );
+
+// #ifdef TEST_CONST_PHASE
+//   {
+//     cudaDeviceSynchronize();
+//     size_t n = n_rows;
+//     thrust::device_vector<WAVE> d (y, y + n);
+//     thrust::host_vector<WAVE> h = d;
+//     for (size_t i = 0; i < n; ++i) {
+//       assert(h[i].x == (double) width);
+//       assert(h[i].y == 0.);
+//     }
+//   }
+// #endif
+}
+
+inline void sum_rows_thrust(const size_t width, const size_t n_rows, cudaStream_t stream,
+                            double *d_x, double *d_y) {
+  // launch 1x1 kernel in the specified selected stream, from which multiple thrust are called indirectly
+  // auto ptr = thrust::device_ptr<double>(d_x);
+  thrust::device_ptr<double>
+    x_ptr (d_x),
+    y_ptr (d_y);
+  kernel::reduce_rows<<< 1,1,0, stream >>>(x_ptr, width, n_rows, 0.0, thrust::plus<double>(), y_ptr);
 }
 
   ///////////////////////////////////////////////////////////////////////////////////

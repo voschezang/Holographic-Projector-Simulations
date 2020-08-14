@@ -81,10 +81,14 @@ int main(int argc, char** argv) {
   auto x = std::vector<WAVE>(n_per_plane.obj, from_polar(1.0));
 #endif
 
+  if (params.randomize) print("Randomize positions");
   const Geometry
-    projector = init::geometry(n_per_plane.projector),
-    projection = init::geometry(n_per_plane.projection);
-  print_info(projector, n_planes, n_per_plane);
+    projector = init::geometry(params, n_per_plane.obj, n_per_plane.projector),
+    projection = init::geometry(params, n_per_plane.projector, n_per_plane.projection);
+  print_setup(n_planes, n_per_plane);
+  print_geometry(projector);
+  if (n_planes.projection > 0)
+    print_geometry(projection);
 
   struct timespec t0, t1, t2;
   auto dt = std::vector<double>(max(n_planes.projection, 1L), 0.0);
@@ -146,6 +150,7 @@ int main(int argc, char** argv) {
       const Cartesian<double> projection_offset = {x: params.quadrant_projection ? width / 2. : 0.,
                                                    y: params.quadrant_projection ? height / 2. : 0.,
                                                    z: lerp(params.projection_z_offset, ratio)};
+      assert(!params.quadrant_projection);
       const auto z_plane = Plane {width: width,
                                   offset: {x: obj_offset.x + projection_offset.x,
                                            y: obj_offset.y + projection_offset.y,
@@ -153,6 +158,8 @@ int main(int argc, char** argv) {
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
       init::plane(w, z_plane);
+      printf("x offsets obj: %f, projector: %f\n", obj_offset.x, z_plane.offset.x);
+      printf("z offsets obj: %f, projector: %f\n", obj_offset.z, z_plane.offset.z);
 
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WAVE>(n.z);

@@ -7,7 +7,7 @@
 
 /* #define DEBUG */
 /* #define TEST_CONST_PHASE */
-/* #define TEST_CONST_PHASE2 */
+#define STREAM_DATA
 
 #define ZERO make_cuDoubleComplex(0,0)
 /* #define VOL(type, x) *((type *) &x) */
@@ -27,13 +27,10 @@
 /* #define PROJECTOR_WIDTH(aspect_ratio) (aspect_ratio * PROJECTOR_HEIGHT) */
 #define DIMS 3
 
-#define MAX_INPUT_SIZE 0 // TODO, specific for GPU
+#define WARP_SIZE 32
 
 /* #define ARBITRARY_PHASE 0.4912 // used in superposition::per_thread */
 #define ARBITRARY_PHASE 0. // used in superposition::per_thread
-/* #define ARBITRARY_PHASE 0. // used in superposition::per_thread */
-/* #define ARBITRARY_PHASE2 1.321 */
-/* #define ARBITRARY_PHASE3 -0.814 */
 
 #define WAVE cuDoubleComplex
 #define IO_PRECISION 8

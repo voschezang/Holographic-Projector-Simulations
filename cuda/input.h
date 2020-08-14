@@ -18,9 +18,13 @@ Params read_args(int argc, char **argv) {
   /* const double z_offset = 0.35; */
   /* const double z_offset = 0.01; */
   /* const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset}; */
-  const auto obj_z_offset = Range<double> {min: 0.01, max: 0.05};
-  const double projection_width = N_sqrt * 7e-6;
+  const auto obj_z_offset = Range<double> {min: 0.2, max: 0.01};
+  /* const double projection_width = N_sqrt * 7e-6; */
+  /* const double obj_width =  PROJECTOR_WIDTH; */
+  /* const double obj_width =  N_sqrt * 7e-6; */
+  const double obj_width =  0.00003;
   // projector z_offset is always zero
+  // TODO use json file (similar to meta data)
   // TODO add rand seed
   auto p = Params
     {n_planes:     {obj: 1,
@@ -32,30 +36,35 @@ Params read_args(int argc, char **argv) {
      aspect_ratio: {obj: 1.,
                     projector: 1.,
                     /* projector: HD, */
-                    projection: 1.}, // 0.2
+                    projection: 1.},
 
      /* obj_shape: Shape::DottedCircle, // TODO */
-     obj_offset:  {x: {min: 0.004, max: 0.004},
-                   y: {min: 0.006, max: 0.006},
+     obj_offset:  {x: {min: 0.0, max: 0.0},
+                   y: {min: 0.0, max: 0.0},
                    z: obj_z_offset},
 
-     obj_width: {min: 0.1, max: 0.1},
-     projection_width: {min: projection_width, max: projection_width},
-     /* projection_z_offset: {min: 0.1, max: 0.1}, // added to obj offset */
+     /* obj_width: {min: 0.003, max: 0.01}, */
+     obj_width: {min: obj_width, max: obj_width},
+     projection_width: {min: obj_width * 1.05, max: obj_width * 1.05},
+     /* projection_width: {min: 0.0031, max: 0.01}, */
      projection_z_offset: {min: 0., max: 0.}, // added to obj offset
 
+     algorithm: 1,
      quadrant_projection: false,
-     randomize: false
-     /* randomize: true */
+     randomize: false,
+     /* randomize: true, */
+     n_streams: 16,
+     thread_size: {8, 4},
+     blockDim: {BLOCKDIMX, BLOCKDIMY, 1},
+     gridDim: {GRIDDIMX, GRIDDIMY, 1}
     };
 
-  // TODO count n non-constant ranges and static_assert result is <= 1
   // TODO add PROJECT_PHASE to cmd args
 
   // For all ranged params the max is set to min by default.
   int ch;
   /* while ((ch = getopt(argc, argv, "c:e:hH:i:k:L:m:M:n:N:p:t:r:")) != -1) */
-  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:n:N:m:M:q:r:h:")) != -1)
+  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:n:N:m:M:p:q:rs:t:T:b:B:g:G:h")) != -1)
     {
       switch(ch) {
       case 'X': p.n_planes.obj            = strtol(optarg, 0, 10); break;
@@ -83,8 +92,16 @@ Params read_args(int argc, char **argv) {
       case 'm': p.projection_z_offset.min = p.projection_z_offset.max = strtod(optarg, 0); break;
       case 'M': p.projection_z_offset.max =                             strtod(optarg, 0); break;
 
+      case 'p': p.algorithm = strtol(optarg, 0, 10); break;
       case 'q': p.quadrant_projection = true; break;
       case 'r': p.randomize =           true; break;
+      case 's': p.n_streams =     strtol(optarg, 0, 10); break;
+      case 't': p.thread_size.x = strtol(optarg, 0, 10); break;
+      case 'T': p.thread_size.y = strtol(optarg, 0, 10); break;
+      case 'b': p.blockDim.x =    strtol(optarg, 0, 10); break;
+      case 'B': p.blockDim.y =    strtol(optarg, 0, 10); break;
+      case 'g': p.gridDim.x =     strtol(optarg, 0, 10); break;
+      case 'G': p.gridDim.y =     strtol(optarg, 0, 10); break;
       case 'h': default: show_help(argv[0]);
       }
     }

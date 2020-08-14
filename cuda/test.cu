@@ -20,13 +20,6 @@
 #include "superposition.cu"
 #include "functions.cu"
 
-inline
-bool equals(double a, double b, double max_rel_error=1e-6) {
-  // T : float or double
-  // ignore near-zero values
-  const double non_zero_scalar = abs(a) >= 1e-9 ? abs(a): 1.;
-  return abs(a - b) < max_rel_error * non_zero_scalar;
-}
 
 void test_complex(cuDoubleComplex c, int v=0) {
   assert(c.x == cuCreal(c));
@@ -99,7 +92,7 @@ void test_superposition_single(std::vector<WAVE> &x, std::vector<SPACE> &u, std:
 
   // test superposition functions
   // on host
-  WAVE y0 = superposition::single<direction>(x[0], &u[0], &v[0]);
+  WAVE y0 = superposition::phasor_displacement<direction>(x[0], &u[0], &v[0]);
 
   // auto p = init::simple_geometry(1);
   // superposition::per_block<Direction::Forwards, 1><<< p.gridSize, p.blockSize, 0 >>> \
@@ -152,7 +145,6 @@ int main() {
   algebra::test();
   test_normalize_amp();
   test_complex_multiple();
-  // TODO add lin_algebra tests
   test_superposition();
   std::cout << "DONE\n";
 }
