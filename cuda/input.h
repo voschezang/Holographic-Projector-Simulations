@@ -109,6 +109,7 @@ Params read_args(int argc, char **argv) {
   assert(p.n_planes.obj >= 1);
   assert(p.n_planes.projector == 1);
   assert(p.n_planes.projection <= 10000);
+  assert(p.blockDim.x * p.blockDim.y <= 1024);
   const double nonzero = 1e-6; // relatively small constant
   if (p.obj_offset.z.min > 0.)
     assert((p.obj_offset.z.min > nonzero && p.obj_offset.z.max > nonzero));

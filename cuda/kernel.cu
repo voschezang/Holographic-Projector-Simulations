@@ -137,17 +137,17 @@ inline __device__ void warp_reduce_complex(WAVE *s, const unsigned int i) {
 }
 
 
-inline __host__ __device__ void cos_sin(double x, double *cos, double *sin) {
+inline __host__ __device__ void cos_sin(const double x, double *cos, double *sin) {
   // Save cosine(x), sine(x) to &cos, &sin.
   // Flipped arguments for readability.
   sincos(x, sin, cos);
 }
 
-inline __host__ __device__ double angle(cuDoubleComplex phasor) {
+inline __host__ __device__ double angle(const cuDoubleComplex phasor) {
   return atan2(phasor.y, phasor.x);
 }
 
-inline __host__ __device__ cuDoubleComplex from_polar(double r, double phi = 0.) {
+inline __host__ __device__ cuDoubleComplex from_polar(const double r, const double phi = 0.) {
   // Convert polar coordinates (r,phi) to Cartesian coordinates (re, im)
   // Using `r * e^(phi I) = r (cos phi + I sin phi)`
   // TODO rename => to_phasor?
@@ -155,6 +155,10 @@ inline __host__ __device__ cuDoubleComplex from_polar(double r, double phi = 0.)
   cuDoubleComplex result;
   cos_sin(phi, &result.x, &result.y);
   return {r * result.x, r * result.y};
+}
+
+inline __host__ __device__ cuDoubleComplex to_polar(const cuDoubleComplex x) {
+  return {cuCabs(x), angle(x)};
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

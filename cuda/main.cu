@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
   // const auto shape = Shape::LogLine;
   const auto shape = Shape::DottedCircle;
   // const auto shape = Shape::Circle;
-  auto x = std::vector<WAVE>(n_per_plane.obj, from_polar(1.0));
+  auto x = std::vector<Polar>(n_per_plane.obj, {amp: 1, phase: 0.});
 #endif
 
   if (params.randomize) print("Randomize positions");
@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
                               randomize: params.randomize};
   init::plane(v, y_plane);
 
-  summarize_double('v', v); // TODO edit in case aspect ratio != 1
+  summarize('v', v); // TODO edit in case aspect ratio != 1
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("Runtime init: \t%0.3f\n", diff(t0, t1));
   cudaProfilerStart();
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
     auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, projector, &t1, &t2, &dt[0], true);
     check_cvector(y);
 
-    if (i == 0) summarize_c('y', y);
+    if (i == 0) summarize('y', y);
     write_arrays(y, v, "y" + x_suffix, "v" + x_suffix, y_plane, dt[0], flops(dt[0], x.size(), y.size()));
 
     // The projection distributions at various locations are obtained using forward transformations
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
       // auto z = std::vector<WAVE>(n.z);
       auto z = time_transform<Direction::Forwards>(y, v, w, projection, &t1, &t2, &dt[j]);
       check_cvector(z);
-      if (i == 0 && j == 0) summarize_c('z', z);
+      if (i == 0 && j == 0) summarize('z', z);
 
       const auto z_suffix = x_suffix + "_" + std::to_string(j);
       // TODO write this async, next loop can start already

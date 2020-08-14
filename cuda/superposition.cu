@@ -34,39 +34,34 @@ namespace superposition {
 //////////////////////////////////////////////////////////////////////////////////
 
 template<const Direction direction>
-inline __host__ __device__ WAVE phasor_displacement(const WAVE x, const SPACE *u, const SPACE *v) {
+inline __host__ __device__ WAVE phasor_displacement(const Polar x, const double *u, const double *v) {
   // inline __host__ __device__ WAVE phasor_displacement(const double a, const double phi, const SPACE *u, const SPACE *v) {
   /**
    * Compute the phasor displacement single source datapoint, for some target location `v \in R^3`
-   * `a / distance * exp(phi \pm distance * 2 * pi / lambda)`
+   * `amp / distance * exp(phi \pm distance * 2 * pi / lambda)`
    */
   // const auto distance  = NORM_3D(v[0] - u[0], v[1] - u[1], v[2] - u[2]);
-  const double
-    distance = NORM_3D(v[0] - u[0], v[1] - u[1], v[2] - u[2]),
-    a = cuCabs(x),
-    phi = angle(x);
+  const double distance = NORM_3D(v[0] - u[0], v[1] - u[1], v[2] - u[2]);
 #if DEBUG
   assert(distance > 1e-9);
 #endif
   if (direction == Direction::Forwards)
-    return from_polar(a / distance, phi + distance * TWO_PI_OVER_LAMBDA);
+    return from_polar(x.amp / distance, x.phase + distance * TWO_PI_OVER_LAMBDA);
   else
-    return from_polar(a / distance, phi - distance * TWO_PI_OVER_LAMBDA);
+    return from_polar(x.amp / distance, x.phase - distance * TWO_PI_OVER_LAMBDA);
 }
 
 template<const Direction direction>
-__global__ void phasor_displacement(const WAVE x, const SPACE *u, const SPACE *v, WAVE *y) {
+__global__ void phasor_displacement(const Polar x, const double *u, const double *v, WAVE *y) {
   // in place
   y[0] = phasor_displacement<direction>(x, u, v);
 }
 
 template<Direction direction, int blockDim_x, int blockDim_y, Algorithm algorithm, bool shared_memory = false>
 __global__ void per_block(const size_t N, const size_t M,
-                          const WAVE *__restrict__ x,
-                          // const double *__restrict__ a,
-                          // const double *__restrict__ phi,
-                          const SPACE *__restrict__ u,
-                          const SPACE *__restrict__ v,
+                          const Polar *__restrict__ x,
+                          const double *__restrict__ u,
+                          const double *__restrict__ v,
                           WAVE *__restrict__ y_global,
                           const bool append_result = false) {
 #ifdef DEBUG

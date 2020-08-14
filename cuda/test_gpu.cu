@@ -63,10 +63,10 @@ void test_superposition() {
 
   double amp = LAMBDA, phi = 0.3456, delta = amp;
 
-  thrust::device_vector<WAVE>
-    d_x (N_max, from_polar(amp, phi)),
-    d_y (M * N_max, {0.,0.});
-  thrust::host_vector<WAVE> y = d_y, x = d_x;
+  auto d_x = thrust::device_vector<Polar> (N_max, {amp, phi});
+  auto d_y = thrust::device_vector<WAVE> (M * N_max, {0.,0.});
+  thrust::host_vector<Polar> x = d_x;
+  thrust::host_vector<WAVE> y = d_y;
   std::vector<double>
     u (DIMS * N_max, 0.),
     v (DIMS * M, 0.);
@@ -138,7 +138,7 @@ void test_superposition() {
           init::derive_secondary_geometry(p);
           if (N <= p.batch_size.x) assert(p.n_batches.x == 1);
           if (M <= p.batch_size.y) assert(p.n_batches.y == 1);
-          const std::vector<WAVE> X (x.begin(), x.begin() + N);
+          const std::vector<Polar> X (x.begin(), x.begin() + N);
           auto z = transform<Direction::Forwards, Algorithm::Naive, false>(X, u, v, p);
           // printf("\n\tparams: thread_size: %lu, %lu \t n_streams: %i, batch size: %lu, %lu\n",
           //        thread_size_x, thread_size_y, n_streams, p.batch_size.x, p.batch_size.y);

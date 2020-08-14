@@ -15,8 +15,7 @@ struct Setup { T obj, projector, projection; };
 template<typename T>
 struct Cartesian { T x,y,z; }; // 3D space
 
-template<typename T = double>
-struct Polar { T amp, phi; }; // phasor TODO use to avoid ambiguity in cuda code
+struct Polar { double amp, phase; };
 
 template<typename T = double>
 struct Range { T min, max; };
