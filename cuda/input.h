@@ -46,10 +46,10 @@ Params read_args(int argc, char **argv) {
      /* obj_width: {min: 0.003, max: 0.01}, */
      obj_width: {min: obj_width, max: obj_width},
      projection_width: {min: obj_width * 1.05, max: obj_width * 1.05},
-     /* projection_width: {min: 0.0031, max: 0.01}, */
+     /* projection_width: {min: 0.000018, max: 0.01}, */
      projection_z_offset: {min: 0., max: 0.}, // added to obj offset
 
-     algorithm: 1,
+     algorithm: 2,
      quadrant_projection: false,
      randomize: false,
      /* randomize: true, */
@@ -109,6 +109,15 @@ Params read_args(int argc, char **argv) {
   assert(p.n_planes.obj >= 1);
   assert(p.n_planes.projector == 1);
   assert(p.n_planes.projection <= 10000);
+  assert(p.n_per_plane.projector > 0);
+  if (p.n_planes.projection)
+    assert(p.n_per_plane.projection > 0);
+  else
+    p.n_per_plane.projection = 1;
+
+  assert(is_square(p.n_per_plane.projector));
+  assert(is_square(p.n_per_plane.projection));
+
   assert(p.blockDim.x * p.blockDim.y <= 1024);
   const double nonzero = 1e-6; // relatively small constant
   if (p.obj_offset.z.min > 0.)

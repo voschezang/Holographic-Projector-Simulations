@@ -90,7 +90,7 @@ void test_superposition() {
 
   for (auto& N : std::array<size_t, 2> {1, N_max}) {
     // Naive
-    superposition::per_block<Direction::Forwards, blockDim_x, blockDim_y, Algorithm::Naive, false><<<gridDim,blockDim>>>(N, M, d_x_ptr, d_u_ptr, d_v_ptr, d_y_ptr, false);
+    superposition::per_block<Direction::Forwards, blockDim_x, blockDim_y, Algorithm::Naive, false><<<gridDim,blockDim>>>(N, M, N, d_x_ptr, d_u_ptr, d_v_ptr, d_y_ptr, false);
     y = d_y;
     // printf("x[0]: amp = %e, \tangle = %e\n", cuCabs(x[0]), angle(x[0]));
     for (size_t i = 0; i < N; ++i) {
@@ -98,7 +98,7 @@ void test_superposition() {
       assert(equals(cuCabs(y[j]), 1.));
       assert(equals(angle(y[i]), phi));
     }
-    superposition::per_block<Direction::Forwards, blockDim_x, blockDim_y, Algorithm::Naive, false><<<gridDim,blockDim>>>(N, M, d_x_ptr, d_u_ptr, d_v_ptr, d_y_ptr, true);
+    superposition::per_block<Direction::Forwards, blockDim_x, blockDim_y, Algorithm::Naive, false><<<gridDim,blockDim>>>(N, M, N, d_x_ptr, d_u_ptr, d_v_ptr, d_y_ptr, true);
     y = d_y;
     for (size_t i = 0; i < N; ++i) {
       const size_t j = Yidx(0, i, N, M);
@@ -106,7 +106,7 @@ void test_superposition() {
       assert(equals(angle(y[i]), phi));
     }
     // Alt, no shared memory
-    superposition::per_block<Direction::Forwards, blockDim_x, blockDim_y, Algorithm::Alt, false><<<gridDim,blockDim>>>(N, M, d_x_ptr, d_u_ptr, d_v_ptr, d_y_ptr, false);
+    superposition::per_block<Direction::Forwards, blockDim_x, blockDim_y, Algorithm::Alt, false><<<gridDim,blockDim>>>(N, M, N, d_x_ptr, d_u_ptr, d_v_ptr, d_y_ptr, false);
     y = d_y;
     // printf("x[0]: amp = %e, \tangle = %e\n", cuCabs(x[0]), angle(x[0]));
     size_t N_out = MIN(N, gridSize.x);
@@ -132,7 +132,8 @@ void test_superposition() {
     for (auto& thread_size_x : std::array<size_t, 2> {16, 1}) {
       for (auto& thread_size_y : std::array<size_t, 2> {16, 1}) {
         p.thread_size = {thread_size_x, thread_size_y};
-        for (auto& N : std::array<size_t, 3> {1, 32, N_max}) {
+        // Note the underutilized batches for N = non powers of 2
+        for (auto& N : std::array<size_t, 3> {1, 30, N_max - 9}) {
           assert(N <= N_max);
           p.n = {N, M};
           init::derive_secondary_geometry(p);
@@ -144,18 +145,18 @@ void test_superposition() {
           //        thread_size_x, thread_size_y, n_streams, p.batch_size.x, p.batch_size.y);
           for (size_t i = 0; i < M; ++i) {
             // printf("z[%i]: %f, %f - N: %lu\n", i, cuCabs(z[i]), angle(z[i]), N);
-            assert(equals(cuCabs(z[i]), N));
             assert(equals(angle(z[i]), phi));
+            assert(equals(cuCabs(z[i]), N));
           }
           z = transform<Direction::Forwards, Algorithm::Alt, false>(X, u, v, p);
           for (size_t i = 0; i < M; ++i) {
-            assert(equals(cuCabs(z[i]), N));
             assert(equals(angle(z[i]), phi));
+            assert(equals(cuCabs(z[i]), N));
           }
           z = transform<Direction::Forwards, Algorithm::Alt, true>(X, u, v, p);
           for (size_t i = 0; i < M; ++i) {
-            assert(equals(cuCabs(z[i]), N));
             assert(equals(angle(z[i]), phi));
+            assert(equals(cuCabs(z[i]), N));
           }
         }
       }

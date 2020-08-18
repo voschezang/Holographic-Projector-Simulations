@@ -58,12 +58,14 @@ __global__ void phasor_displacement(const Polar x, const double *u, const double
 }
 
 template<Direction direction, int blockDim_x, int blockDim_y, Algorithm algorithm, bool shared_memory = false>
-__global__ void per_block(const size_t N, const size_t M,
+__global__ void per_block(const size_t N, const size_t M, const size_t N_stride,
                           const Polar *__restrict__ x,
                           const double *__restrict__ u,
                           const double *__restrict__ v,
                           WAVE *__restrict__ y_global,
                           const bool append_result = false) {
+  // Ideally N == width but in case of underutilized batches equality does not hold.
+  // M_stride is omitted because it is always equal to M
 #ifdef DEBUG
   assert(blockDim.x * blockDim.y * blockDim.z <= 1024); // max number of threads per block
 #endif
@@ -84,7 +86,7 @@ __global__ void per_block(const size_t N, const size_t M,
 #else
         const WAVE y = from_polar(1., 0.);
 #endif
-        const size_t i = Yidx(n, m, N, M);
+        const size_t i = Yidx(n, m, N_stride, M);
         // TODO add bool to template and use: y[] = y + int(append) y
         if (append_result)
           {y_global[i].x += y.x; y_global[i].y += y.y;}
@@ -134,7 +136,7 @@ __global__ void per_block(const size_t N, const size_t M,
             assert(y.x == blockDim_x);
             assert(y.y == 0.);
 #endif
-            const size_t i = Yidx(blockIdx.x, m, MIN(N, gridDim.x), M);
+            const size_t i = Yidx(blockIdx.x, m, MIN(N_stride, gridDim.x), M);
             if (append_result)
               {y_global[i].x += y.x; y_global[i].y += y.y;}
             else
@@ -142,7 +144,7 @@ __global__ void per_block(const size_t N, const size_t M,
           }
         }
         else {
-          const size_t i = Yidx(tid.x, m, MIN(N, gridSize.x), M);
+          const size_t i = Yidx(tid.x, m, MIN(N_stride, gridSize.x), M);
           // printf("y[%i] or y[%i, %i]: amp = %e, \tangle = %e\n", i, tid.x, m, cuCabs(y), angle(y));
           if (append_result)
             {y_global[i].x += y.x; y_global[i].y += y.y;}

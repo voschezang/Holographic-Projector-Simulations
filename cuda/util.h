@@ -75,8 +75,18 @@ void check_hyper_params(Geometry p) {
   assert(p.n_streams  > 0);
   assert(p.n.x <= p.n_batches.x * p.batch_size.x);
   assert(p.n.y <= p.n_batches.y * p.batch_size.y);
-  assert(p.n.x == p.n_batches.x * p.batch_size.x); // assume powers of 2
-  assert(p.n.y == p.n_batches.y * p.batch_size.y);
+  assert((p.n_batches.x - 1) * p.batch_size.x < p.n.x);
+  if (p.n_batches.x == 1)
+    assert(p.n.x == p.batch_size.x);
+
+  if (p.n.x != p.n_batches.x * p.batch_size.x)
+    printf("Warning, underutilized x-batch: \tp.n.x: %lu != p.n_batches.x: %lu * p.batch_size.x: %lu (= %lu)\n",
+            p.n.x, p.n_batches.x, p.batch_size.x, p.n_batches.x * p.batch_size.x);
+  if (p.n.y != p.n_batches.y * p.batch_size.y)
+    printf("Warning, underutilized x-batch: \tp.n.y: %lu != p.n_batches.y: %lu * p.batch_size.y: %lu (= %lu)\n",
+           p.n.y, p.n_batches.y, p.batch_size.y, p.n_batches.y * p.batch_size.y);
+  /* assert(p.n.x == p.n_batches.x * p.batch_size.x); // assume powers of 2 */
+  /* assert(p.n.y == p.n_batches.y * p.batch_size.y); */
 
   /* if (p.n_per_block < 1) */
   /*   print("Warning, not all _blocks_ are used"); */
@@ -142,6 +152,11 @@ void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
 
 bool abs_of_is_positive(WAVE x) {
   return cuCabs(x) > 0;
+}
+
+bool is_square(double x) {
+  const auto sq = sqrt(x);
+  return sq * sq == x;
 }
 
 void summarize(char name, std::vector<WAVE> &x) {

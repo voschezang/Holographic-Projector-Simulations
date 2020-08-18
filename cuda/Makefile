@@ -46,8 +46,14 @@ init-path:
 	# export PATH=$(GCC)${PATH:+:${PATH}}
 
 test:
-	nvcc -o test test.cu $(FLAGS) -DNORM_3D='norm3d_host' && ./test
-	nvcc -o test test_gpu.cu $(FLAGS) && ./test
+	make test-cpu test-gpu
+
+test-cpu:
+	nvcc -o test test.cu $(FLAGS) $(ARCH_FLAGS) -DNORM_3D='norm3d_host' && ./test
+	rm test;
+
+test-gpu:
+	nvcc -o test test_gpu.cu $(FLAGS) $(ARCH_FLAGS) && ./test
 	rm test;
 
 test-phase-projector:

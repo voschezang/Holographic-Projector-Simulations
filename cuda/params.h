@@ -82,4 +82,12 @@ struct Geometry {
   size_t n_streams;
 };
 
+/** CUDA GPU version of std::vector, used for device memory and pinned memory
+ */
+template<typename T>
+struct CUDAVector {
+  T *data;
+  size_t size;
+};
+
 #endif
