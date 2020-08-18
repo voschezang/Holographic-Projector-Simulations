@@ -20,15 +20,6 @@
 #define cu(result) cudaCheck((result), __FILE__, __LINE__)
 #define cuB(result) cudaBlasCheck((result), __FILE__, __LINE__)
 
-
-/** GPU version of std::vector
- */
-template<typename T>
-struct DeviceVector {
-  T *data;
-  size_t size;
-};
-
 inline
 cudaError_t cudaCheck(cudaError_t result, const char *file, int line)
 {
@@ -137,17 +128,17 @@ inline __device__ void warp_reduce_complex(WAVE *s, const unsigned int i) {
 }
 
 
-inline __host__ __device__ void cos_sin(double x, double *cos, double *sin) {
+inline __host__ __device__ void cos_sin(const double x, double *cos, double *sin) {
   // Save cosine(x), sine(x) to &cos, &sin.
   // Flipped arguments for readability.
   sincos(x, sin, cos);
 }
 
-inline __host__ __device__ double angle(cuDoubleComplex phasor) {
+inline __host__ __device__ double angle(const cuDoubleComplex phasor) {
   return atan2(phasor.y, phasor.x);
 }
 
-inline __host__ __device__ cuDoubleComplex from_polar(double r, double phi = 0.) {
+inline __host__ __device__ cuDoubleComplex from_polar(const double r, const double phi = 0.) {
   // Convert polar coordinates (r,phi) to Cartesian coordinates (re, im)
   // Using `r * e^(phi I) = r (cos phi + I sin phi)`
   // TODO rename => to_phasor?
@@ -155,6 +146,10 @@ inline __host__ __device__ cuDoubleComplex from_polar(double r, double phi = 0.)
   cuDoubleComplex result;
   cos_sin(phi, &result.x, &result.y);
   return {r * result.x, r * result.y};
+}
+
+inline __host__ __device__ cuDoubleComplex to_polar(const cuDoubleComplex x) {
+  return {cuCabs(x), angle(x)};
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -203,40 +198,10 @@ inline void sum_rows(const size_t width, const size_t n_rows, cublasHandle_t han
    * Note, argument width = lda = stride of matrix
    */
   const WAVE alpha = {1., 0.};
-// #ifdef TEST_CONST_PHASE
-//   {
-//     cudaDeviceSynchronize();
-//     size_t n = width * n_rows;
-//     // printf("n: %lu\n", n);
-//     thrust::device_vector<WAVE> d (A, A + n);
-//     thrust::host_vector<WAVE> h = d;
-//     for (size_t i = 0; i < n; ++i) {
-//       // printf("i: %lu, x: %f, y: %f\n", i, h[i].x, h[i].y);
-//       if (h[i].x - 1. > 1e-6 || h[i].y > 1e-6)
-//         printf("err: i: %lu, x: %f, y: %f\n", i, h[i].x, h[i].y);
-//       assert(h[i].x == 1.);
-//       assert(h[i].y == 0.);
-//     }
-//   }
-// #endif
-
   if (transpose)
     cuB( cublasZgemv(handle, CUBLAS_OP_T, width, n_rows, &alpha, A, width, x, 1, &beta, y, 1) );
   else
     cuB( cublasZgemv(handle, CUBLAS_OP_N, n_rows, width, &alpha, A, n_rows, x, 1, &beta, y, 1) );
-
-// #ifdef TEST_CONST_PHASE
-//   {
-//     cudaDeviceSynchronize();
-//     size_t n = n_rows;
-//     thrust::device_vector<WAVE> d (y, y + n);
-//     thrust::host_vector<WAVE> h = d;
-//     for (size_t i = 0; i < n; ++i) {
-//       assert(h[i].x == (double) width);
-//       assert(h[i].y == 0.);
-//     }
-//   }
-// #endif
 }
 
 inline void sum_rows_thrust(const size_t width, const size_t n_rows, cudaStream_t stream,

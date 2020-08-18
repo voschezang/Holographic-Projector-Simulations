@@ -92,7 +92,7 @@ void test_superposition_single(std::vector<WAVE> &x, std::vector<SPACE> &u, std:
 
   // test superposition functions
   // on host
-  WAVE y0 = superposition::phasor_displacement<direction>(x[0], &u[0], &v[0]);
+  WAVE y0 = superposition::phasor_displacement<direction>({cuCabs(x[0]), angle(x[0])}, &u[0], &v[0]);
 
   // auto p = init::simple_geometry(1);
   // superposition::per_block<Direction::Forwards, 1><<< p.gridSize, p.blockSize, 0 >>> \
@@ -118,9 +118,9 @@ void test_superposition_single(std::vector<WAVE> &x, std::vector<SPACE> &u, std:
 
 void test_superposition() {
   auto x = std::vector<WAVE>{{1,0}};
-  auto
-    u = std::vector<SPACE>{0,0,0},
-    v = std::vector<SPACE>{0,0,LAMBDA};
+  std::vector<double>
+    u = {0,0,0},
+    v = {0,0,LAMBDA};
 
   assert(equals(norm3d_host(u[0] - v[0], u[1] - v[1], u[2] - v[2]) / LAMBDA, 1.));
   test_superposition_single(x, u, v, 1538461.5384615385, 0.);

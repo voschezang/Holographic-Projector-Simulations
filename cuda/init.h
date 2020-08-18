@@ -106,7 +106,7 @@ void plane(std::vector<SPACE> &v, const Plane p) {
   printf("init::plane, width: %e, n_x: %lu, dx: %e, x_half: %e\n", p.width, x, dx, x_half);
   // properties to generate random offsets
   const double
-    rel_margin = p.randomize ? 0.01 : 0.0,
+    rel_margin = p.randomize ? 0.05 : 0.0,
     x_margin = rel_margin * dx, // TODO min space between projector pixels
     y_margin = rel_margin * dy,
     x_random_range = dx - 0.5 * x_margin,
@@ -248,16 +248,16 @@ std::vector<T*> malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
  }
 
  template<typename T>
- std::vector<DeviceVector<T>> malloc_matrix(T **d_ptr, size_t dim1, size_t dim2) {
-   // Return a host vector of DeviceVector elements
+ std::vector<CUDAVector<T>> malloc_matrix(T **d_ptr, size_t dim1, size_t dim2) {
+   // Return a host vector of CUDAVector elements
    assert(dim1 >= 1); assert(dim2 >= 1);
    cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
-   auto matrix = std::vector<DeviceVector<T>>(dim1);
+   auto matrix = std::vector<CUDAVector<T>>(dim1);
    // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
    // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read by host if it's located on device
    for (size_t i = 0; i < dim1; ++i)
-     matrix[i] = DeviceVector<T>{data: *d_ptr + i * dim2,
-                                 size: dim2};
+     matrix[i] = CUDAVector<T>{data: *d_ptr + i * dim2,
+                               size: dim2};
    return matrix;
  }
 
@@ -268,23 +268,22 @@ std::vector<T*> pinned_malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
   // TODO consider cudaHostAllocMapped(..., cudaHostAllocMapped)
   cu( cudaMallocHost( d_ptr, dim1 * dim2 * sizeof(T) ) );
   auto vec = std::vector<T*>(dim1);
-  // for (auto&& row : matrix)
   for (size_t i = 0; i < dim1; ++i)
     vec[i] = *d_ptr + i * dim2;
   return vec;
 }
 
 template<typename T>
-std::vector<DeviceVector<T>> pinned_malloc_matrix(T **d_ptr, size_t dim1, size_t dim2) {
+std::vector<CUDAVector<T>> pinned_malloc_matrix(T **d_ptr, size_t dim1, size_t dim2) {
   // Return a host vector of DeviceVector elements
   assert(dim1 >= 1); assert(dim2 >= 1);
   cu( cudaMallocHost( d_ptr, dim1 * dim2 * sizeof(T) ) );
-  auto matrix = std::vector<DeviceVector<T>>(dim1);
+  auto matrix = std::vector<CUDAVector<T>>(dim1);
   // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
   // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read by host if it's located on device
   for (size_t i = 0; i < dim1; ++i)
-    matrix[i] = DeviceVector<T>{data: *d_ptr + i * dim2,
-                                size: dim2};
+    matrix[i] = CUDAVector<T>{data: *d_ptr + i * dim2,
+                              size: dim2};
   return matrix;
 }
 

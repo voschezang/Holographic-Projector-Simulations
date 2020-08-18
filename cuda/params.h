@@ -15,8 +15,7 @@ struct Setup { T obj, projector, projection; };
 template<typename T>
 struct Cartesian { T x,y,z; }; // 3D space
 
-template<typename T = double>
-struct Polar { T amp, phi; }; // phasor TODO use to avoid ambiguity in cuda code
+struct Polar { double amp, phase; };
 
 template<typename T = double>
 struct Range { T min, max; };
@@ -81,6 +80,14 @@ struct Geometry {
     n_batches,
     thread_size; // number of datapoints per thread (per kernel)
   size_t n_streams;
+};
+
+/** CUDA GPU version of std::vector, used for device memory and pinned memory
+ */
+template<typename T>
+struct CUDAVector {
+  T *data;
+  size_t size;
 };
 
 #endif

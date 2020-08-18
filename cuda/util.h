@@ -75,8 +75,18 @@ void check_hyper_params(Geometry p) {
   assert(p.n_streams  > 0);
   assert(p.n.x <= p.n_batches.x * p.batch_size.x);
   assert(p.n.y <= p.n_batches.y * p.batch_size.y);
-  assert(p.n.x == p.n_batches.x * p.batch_size.x); // assume powers of 2
-  assert(p.n.y == p.n_batches.y * p.batch_size.y);
+  assert((p.n_batches.x - 1) * p.batch_size.x < p.n.x);
+  if (p.n_batches.x == 1)
+    assert(p.n.x == p.batch_size.x);
+
+  if (p.n.x != p.n_batches.x * p.batch_size.x)
+    printf("Warning, underutilized x-batch: \tp.n.x: %lu != p.n_batches.x: %lu * p.batch_size.x: %lu (= %lu)\n",
+            p.n.x, p.n_batches.x, p.batch_size.x, p.n_batches.x * p.batch_size.x);
+  if (p.n.y != p.n_batches.y * p.batch_size.y)
+    printf("Warning, underutilized y-batch: \tp.n.y: %lu != p.n_batches.y: %lu * p.batch_size.y: %lu (= %lu)\n",
+           p.n.y, p.n_batches.y, p.batch_size.y, p.n_batches.y * p.batch_size.y);
+  /* assert(p.n.x == p.n_batches.x * p.batch_size.x); // assume powers of 2 */
+  /* assert(p.n.y == p.n_batches.y * p.batch_size.y); */
 
   /* if (p.n_per_block < 1) */
   /*   print("Warning, not all _blocks_ are used"); */
@@ -91,6 +101,13 @@ void check_cvector(std::vector<WAVE> x) {
 #ifdef DEBUG
   for (size_t i = 0; i < x.size(); ++i)
     assert(cuCabs(x[i]) < DBL_MAX);
+#endif
+}
+
+void check_cvector(std::vector<Polar> x) {
+#ifdef DEBUG
+  for (size_t i = 0; i < x.size(); ++i)
+    assert(x[i].amp < DBL_MAX && x[i].phase < DBL_MAX);
 #endif
 }
 
@@ -137,7 +154,12 @@ bool abs_of_is_positive(WAVE x) {
   return cuCabs(x) > 0;
 }
 
-void summarize_c(char name, std::vector<WAVE> &x) {
+bool is_square(double x) {
+  const auto sq = sqrt(x);
+  return sq * sq == x;
+}
+
+void summarize(char name, std::vector<WAVE> &x) {
   double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
   /* for (const auto& x : X) { */
   for (size_t i = 0; i < x.size(); ++i) {
@@ -150,7 +172,20 @@ void summarize_c(char name, std::vector<WAVE> &x) {
   printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f, mean: %f\n", name, min_amp, max_amp, max_phase, mean);
 }
 
-void summarize_double(char name, std::vector<double> &x) {
+void summarize(char name, std::vector<Polar> &x) {
+  double max_amp = 0, min_amp = DBL_MAX, max_phase = 0, sum = 0;
+  /* for (const auto& x : X) { */
+  for (size_t i = 0; i < x.size(); ++i) {
+    max_amp = fmax(max_amp, x[i].amp);
+    min_amp = fmin(min_amp, x[i].amp);
+    max_phase = fmax(max_phase, x[i].phase);
+    sum += x[i].amp;
+  }
+  double mean = sum / (double) x.size();
+  printf("%c) amp: [%0.3f - %0.6f], max phase: %0.3f, mean: %f\n", name, min_amp, max_amp, max_phase, mean);
+}
+
+void summarize(char name, std::vector<double> &x) {
   double max = DBL_MIN, min = DBL_MAX;
   for (size_t i = 0; i < x.size(); ++i) {
     max = fmax(max, x[i]);
@@ -214,8 +249,9 @@ void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, s
     out << sep << f(x[i]);
 }
 
-template<typename T = WAVE>
+template<typename T = Polar>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
+  printf("map_to_and_write_bytes size: %lu = %lu\n", x.size(), (x.size() / 8) * 8);
   const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
   double buffer[buffer_size];
   if (x.size() > 128)
@@ -268,17 +304,16 @@ inline std::string quote(char c) {
  *            "k" <sep1> v <sep2>
  *            "k" <sep1> v}`
  */
-void write_metadata(std::string phasor, std::string pos, Plane p, const std::vector<WAVE> &x,
+void write_metadata(std::string phasor, std::string pos, Plane p, const std::vector<Polar> &x,
                     double dt, double flops, std::ofstream& out) {
   // Use JSON-like separators with spaces for readiblity.
   const auto
     sep1 = ": ",
     sep2 = ", ";
-  const auto len = (double) x.size();
-  /* const auto sum = sum_amp_phase(x); */
+  const auto len = x.size();
   const auto
-    amp = transform_reduce(x, cuCabs),
-    phase = transform_reduce(x, angle);
+    amp = transform_reduce<Polar>(x, [](auto x) { return x.amp; }),
+    phase = transform_reduce<Polar>(x, [](auto x) { return x.phase; });
 
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC, &t);
@@ -321,7 +356,7 @@ void write_dot(char name, WAVE *x, SPACE *u, size_t len) {
   fclose(out);
 }
 
-void write_arrays(std::vector<WAVE> &x, std::vector<SPACE> &u,
+void write_arrays(std::vector<Polar> &x, std::vector<double> &u,
                   std::string k1, std::string k2, Plane p,
                   double dt = 0., double flops = 0.) {
   static bool overwrite = true;
@@ -342,12 +377,12 @@ void write_arrays(std::vector<WAVE> &x, std::vector<SPACE> &u,
 
   out.open(dir + k1 + "_amp.dat", std::ofstream::binary);
   /* map_to_and_write_array(x, cuCabs, ',', out); */
-  map_to_and_write_bytes(x, cuCabs, out);
+  map_to_and_write_bytes<Polar>(x, [](auto x) { return x.amp; }, out);
   out.close();
 
   out.open(dir + k1 + "_phase.dat", std::ofstream::binary);
   /* map_to_and_write_array(x, angle, ',', out); */
-  map_to_and_write_bytes(x, angle, out);
+  map_to_and_write_bytes<Polar>(x, [](auto x) { return x.phase; }, out);
   out.close();
 
   out.open(dir + k2 + ".dat", std::ofstream::binary);
