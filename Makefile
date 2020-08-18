@@ -39,8 +39,7 @@ remote-run:
 	sh remote_run.sh
 
 remote-run-plot:
-	# TODO check if remote dir is mounted; check if dir exists and is nonempty
-	# if [ ! -d "$(MNT_DIR)" ]; then echo "Remote dir is not mounted" ; exit 1; fi
+	if [ ! -d "$(MNT_DIR)" ]; then echo "Remote dir is not mounted"; exit 1; fi
 	make remote-run plot
 
 ssh:

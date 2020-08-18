@@ -334,9 +334,8 @@ def save_fig(filename, ext='png', dpi='figure',
     plt.close()
 
 
-def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=True,
-                   range=True, range_alpha=0.3,
-                   convolve=False,
+def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=False,
+                   median=True, range=True, range_alpha=0.3, convolve=False,
                    xlog=False, ylog=True, labels=[]):
     """ X,Y: lists of x,y data """
     n_subplots = len(Y)
@@ -362,12 +361,16 @@ def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=True,
             n_samples = 128
             assert y.size % n_samples == 0, 'pad input to fit reduction'
             sample_size = round(y.size / n_samples)
+            half_sample_size = round(sample_size / 2)  # round twice
             y_samples = y.reshape((n_samples, sample_size))
-            x_reduced = x[::sample_size]
+            x_reduced = x[half_sample_size::sample_size]
             assert x_reduced.shape == y_samples.mean(axis=1).shape
             assert n_samples == y_samples.mean(axis=1).size
             if mean:
-                plt.plot(x_reduced, y_samples.mean(axis=1))
+                plt.plot(x_reduced, y_samples.mean(axis=1), label='mean')
+            if median:
+                plt.plot(x_reduced, np.median(y_samples, axis=1),
+                         label='median')
             if range:
                 plt.fill_between(x_reduced, y_samples.min(axis=1),
                                  y_samples.max(axis=1), alpha=range_alpha)
@@ -376,10 +379,16 @@ def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=True,
             n = round(y.size / 100)
             c = scipy.signal.hann(n)
             z = scipy.signal.convolve(y, c / c.sum(), mode='same')
-            plt.plot(X[i][:, 0], z, alpha=0.8, color='orange')
+            plt.plot(X[i][:, 0], z, alpha=0.8, label='convolution')
+
+        if np.array([mean, median,  convolve]).astype(int).sum() > 1:
+            plt.legend()
 
         if xlog:
             plt.xscale('log')
+        else:
+            x_min = 0 if x.min() < 1e-4 else x.min()
+            plt.xlim(x_min, x.max())
         if ylog:
             plt.yscale('log')
         plt.ylim(y.min(), y.max())
@@ -403,7 +412,7 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
                        err_key=None, ylog=False, standard=True,
                        interpolate=None, translate={}, baseline=None,
                        ylim=(0, None), fig=None, x_func=lambda x: x,
-                       err_alpha=0.15, y_unit=None, bar=False, v=0):
+                       err_alpha=0.15, y_unit=None, bar=False, loc=None, v=0):
     """ Show a scatter-plot of Y as function of X,
     with conditional var Z as a third variable
 
@@ -482,8 +491,6 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
         #     print(f'Not significant! {z_key}: {z}, p:{p:0.3f}, {error:0.2f}')
 
         # plot scatter
-        assert(i < len(COLORS))
-        assert(i < len(LINESTYLES))
         if bar:
             n_categories = distinct_param_values.shape[0]
             inter_width = 1. / 3.
@@ -500,10 +507,12 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
                 ax.set_xticklabels(x_values)
 
         else:
+            assert i < len(COLORS)
             if err_key is None:
                 plt.scatter(x_values, y_values, alpha=0.85, s=12,
                             color=COLORS[i])
             else:
+                assert i < len(LINESTYLES), [i, len(LINESTYLES)]
                 scale = 1
                 if err_alpha > 0:
                     # don't use hatches in combination with alpha
@@ -540,7 +549,7 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
     plt.xlabel(translate[x_key])
     plt.ylabel(translate[y_key])
     sci_labels(ax, x=False, y_unit=y_unit)
-    plt.legend()
+    plt.legend(loc=loc)
     # plt.xlim(xlim)
     plt.ylim(ylim)
     if ylog:
@@ -552,10 +561,9 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
         plt.grid(b=None, which='major', axis='x', linewidth=0.7)
     plt.grid(b=None, which='major', linewidth=0.3, axis='y')
     plt.grid(b=None, which='minor', linewidth=0.3, axis='y' if bar else 'both')
-    if not ylog:
+    if not ylog and not bar:
         ax.xaxis.set_minor_locator(tck.AutoMinorLocator())  # TODO tst
-        if not bar:
-            ax.yaxis.set_minor_locator(tck.AutoMinorLocator())  # TODO tst
+        ax.yaxis.set_minor_locator(tck.AutoMinorLocator())  # TODO tst
 
     # rm spines
     ax.spines['right'].set_visible(False)
@@ -570,6 +578,8 @@ def parse_label(param_values, z_keys, translate: dict):
         # translate value
         if value in translate.keys():
             value = translate[value]
+        if k == 'algorithm':
+            value = f'#{value}'
 
         # translate label
         segments.append(f'{translate[k]}: {value}' if translate[k] else value)

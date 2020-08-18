@@ -975,6 +975,7 @@ def get_results(build_func, run_func,
             print('Generate new results')
         results = grid_search(build_func, run_func, build_params, run_params,
                               n_trials=n_trials, verbose=v)
+        assert any([row['Runtime mean'] != 0 for _, row in results.iterrows()])
         with open(f'{tmp_dir}/{filename}.pkl', 'wb') as f:
             pickle.dump(results, f)
 
@@ -992,7 +993,7 @@ def grid_search(build_func, run_func,
         print('Grid search')
     n_build_rows = build_params.shape[0]
     n_run_rows = run_params.shape[0]
-    n_rows = n_build_rows * n_run_rows
+    n_rows = max(1, n_build_rows) * n_run_rows
     for i, build_row in build_params.iterrows():
         success = True
         try:
@@ -1002,9 +1003,9 @@ def grid_search(build_func, run_func,
             print('\n - Error for build params:', build_row.to_dict())
 
         for j, run_row in run_params.iterrows():
-            if verbose and i % (1e3 / verbose) == 0:
-                print(f'\ni: {i}\t params: ', ', '.join(
-                    f'{k}: {v}' for k, v in run_row.items()))
+            # if verbose and i % (1e3 / verbose) == 0:
+            #     print(f'\ni: {i}\t params: ', ', '.join(
+            #         f'{k}: {v}' for k, v in run_row.items()))
 
             runtime, flops, amp, phase = np.zeros((4, n_trials))
             params = build_row.combine_first(run_row).to_dict()
@@ -1054,26 +1055,27 @@ def run_trial(run_func, run_kwargs, std_key='y'):
     An `subprocess.CalledProcessError` is raised in case of incorrect params
     """
     out: subprocess.CompletedProcess = run_func(**run_kwargs)
-    assert out.stderr == b'', out.stderr.decode('utf-8')
+    assert out.stderr == b'', f"\nstderr = {out.stderr.decode('utf-8')}"
     out.check_returncode()
     # TODO manually cp file, don't use mounted dir
-    out = parse_json(remote.read_file())
+    result = parse_json(remote.read_file())
     runtimes = [r['runtime']
-                for r in concat(out.values())
+                for r in concat(result.values())
                 if r['runtime'] > 0.]
     if sum(runtimes) == 0:
-        print('err, sum:', sum(runtimes))
+        print('\n err, sum:', sum(runtimes))
+        print('\n stderr: ', out.stderr.decode('utf-8'))
 
     runtime = sum((r['runtime']
-                   for r in concat(out.values())
+                   for r in concat(result.values())
                    if r['runtime'] > 0.))
     flops = np.mean([r['flops']
-                     for r in concat(out.values())
+                     for r in concat(result.values())
                      if r['flops'] > 0.])
     amp = np.mean([r['amp_sum']
-                   for r in out['y']])
+                   for r in result['y']])
     phase = np.mean([r['phase_sum']
-                     for r in out['y']])
+                     for r in result['y']])
     return runtime, flops, amp, phase
 
 
@@ -1089,5 +1091,5 @@ def print_progress(major_iter=0, n_major=100, minor_iter=0, n_minor=None,
     if len(suffix) > 1:
         suffix = f' ({suffix[:suffix_len]}{".." if len(suffix) > suffix_len else ")"}'
 
-    print(f'\r > {round(major_iter/n_major * 100 ,3):<6}%{minor } |{bar}|{suffix}',
+    print(f'\r > {round(major_iter/n_major*100,2):<4}%{minor } |{bar}|{suffix}',
           end=end)
