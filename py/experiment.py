@@ -2,13 +2,18 @@ import numpy as np
 import subprocess
 import collections
 import matplotlib.pyplot as plt
+import scipy.stats
+import scipy.optimize
+
 # local
-import plot
-import remote
 import util
+import remote
+import plot
+import surf
 
 EXE = 'run_experiment'
 CD = 'cd ../cuda'
+DIR = 'tmp_local'
 
 translate = collections.defaultdict(lambda: 'value unknown')
 translate.update({'Runtime mean': 'Runtime',
@@ -52,9 +57,9 @@ def run(n_objects=1, n_pixels=1920 * 1080, n_sample_points=None, N=None,
         projection_width=None,
         aspect_ratio_projector=1., aspect_ratio_projection=1.,
         algorithm=1, quadrant_projection=False, randomize_pixels=False,
-        n_streams=16, thread_size=(1, 1),
-        blockDim_x=None, blockDim_y=4,
-        gridDim_x=None, gridDim_y=1):
+        n_streams=16, thread_size=(4, 4),
+        blockDim_x=16, blockDim_y=16,
+        gridDim_x=16, gridDim_y=16):
     assert N is not None or n_objects is not None
     assert X >= 1
     if obj_z_offset_max is None:
@@ -71,13 +76,22 @@ def run(n_objects=1, n_pixels=1920 * 1080, n_sample_points=None, N=None,
     if projection_width is None:
         projection_width = n_sample_points * 7e-6
     # projector_width = y * 7e-6 # TODO
-
-    if blockDim_x is None:
-        blockDim_x = 64
-        if n_objects > 512:
-            blockDim_x = 128
-
     assert blockDim_x * blockDim_y <= 1204, 'Max number of threads per block'
+
+    # TODO catch errors caused by "None" values in flags at program-runtime
+    for i, v in enumerate([n_objects, n_pixels, n_sample_points, X, Z,
+                           aspect_ratio_projector, aspect_ratio_projection,
+                           obj_x_offset_min,
+                           obj_z_offset_min, obj_z_offset_max,
+                           projection_width,
+                           projection_z_offset_min, projection_z_offset_max,
+                           algorithm, n_streams,
+                           thread_size[0], thread_size[1],
+                           blockDim_x, blockDim_y,
+                           gridDim_x, gridDim_y]):
+        assert v is not None
+        if not v:
+            print(f'Warning, param {i}:{v} may be incorrect')
 
     flags = [f'-x {n_objects} -y {n_pixels} -z {n_sample_points}',
              f'-X {X} -Z {Z}',
@@ -88,8 +102,8 @@ def run(n_objects=1, n_pixels=1920 * 1080, n_sample_points=None, N=None,
              f'-n {projection_width}',
              f'-m {projection_z_offset_min} -M {projection_z_offset_max}',
              f'-p {algorithm:d}',
-             f'-q 1' * quadrant_projection,  # bool flag
-             f'-r 1' * randomize_pixels,  # bool flag
+             f'-q' * quadrant_projection,  # bool flag
+             f'-r' * randomize_pixels,  # bool flag
              f'-s {n_streams}',
              f'-t {thread_size[0]} -T {thread_size[1]}',
              f'-b {blockDim_x} -B {blockDim_y}',
@@ -104,7 +118,7 @@ make cleanup-output
 make zip
 EOF
 """
-    # print('content', content, '\n')
+    print('content', content, '\n')
     return subprocess.run(content, shell=True, check=True, capture_output=True)
 
 
@@ -204,13 +218,12 @@ def distribution_vary_object(fn: str, n: int, projection_width=1, v=0):
     print('build_params', build_param_values)
     print('run_params', run_param_values)
 
-    dir = 'tmp_local'
     results, results_fn = util.get_results(build, run, build_params, run_params, fn,
-                                           n_trials=1, tmp_dir=dir,
+                                           n_trials=1, tmp_dir=DIR,
                                            copy_data=True, v=v)
 
     print('load')
-    params, data = util.parse_file(dir, f'{results_fn}.zip', 'out')
+    params, data = util.parse_file(DIR, f'{results_fn}.zip', 'out')
     print('post')
 
     for xlog, ylog in np.ndindex((1, 2)):
@@ -241,13 +254,12 @@ def distribution_vary_projector(fn: str, n_samples: int, v=0):
     print('build_params', build_param_values)
     print('run_params', run_param_values)
 
-    dir = 'tmp_local'
     results, results_fn = util.get_results(build, run, build_params, run_params, fn,
-                                           n_trials=1, tmp_dir=dir,
+                                           n_trials=1, tmp_dir=DIR,
                                            copy_data=True, v=v)
 
     print('load')
-    params, data = util.parse_file(dir, f'{results_fn}.zip', 'out')
+    params, data = util.parse_file(DIR, f'{results_fn}.zip', 'out')
     print('post')
     if m > 4:
         # change order of items
@@ -269,15 +281,113 @@ def distribution_vary_projector(fn: str, n_samples: int, v=0):
         plot.save_fig(f'{fn}-amp-{xlog}{ylog}', transparent=False)
 
 
+def fit_gaussian(fn: str):
+    # n_sqrt = 512
+    n_sqrt = 256
+    build_param_values = {}
+    run_param_values = {
+        'n_objects': 1, 'n_pixels': n_sqrt**2, 'n_sample_points': n_sqrt**2,
+        'Z': 1,
+        'obj_z_offset_min': 0.3,
+        'projection_width': 0.0001,
+    }
+    build_params = util.param_table(build_param_values)
+    run_params = util.param_table(run_param_values)
+    print('build_params', build_param_values)
+    print('run_params', run_param_values)
+
+    results, results_fn = util.get_results(build, run, build_params, run_params, fn,
+                                           n_trials=1, tmp_dir=DIR,
+                                           copy_data=True, v=v)
+
+    print('load')
+    params, data = util.parse_file(DIR, f'{results_fn}.zip', 'out')
+
+    # area per datapoint
+    dS = params['z'][0]['width'] ** 2 / params['z'][0]['aspect_ratio']
+    # squared amp / area
+    z = data['z'][0][:, 0] ** 2 * dS
+    z = z / z.max()  # normalized
+    print('z', z.min())
+
+    def loss(args):
+        # args = mu1, mu2, s1, s2, s3, s4
+        # z_pred = util.gaussian_1d(X, *args)
+        z_pred = util.gaussian(X, *args)
+        # Note that scaling biasses the model to large sigma
+        z_pred = np.clip(z_pred / z_pred.max(), 1e-14, None)
+        H = util.cross_entropy(z, z_pred)
+        H += util.cross_entropy(z_pred, z)
+        if np.isnan(H):
+            return 1e3 * z.size
+        assert H >= 0, H
+        return H
+
+    unit = 1e-6  # scale to improve fitting, required if sigma << 1
+    X = data['w'][0][:, :2] / unit
+    # result = scipy.optimize.minimize(loss, x0=(1, 0, 0, 0, 0,))
+    result = scipy.optimize.minimize(loss, x0=(0, 0, 1))
+    z_pred = util.gaussian(X, *result.x)
+    # z_pred = util.gaussian_1d(X, 1)
+    z_pred /= z_pred.max()
+    X *= unit
+    print(result.message)
+    print('mu', result.x[:2] * unit)
+    print('var', result.x[2] * unit)
+    var = result.x[2] * unit
+
+    for d in (2, 3):
+        # cmap = 'OrRd'
+        cmap = 'gist_heat'
+        if d == 2:
+            plt.figure(figsize=(8, 4))
+            ax = plt.subplot(121)
+            # plot._hist2d_wrapper(*(X.T * unit), z, bins=bins, cmap=cmap)
+            plot._imshow_wrapper(*(X.T * unit), z.reshape((n_sqrt, n_sqrt)),
+                                 cmap=cmap, vmin=0, vmax=1)
+            # x, y = X.T * unit
+            # plt.imshow(z.reshape((n_sqrt, n_sqrt)), origin='lower', aspect=1.,
+            #            extent=(x.min(), x.max(), y.min(), y.max()),
+            #            vmin=0, vmax=1)
+            markup = {}
+        else:
+            plt.figure(figsize=(12, 6))
+            ax = plt.subplot(121, projection='3d')
+            surf.surf(*X.T, z, n_sqrt, n_sqrt, ax=ax)
+            ax.set_zlim(0, 1)
+            markup = {'colorbar': False, 'rotation': 0}
+        # for surf colorbar see: https://stackoverflow.com/questions/6600579/colorbar-for-matplotlib-plot-surface-command
+        plt.title('Irradiance')
+        plot.markup(ax, unit='m', **markup)
+
+        if d == 2:
+            ax = plt.subplot(122)
+            # plot._hist2d_wrapper(*(X.T * unit), z_pred, bins=bins, cmap=cmap)
+            plot._imshow_wrapper(*(X.T * unit), z_pred.reshape((n_sqrt, n_sqrt)),
+                                 cmap=cmap, vmin=0, vmax=1)
+        else:
+            ax = plt.subplot(122, projection='3d')
+            surf.surf(*X.T, z_pred, n_sqrt, n_sqrt, ax=ax)
+            ax.set_zlim(0, 1)
+        mu = r'$\mathbf{\mu}=_0^0$'
+        plt.title(f'Gaussian {mu}, $\\sigma^2={var:0.2e}$')
+        plot.markup(ax, unit='m', **markup)
+        # plt.suptitle('Irradiance')
+        plt.tight_layout()
+        plot.save_fig(f'{fn}-{d}d')
+
+
 if __name__ == '__main__':
     v = 1
     n_trials = 2
     prefix = 'exp'
     # print('exp performance')
     # performance(n_trials, prefix + '-perf', v=0)
-    print('exp distribution object')
+    # print('exp distribution object')
     # n = 128 ** 2
     # projection_width = n * 7e-6 * 0.1
     # distribution_vary_object(prefix + '-dist-obj', n, projection_width,  v)
     # print('exp distribution projector')
     # distribution_vary_projector(prefix + '-dist-proj', n, v)
+    print('fit gaussian')
+    fit_gaussian(prefix + '-gaus')

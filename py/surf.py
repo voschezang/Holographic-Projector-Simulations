@@ -14,13 +14,14 @@ import util
 from util import DIMS
 
 
-def surf(x, y, z, Nx: int, Ny: int, **kwargs):
+def surf(x, y, z, Nx: int, Ny: int, ax=None, **kwargs):
     if 'cmap' not in kwargs:
         global cmap
         kwargs['cmap'] = plot.cmap
 
-    fig = plt.figure(figsize=(9, 7))
-    ax = fig.gca(projection='3d')
+    if ax is None:
+        fig = plt.figure(figsize=(9, 7))
+        ax = fig.gca(projection='3d')
     X = x.reshape((Nx, Ny))
     Y = y.reshape((Nx, Ny))
     Z = z.reshape((Nx, Ny))

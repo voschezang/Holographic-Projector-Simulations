@@ -7,7 +7,6 @@ import plot
 import surf
 import animate
 import util
-from util import DIMS
 
 
 def run():
@@ -28,7 +27,7 @@ if __name__ == '__main__':
     fn = 'out.zip'
     size = os.path.getsize(os.path.join(dir, fn))
     print(f'Input file size: {size * 1e-6:0.5f} MB')
-    if size > 1e6:
+    if size > 1e8:
         print(f'Warning, file too large: {size*1e-6:0.4f} MB')
 
     params, data = util.parse_file(dir, fn, 'out')

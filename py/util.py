@@ -751,6 +751,35 @@ def solve_xy_is_a(n: int, ratio=1.):
     return x, y
 
 
+def cross_entropy(p: np.ndarray, q: np.ndarray):
+    # both probability distributions p, q should have a sum of 1
+    return - np.sum(p * np.log(q))
+    # return - np.sum(p * np.log(q) + (1 - p) * np.log(1 - q))
+
+
+def gaussian(x, mu1=0, mu2=0, var=1):
+    # 2d but symmetric gaussian
+    mu = np.array([mu1, mu2])
+    # diagonal of cov matrix should be nonnegative
+    var = np.eye(2) * np.clip(var, 1e-14, None)
+    return scipy.stats.multivariate_normal.pdf(x, mu, var)
+
+
+def gaussian_2d(x, mu1=0, mu2=0, s1=1, s2=0, s3=0, s4=1):
+    mu = np.array([mu1, mu2])
+    # diagonal of cov matrix should be nonnegative
+    s1 = np.clip(s1, 0, None)
+    s4 = np.clip(s1, 0, None)
+    s = np.array([[s1, s2], [s3, s4]])
+    # Note, matrix s must be positive semidefinite
+    try:
+        return scipy.stats.multivariate_normal.pdf(x, mu, s)
+    except ValueError:
+        # assume matrix s was not positive semidefinite
+        s = np.array([[s1, 0], [0, s4]])
+        return scipy.stats.multivariate_normal.pdf(x, mu, s)
+
+
 def concat(items=[], lazy=True):
     if not lazy:
         return sum(items, [])
@@ -836,7 +865,7 @@ def _parse_doubles(filename: str, n: int, precision=8, sep='',
     min_size = n * precision
     if size < min_size:
         raise SystemError(
-            f"Filesize too small ({size} < {min_size}) for {filename}")
+            f"Filesize too small ({size} < {min_size}) for {filename} (len: {n} x {precision})")
 
     if sep:
         # use text (csv) files because binary files are not platform independent
@@ -901,6 +930,8 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
             # TODO try read, if fail then clear params[i]
             k1 = p['phasor'][:1]
             k2 = p['pos'][:1]
+            assert p['len'] == int(p['len'])
+            p['len'] = int(p['len'])
             try:
                 amp = _parse_doubles(p['phasor'] + '_amp.dat', p['len'],
                                      p['precision'], archive=z)

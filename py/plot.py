@@ -28,7 +28,7 @@ LINESTYLES = ['-', '--', '-.', ':',
 def hist_2d_hd(phasor, pos, title='', filename=None,  ybins=10, ratio=1,
                cmap='gray', bin_threshold=0.1, bin_options={},  verbose=1,
                **kwargs):
-    # Save histogram without plot markup or labels
+    # Return a histogram plot without plot markup or labels
     x = pos[:, 0]
     y = pos[:, 1]
     # TODO derived minmax is incorrect: e.g. for nonrand the first point is at the boundary, for rand boundary is nondeterministic
@@ -52,7 +52,7 @@ def hist_2d_hd(phasor, pos, title='', filename=None,  ybins=10, ratio=1,
         # ax.set_aspect(1.0 / ax.get_data_ratio() / ratio)
         # # save_fig(f'{filename}_{k}', ext='png', pad_inches=0)
         # plt.show()
-        plt.close()
+        # plt.close()
         if filename is not None:
             plt.imsave(f'{IMG_DIR}/{filename}_{k}.png', matrix.T,
                        origin='lower', cmap=cmap)
@@ -292,13 +292,14 @@ def sci_labels(ax, decimals=1, x=True, y=True, z=False, unit='',
         ax.yaxis.set_major_formatter(formatter)
 
 
-def markup(ax, unit=''):
-    sci_labels(ax, unit=unit)
+def markup(ax, unit='', colorbar=True, **kwargs):
+    sci_labels(ax, unit=unit, **kwargs)
     plt.xlabel("Space dimension 1")
     plt.ylabel("Space dimension 2")
     # plt.colorbar(fraction=0.052, pad=0.05,
     #              ticks=LogLocator(subs='all'), format=LogFormatterSciNotation())
-    plt.colorbar(fraction=0.052, pad=0.05)
+    if colorbar:
+        plt.colorbar(fraction=0.052, pad=0.05)
 
 
 def format_title(major, minor, info: dict = None):
