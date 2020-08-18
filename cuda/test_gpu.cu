@@ -59,7 +59,7 @@ void test_superposition() {
     thread_size (2, 2); // datapoints per thread
   const size_t
     N_max = gridSize.x * thread_size.x * n_batches,
-    M = gridSize.y * thread_size.y * n_batches;
+    M = gridSize.y * thread_size.y * n_batches + 3;
 
   double amp = LAMBDA, phi = 0.3456, delta = amp;
 

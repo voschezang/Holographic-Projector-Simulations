@@ -83,7 +83,7 @@ void check_hyper_params(Geometry p) {
     printf("Warning, underutilized x-batch: \tp.n.x: %lu != p.n_batches.x: %lu * p.batch_size.x: %lu (= %lu)\n",
             p.n.x, p.n_batches.x, p.batch_size.x, p.n_batches.x * p.batch_size.x);
   if (p.n.y != p.n_batches.y * p.batch_size.y)
-    printf("Warning, underutilized x-batch: \tp.n.y: %lu != p.n_batches.y: %lu * p.batch_size.y: %lu (= %lu)\n",
+    printf("Warning, underutilized y-batch: \tp.n.y: %lu != p.n_batches.y: %lu * p.batch_size.y: %lu (= %lu)\n",
            p.n.y, p.n_batches.y, p.batch_size.y, p.n_batches.y * p.batch_size.y);
   /* assert(p.n.x == p.n_batches.x * p.batch_size.x); // assume powers of 2 */
   /* assert(p.n.y == p.n_batches.y * p.batch_size.y); */
@@ -251,6 +251,7 @@ void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, s
 
 template<typename T = Polar>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
+  printf("map_to_and_write_bytes size: %lu = %lu\n", x.size(), (x.size() / 8) * 8);
   const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
   double buffer[buffer_size];
   if (x.size() > 128)
@@ -309,11 +310,8 @@ void write_metadata(std::string phasor, std::string pos, Plane p, const std::vec
   const auto
     sep1 = ": ",
     sep2 = ", ";
-  const auto len = (double) x.size();
-  /* const auto sum = sum_amp_phase(x); */
+  const auto len = x.size();
   const auto
-    /* amp = transform_reduce(x, cuCabs), */
-    /* phase = transform_reduce(x, angle); */
     amp = transform_reduce<Polar>(x, [](auto x) { return x.amp; }),
     phase = transform_reduce<Polar>(x, [](auto x) { return x.phase; });
 

@@ -161,7 +161,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     printf("Warning, suboptimal input size: %u < %u\n", x.size(), p.gridSize.x);
 
   // TODO duplicate stream batches to normal memory if too large
-  auto y = std::vector<WAVE>(p.n.y);
+  auto y = std::vector<WAVE>(p.batch_size.y * p.n_batches.y);
 
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   const thrust::device_vector<Polar> d_x = x;
@@ -340,7 +340,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
     // let full reference wave (amp+phase) interfere with original wave
     add_complex(y, y_reference);
     // reset phase of result, because the projector is limited
-    for (size_t i = 0; i < y.size(); ++i)
+    for (size_t i = 0; i < p.n.y; ++i)
       y[i] = from_polar(cuCabs(y[i]), angle(y_reference[i]));
   }
 
@@ -349,7 +349,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   if (verbose)
     print_result(std::vector<double>{*dt}, x.size(), y.size());
 
-  auto y_result = std::vector<Polar>(y.size(), {0,0});
+  auto y_result = std::vector<Polar>(p.n.y, {0,0});
   for (size_t i = 0; i < y_result.size(); ++i)
     y_result[i] = {cuCabs(y[i]), angle(y[i])};
   return y_result;
