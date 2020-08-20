@@ -6,7 +6,7 @@
 
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
-
+#include <cub/cub.cuh>
 #include <cuda_runtime.h>
 
 #include "macros.h"
@@ -272,7 +272,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   // sync all streams before returning
-  cudaDeviceSynchronize();
+  // cudaDeviceSynchronize();
+  CubDebugExit(cudaPeekAtLastError());
+  CubDebugExit(cudaDeviceSynchronize());
+
 #ifdef TEST_CONST_PHASE
   for (size_t j = 0; j < p.n.y; ++j)
     assert(y[j].amp == N);

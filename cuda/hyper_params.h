@@ -45,4 +45,7 @@
 
 #define GRIDDIMY CEIL(GRIDDIMX, 2)
 
+/* #define U_SHARED */
+/* #define V_SHARED */
+
 #endif

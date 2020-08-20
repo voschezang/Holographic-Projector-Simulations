@@ -46,6 +46,7 @@ struct Params {
 
   Range<double>
     obj_width,        // relative to projector width, affects sampling density
+    projector_width,
     projection_width, // relative to object width
     projection_z_offset;
 

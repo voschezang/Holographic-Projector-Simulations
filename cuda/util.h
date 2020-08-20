@@ -251,7 +251,6 @@ void map_to_and_write_array(std::vector<T> &x, double (*f)(T), const char sep, s
 
 template<typename T = Polar>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
-  printf("map_to_and_write_bytes size: %lu = %lu\n", x.size(), (x.size() / 8) * 8);
   const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
   double buffer[buffer_size];
   if (x.size() > 128)

@@ -29,7 +29,7 @@ Params read_args(int argc, char **argv) {
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
-                    projection: 1}, // number of projection planes per obj plane
+                    projection: 3}, // number of projection planes per obj plane
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
@@ -45,6 +45,7 @@ Params read_args(int argc, char **argv) {
 
      /* obj_width: {min: 0.003, max: 0.01}, */
      obj_width: {min: obj_width, max: obj_width},
+     projector_width: {min: 1920 * 7e-6, max: 1920 * 7e-6},
      projection_width: {min: obj_width * 1.05, max: obj_width * 1.05},
      /* projection_width: {min: 0.000018, max: 0.01}, */
      projection_z_offset: {min: 0., max: 0.}, // added to obj offset
@@ -54,7 +55,7 @@ Params read_args(int argc, char **argv) {
      randomize: false,
      /* randomize: true, */
      n_streams: 16,
-     thread_size: {8, 4},
+     thread_size: {16, 4},
      blockDim: {BLOCKDIMX, BLOCKDIMY, 1},
      gridDim: {GRIDDIMX, GRIDDIMY, 1}
     };
@@ -64,7 +65,7 @@ Params read_args(int argc, char **argv) {
   // For all ranged params the max is set to min by default.
   int ch;
   /* while ((ch = getopt(argc, argv, "c:e:hH:i:k:L:m:M:n:N:p:t:r:")) != -1) */
-  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:n:N:m:M:p:q:rs:t:T:b:B:g:G:h")) != -1)
+  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:l:L:n:N:m:M:p:q:rs:t:T:b:B:g:G:h")) != -1)
     {
       switch(ch) {
       case 'X': p.n_planes.obj            = strtol(optarg, 0, 10); break;
@@ -87,6 +88,8 @@ Params read_args(int argc, char **argv) {
 
       case 'o': p.obj_width.min = p.obj_width.max =                     strtod(optarg, 0); break;
       case 'O': p.obj_width.max =                                       strtod(optarg, 0); break;
+      case 'l': p.projector_width.min = p.projector_width.max =         strtod(optarg, 0); break;
+      case 'L': p.projector_width.max =                                 strtod(optarg, 0); break;
       case 'n': p.projection_width.min = p.projection_width.max =       strtod(optarg, 0); break;
       case 'N': p.projection_width.max =                                strtod(optarg, 0); break;
       case 'm': p.projection_z_offset.min = p.projection_z_offset.max = strtod(optarg, 0); break;
