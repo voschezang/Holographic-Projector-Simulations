@@ -4,6 +4,7 @@
 /* #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int) */
 #define CEIL(x,y) ((x + y - 1) / (y)) // ceil(int, int)
 #define MIN(x,y) (x < y ? x : y)
+#define MAX(x,y) (x > y ? x : y)
 
 /* #define DEBUG */
 /* #define TEST_CONST_PHASE */
@@ -19,12 +20,12 @@
 #define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
 #define DISTANCE_REFERENCE_WAVE 0.24 // in meters
 /* #define PROJECTOR_WIDTH 1.344e-2 // projector width = 1920 x 7e-6 */
-#define PROJECTOR_WIDTH (1920 * 7e-6) // fixed width to allow undersampling (fewer pixels)
-/* #define PROJECTOR_WIDTH (N_sqrt * 7e-6) */
-/* #define PROJECTOR_HEIGHT 7.56e-3 // projector width = 1080 x 7e-6 */
-/* #define PROJECTOR_HEIGHT(hd) ((hd ? 1080. / 1920. : 1.) * PROJECTOR_WIDTH) */
-#define PROJECTOR_HEIGHT(aspect_ratio) ((PROJECTOR_WIDTH / aspect_ratio) // height = width / (width / height)
-/* #define PROJECTOR_WIDTH(aspect_ratio) (aspect_ratio * PROJECTOR_HEIGHT) */
+/* #define PROJECTOR_WIDTH (1920 * 7e-6) // fixed width to allow undersampling (fewer pixels) */
+/* /\* #define PROJECTOR_WIDTH (N_sqrt * 7e-6) *\/ */
+/* /\* #define PROJECTOR_HEIGHT 7.56e-3 // projector width = 1080 x 7e-6 *\/ */
+/* /\* #define PROJECTOR_HEIGHT(hd) ((hd ? 1080. / 1920. : 1.) * PROJECTOR_WIDTH) *\/ */
+/* /\* #define PROJECTOR_HEIGHT(aspect_ratio) ((PROJECTOR_WIDTH / aspect_ratio) // height = width / (width / height) *\/ */
+/* /\* #define PROJECTOR_WIDTH(aspect_ratio) (aspect_ratio * PROJECTOR_HEIGHT) *\/ */
 #define DIMS 3
 
 #define WARP_SIZE 32

@@ -94,12 +94,6 @@ int main(int argc, char** argv) {
   auto dt = std::vector<double>(max(n_planes.projection, 1L), 0.0);
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
-  const auto y_plane = Plane {width: PROJECTOR_WIDTH,
-                              offset: {x: 0., y: 0., z: 0.},
-                              aspect_ratio: params.aspect_ratio.projector,
-                              randomize: params.randomize};
-  init::plane(v, y_plane);
-
   summarize('v', v); // TODO edit in case aspect ratio != 1
   clock_gettime(CLOCK_MONOTONIC, &t1);
   printf("Runtime init: \t%0.3f\n", diff(t0, t1));
@@ -125,6 +119,12 @@ int main(int argc, char** argv) {
     const double modulate = i / (double) n_planes.obj;
     init::sparse_plane(u, shape, x_plane.width, x_plane.offset, modulate);
 #endif
+
+    const auto y_plane = Plane {width: lerp(params.projector_width, ratio),
+                                offset: {x: 0., y: 0., z: 0.},
+                                aspect_ratio: params.aspect_ratio.projector,
+                                randomize: params.randomize};
+    init::plane(v, y_plane);
 
     const auto x_suffix = std::to_string(i);
     write_arrays(x, u, "x" + x_suffix, "u" + x_suffix, x_plane);
