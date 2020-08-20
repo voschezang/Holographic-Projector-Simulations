@@ -1,9 +1,12 @@
 import numpy as np
+import pandas as pd
 import subprocess
 import collections
 import matplotlib.pyplot as plt
-import scipy.stats
 import scipy.optimize
+import scipy.stats
+import scipy.signal
+import matplotlib.ticker as tck
 
 # local
 import util
@@ -29,6 +32,11 @@ translate.update({'Runtime mean': 'Runtime',
                   'blockDim_y': 'B.y',
                   'gridDim_x': 'G.x',
                   'gridDim_y': 'G.y',
+                  # minor
+                  'peak width mean': 'Peak Width',
+                  'projector_width': 'Projector Width',
+                  'projection_width': 'Projection Width',
+                  'obj_z_offset_min': 'Offset',
                   })
 translate_latex = translate.copy()
 translate_latex['n_objects'] = 'N'
@@ -54,6 +62,7 @@ def run(n_objects=1, n_pixels=1920 * 1080, n_sample_points=None, N=None,
         obj_x_offset_min=0,
         obj_z_offset_min=1e-2, obj_z_offset_max=None,
         projection_z_offset_min=0., projection_z_offset_max=None,
+        projector_width=1920 * 7e-6,
         projection_width=None,
         aspect_ratio_projector=1., aspect_ratio_projection=1.,
         algorithm=1, quadrant_projection=False, randomize_pixels=False,
@@ -62,6 +71,8 @@ def run(n_objects=1, n_pixels=1920 * 1080, n_sample_points=None, N=None,
         gridDim_x=16, gridDim_y=16):
     assert N is not None or n_objects is not None
     assert X >= 1
+    if Z is None:
+        Z = 0
     if obj_z_offset_max is None:
         obj_z_offset_max = obj_z_offset_min
     if projection_z_offset_max is None:
@@ -78,20 +89,23 @@ def run(n_objects=1, n_pixels=1920 * 1080, n_sample_points=None, N=None,
     # projector_width = y * 7e-6 # TODO
     assert blockDim_x * blockDim_y <= 1204, 'Max number of threads per block'
 
+    nonzero = [n_objects, n_pixels, n_sample_points, X,
+               obj_z_offset_min, obj_z_offset_max,
+               aspect_ratio_projector, aspect_ratio_projection,
+               projector_width,
+               projection_width,
+               algorithm, n_streams,
+               thread_size[0], thread_size[1],
+               blockDim_x, blockDim_y,
+               gridDim_x, gridDim_y]
+    for i, v in enumerate(nonzero):
+        assert v, f'Run param {i}:{v}'
+
     # TODO catch errors caused by "None" values in flags at program-runtime
-    for i, v in enumerate([n_objects, n_pixels, n_sample_points, X, Z,
-                           aspect_ratio_projector, aspect_ratio_projection,
-                           obj_x_offset_min,
-                           obj_z_offset_min, obj_z_offset_max,
-                           projection_width,
-                           projection_z_offset_min, projection_z_offset_max,
-                           algorithm, n_streams,
-                           thread_size[0], thread_size[1],
-                           blockDim_x, blockDim_y,
-                           gridDim_x, gridDim_y]):
-        assert v is not None
-        if not v:
-            print(f'Warning, param {i}:{v} may be incorrect')
+    for i, v in enumerate(nonzero +
+                          [Z, obj_x_offset_min,
+                           projection_z_offset_min, projection_z_offset_max]):
+        assert v is not None, f'Run param {i}:{v}'
 
     flags = [f'-x {n_objects} -y {n_pixels} -z {n_sample_points}',
              f'-X {X} -Z {Z}',
@@ -99,6 +113,7 @@ def run(n_objects=1, n_pixels=1920 * 1080, n_sample_points=None, N=None,
              f'-u {obj_x_offset_min} -v 0',
              f'-w {obj_z_offset_min} -W {obj_z_offset_max}',
              f'-o 0. -O 0.',
+             f'-l {projector_width}',
              f'-n {projection_width}',
              f'-m {projection_z_offset_min} -M {projection_z_offset_max}',
              f'-p {algorithm:d}',
@@ -118,7 +133,7 @@ make cleanup-output
 make zip
 EOF
 """
-    print('content', content, '\n')
+    # print('content', content, '\n')
     return subprocess.run(content, shell=True, check=True, capture_output=True)
 
 
@@ -134,10 +149,11 @@ def performance(n_trials: int, fn: str, v=0):
         # 'blockDim_y': np.logspace(1, 3, 3, base=2, dtype=int),
         'n_streams': [16],
         # 'thread_size': [(2, 2), (16, 1), (1, 16), (16, 16)],
-        'thread_size': [(8, 8), (16, 16)],
-        'blockDim_x': [16, 32],
-        'blockDim_y': [8, 16],
-        'gridDim_x': [8],
+        # 'thread_size': [(8, 8), (16, 16)],
+        'thread_size': [(1, 32), (32, 1), (16, 16)],
+        'blockDim_x': [16],
+        'blockDim_y': [16],
+        'gridDim_x': [8, 16],
         'gridDim_y': [8]}
     build_params = util.param_table(build_param_values)
     run_params = util.param_table(run_param_values)
@@ -158,19 +174,24 @@ def performance(n_trials: int, fn: str, v=0):
         y_key = f'{metric} mean'
         maxi = results.loc[:, y_key].max()
         print(metric, maxi)
-        for a in [1, 2, 3]:
+        # for a in [1, 2, 3]:
+        for g in [8, 16]:
+            # selection = results
+            selection = results.query(f'gridDim_x == {g}')
+            # selection = results.query(f'blockDim_x == {b} and blockDim_y == {b}')
             # selection = results.query(f'blockDim_y == {b}')
             # selection = results.query(f'algorithm == {a} and blockDim_x == 16')
-            selection = results.query(f'algorithm == {a}')
+            # selection = results.query(f'algorithm == {a}')
             for bar in [1]:
                 fig = plt.figure(figsize=(7, 4))
                 plot.grid_search_result(selection, x_key='n_objects',
                                         y_key=y_key,
                                         z_keys=[
-                                            # 'algorithm',
+                                            'algorithm',
                                             'thread_size',
-                                            'blockDim_x',
-                                            'blockDim_y',
+                                            # 'gridDim_x',
+                                            # 'blockDim_x',
+                                            # 'blockDim_y',
                                             # 'n_objects',
                                             # 'n_pixels',
                                             # 'gridDim_x'
@@ -188,7 +209,8 @@ def performance(n_trials: int, fn: str, v=0):
                                         # interpolate=0 if bar else 'regression',
                                         err_alpha=0., v=v)
                 # plt.ylim((0, None))
-                suffix = f'\n(Algorithm {a})'
+                suffix = ''
+                # suffix = f'\n(Algorithm {a})'
                 if metric == 'FLOPS':
                     # hlim = 1e11  # 7.4e12
                     # plt.axhline(hlim, label='Theoretical limit', ls='--', lw=1,
@@ -201,7 +223,7 @@ def performance(n_trials: int, fn: str, v=0):
                 plt.ylim(0, maxi * 1.05)
                 plt.tight_layout()
                 # plot.save(f'runtime-{bar}')
-                plot.save_fig(f'{fn}-{metric}-{bar}-{a}', transparent=False)
+                plot.save_fig(f'{fn}-{metric}-{bar}-{g}', transparent=False)
 
 
 def distribution_vary_object(fn: str, n: int, projection_width=1, v=0):
@@ -377,6 +399,128 @@ def fit_gaussian(fn: str):
         plot.save_fig(f'{fn}-{d}d')
 
 
+def pred_gaussian(fn: str):
+    # n_sqrt = 512
+    n_sqrt = 256
+    build_param_values = {}
+    run_param_values = {
+        'n_objects': 1, 'n_pixels': n_sqrt**2, 'n_sample_points': n_sqrt**2,
+        'X': 1, 'Z': 1,
+        'obj_z_offset_min': [0.2, 0.3, 0.4, 0.5],
+        'projector_width': np.linspace(1920 * 1e-6, 1920 * 1e-5, 5),
+        'projection_width': 0.000102,
+        'aspect_ratio_projection': n_sqrt**2,
+    }
+    build_params = util.param_table(build_param_values)
+    run_params = util.param_table(run_param_values)
+    print('build_params', build_param_values)
+    print('run_params', run_param_values)
+
+    results, results_fn = util.get_results(build, run, build_params, run_params, fn,
+                                           n_trials=1, tmp_dir=DIR,
+                                           copy_data=True, v=v,
+                                           find_peak_width=True)
+
+    print('load', DIR, f'{results_fn}.zip', 'out')
+    # params, data = util.parse_file(DIR, f'{results_fn}.zip', 'out')
+
+    # widths = results.loc[:, 'peak width mean']
+    print(run_params.loc[:, ['obj_z_offset_min', 'projector_width', ]])
+    print(results.loc[:, [
+        # 'obj_z_offset_min',
+        # 'projector_width',
+        'peak width mean']])
+
+    # corr = pd.concat([run_params, results], axis=1).loc[:, [
+    #     'obj_z_offset_min', 'projector_width', 'peak width mean']].corr()
+    # print(corr)
+    # plt.matshow(corr, vmin=-1, vmax=1, cmap='coolwarm')
+    # plt.colorbar()
+    # plt.show()
+
+    results = pd.concat([run_params, results], axis=1)
+    # .loc[:, [ 'obj_z_offset_min', 'projector_width', 'peak width mean']]
+    # n_rows = run_params.loc[]
+    # print(results.keys())
+    max = results.loc[:, 'peak width mean'].max() * 1.05
+    keys = ['obj_z_offset_min', 'projector_width']
+
+    X = results.loc[:, keys].values
+    y = results.loc[:, 'peak width mean'].values
+    # y = y / y.max()
+    print('shape')
+    print(X.shape)
+    print(y.shape)
+
+    def poly(X, a, b, c, d, e, f, g):
+        assert len(X.shape) == 2
+        assert X.shape[1] == 2
+        y = np.empty(X.shape[0])
+        for i, x in enumerate(X):
+            p = np.sum(np.array([a, b]) + np.array([c, d]) * x +
+                       np.array([e, f]) * x ** 2)
+            y[i] = p + g * np.prod(x)
+        return y
+
+    args, _ = scipy.optimize.curve_fit(poly, X, y, p0=(0, 0, 0, 0, 0, 0, 0))
+    print(args)
+    Xs = np.array([np.linspace(results.loc[:, k].min(),
+                               results.loc[:, k].max()) for k in keys]).T
+
+    a, b, c, d, e, f, g = args
+    print(keys[0], f'\t{a:0.2f} + {c:0.2f} x + {e:0.2f} x^2 + {g:0.2f} xy')
+    print(keys[1], f'\t{b:0.2f} + {d:0.2f} x + {f:0.2f} x^2 + {g:0.2f} xy')
+    plt.subplot(121)
+    x0 = Xs[:, 0]
+    x1 = np.zeros(x0.size) + 1920 * 1e-6
+    plt.plot(x0, poly(np.array([x0, x1]).T, *args))
+    plt.plot(x0, poly(np.array([x0, x1]).T, *(np.round(args, 4))))
+    plt.subplot(122)
+    x0 = np.zeros(x0.size) + 0.3
+    x1 = Xs[:, 1]
+    plt.plot(x1, poly(np.array([x0, x1]).T, *args))
+    plt.plot(x1, poly(np.array([x0, x1]).T, *(np.round(args, 4))))
+    # plt.show()  # TODO
+    plot.save_fig(f'{fn}-model', transparent=False)
+
+    fig = plt.figure(figsize=(9, 4))
+    for i, x_key in enumerate(keys):
+        ax = plt.subplot(1, 2, i + 1)
+        plot.grid_search_result(results,
+                                x_key=x_key,
+                                y_key='peak width mean',
+                                z_keys=[k for k in keys if k != x_key],
+                                y_unit='m', bar=False,
+                                ylim=[0, max],
+                                translate=translate,
+                                fig=fig)
+
+        formatter = tck.EngFormatter(places=1, sep=u"\N{THIN SPACE}", unit='m')
+        ax.xaxis.set_major_formatter(formatter)
+        plt.xticks(rotation=30)
+    plt.tight_layout()
+    plot.save_fig(f'{fn}', transparent=False)
+    # plt.show()
+    # plt.plot(results.loc[:, 'obj_z_offset_min'], results.loc[:, 'width'])
+    # plt.plot(results.loc[:, 'projector_width'], results.loc[:, 'width'])
+    # print(widths)
+    # for i, row in results.iterrows():
+    # print(row.loc[['peak width mean']])
+    # plt.plot(data['w'][i][:, 0], data['z'][i][:, 0] ** 2)
+    # for j in i_bounds:
+    #     plt.axvline(w[j], ls='--', alpha=0.5)
+    # plt.ylim(0, None)
+    # plot.distribution1d([data['w'][i]], [data['z'][i][:, 0] ** 2],
+    #                     # title,
+    #                     xlog=False, ylog=False,
+    #                     # figshape=(2, 2),
+    #                     # labels=[f"Distance: ${p['z_offset']:.3f}$ m"
+    #                     #         for p in params['z']]
+    #                     )
+    # plot.save_fig(f'{fn}-amp-{xlog}{ylog}', transparent=False)
+    # plt.show()
+
+
 if __name__ == '__main__':
     v = 1
     n_trials = 2
@@ -389,5 +533,7 @@ if __name__ == '__main__':
     # distribution_vary_object(prefix + '-dist-obj', n, projection_width,  v)
     # print('exp distribution projector')
     # distribution_vary_projector(prefix + '-dist-proj', n, v)
-    print('fit gaussian')
-    fit_gaussian(prefix + '-gaus')
+    # print('fit gaussian')
+    # fit_gaussian(prefix + '-gaus')
+    print('predict gaussian')
+    pred_gaussian(prefix + '-gaus-pred')

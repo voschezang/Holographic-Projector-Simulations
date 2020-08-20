@@ -358,7 +358,7 @@ def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=False,
             else:
                 plt.scatter(x, y, s=5, alpha=1)
 
-        if mean or range:
+        if mean or range or median:
             n_samples = 128
             assert y.size % n_samples == 0, 'pad input to fit reduction'
             sample_size = round(y.size / n_samples)
@@ -393,7 +393,8 @@ def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=False,
         if ylog:
             plt.yscale('log')
         plt.ylim(y.min(), y.max())
-        plt.title(labels[i], fontsize=12)
+        if labels:
+            plt.title(labels[i], fontsize=12)
         ax = plt.gca()
         sci_labels(ax, unit='m', y=False)
         plt.xlabel('Space')
@@ -402,9 +403,8 @@ def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=False,
         plt.grid(b=None, which='major', linewidth=0.3, axis='y')
         plt.grid(b=None, which='minor', linewidth=0.3, axis='both')
 
-    # plt.suptitle(title, y=1.04, fontsize=14, fontweight='bold')
-    plt.suptitle(title, y=1.02, fontsize=14, fontweight='bold')
-    # plt.legend()
+    if title:
+        plt.suptitle(title, y=1.02, fontsize=14, fontweight='bold')
     plt.tight_layout()
     return fig
 
@@ -579,6 +579,13 @@ def parse_label(param_values, z_keys, translate: dict):
         # translate value
         if value in translate.keys():
             value = translate[value]
+        else:
+            if isinstance(value, float):
+                if abs(value) > 1e-3:
+                    value = round(value, 3)
+                else:
+                    value = f'{value:0.1e}'
+
         if k == 'algorithm':
             value = f'#{value}'
 

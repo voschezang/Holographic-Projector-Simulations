@@ -751,6 +751,17 @@ def solve_xy_is_a(n: int, ratio=1.):
     return x, y
 
 
+def find_peak_widths(signal: np.ndarray, positions: np.ndarray, i_peaks=None):
+    if i_peaks is None:
+        i_peaks = [signal.argmax()]
+
+    widths, _, (l,), (r,) = scipy.signal.peak_widths(
+        signal, i_peaks, rel_height=0.5)
+    i_bounds = np.array([l, r]).round().astype(int)
+    bounds = positions[i_bounds]
+    return abs(bounds[1] - bounds[0])
+
+
 def cross_entropy(p: np.ndarray, q: np.ndarray):
     # both probability distributions p, q should have a sum of 1
     return - np.sum(p * np.log(q))
@@ -906,7 +917,7 @@ def parse_json(lines) -> dict:
 
 
 def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
-               read_data=True) -> Tuple[dict, dict]:
+               read_data=True, verbose=True) -> Tuple[dict, dict]:
     """ Returns two tuples params and data """
     # TODO use better datastructure
     params = {k: [] for k in 'xyzuvw'}
@@ -926,7 +937,8 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
             return params,
 
         for i, p in enumerate(concat(params.values())):
-            print(f'#{i}:', p)
+            if verbose:
+                print(f'#{i}:', p)
             # TODO try read, if fail then clear params[i]
             k1 = p['phasor'][:1]
             k2 = p['pos'][:1]
@@ -981,7 +993,7 @@ def param_row(param_keys, param_values):
 def get_results(build_func, run_func,
                 build_params: pd.DataFrame, run_params: pd.DataFrame,
                 filename='results', tmp_dir='tmp_pkl',
-                n_trials=20, copy_data=False, v=0):
+                n_trials=20, copy_data=False, v=0, **kwargs):
     """
     Compile & run a c-style program
     build_func (run_func) should accept build_params (run_params) and must
@@ -1005,7 +1017,7 @@ def get_results(build_func, run_func,
         if v:
             print('Generate new results')
         results = grid_search(build_func, run_func, build_params, run_params,
-                              n_trials=n_trials, verbose=v)
+                              n_trials=n_trials, verbose=v, **kwargs)
         assert any([row['Runtime mean'] != 0 for _, row in results.iterrows()])
         with open(f'{tmp_dir}/{filename}.pkl', 'wb') as f:
             pickle.dump(results, f)
@@ -1018,7 +1030,7 @@ def get_results(build_func, run_func,
 
 def grid_search(build_func, run_func,
                 build_params: pd.DataFrame, run_params: pd.DataFrame,
-                n_trials=5, verbose=1):
+                n_trials=5, find_peak_width=False, verbose=1):
     results = []
     if verbose:
         print('Grid search')
@@ -1038,9 +1050,8 @@ def grid_search(build_func, run_func,
             #     print(f'\ni: {i}\t params: ', ', '.join(
             #         f'{k}: {v}' for k, v in run_row.items()))
 
-            runtime, flops, amp, phase = np.zeros((4, n_trials))
+            runtime, flops, amp, phase, peak_widths = np.zeros((5, n_trials))
             params = build_row.combine_first(run_row).to_dict()
-
             for t in range(n_trials):
                 if not success:
                     break
@@ -1050,6 +1061,16 @@ def grid_search(build_func, run_func,
                 try:
                     runtime[t], flops[t], amp[t], phase[t] = run_trial(
                         run_func, run_row)
+
+                    if find_peak_width:
+                        dir = 'tmp_local'
+                        fn = 'out.zip'
+                        remote.cp_file(target=f'{dir}/{fn}')
+                        params, data = parse_file(dir, fn, 'out', verbose=0)
+                        assert len(data['z']) == 1
+                        peak_widths[t] = find_peak_widths(
+                            data['z'][0][:, 0] ** 2, data['w'][0][:, 0])
+
                 except subprocess.CalledProcessError:
                     success = False
                     print('\n - Error for params:',
@@ -1057,6 +1078,8 @@ def grid_search(build_func, run_func,
             if not success:
                 # invalidate all results in case of a single error for this parameter set
                 runtime[:] = flops[:] = amp[:] = phase[:] = 0
+                if find_peak_width:
+                    peak_widths[:] = 0
                 if n_rows == 1:
                     raise RuntimeError('Single param-set experiment failed')
 
@@ -1069,7 +1092,9 @@ def grid_search(build_func, run_func,
                            # 'FLOPS rel std': np.std(flops) / np.mean(flops)
                            'amp std': np.std(amp),
                            'phase std': np.std(phase),
-                           'amp mean': np.mean(amp)
+                           'amp mean': np.mean(amp),
+                           'peak width mean': np.mean(peak_widths),
+                           'peak width std': np.std(peak_widths),
                            })
             # std of amp/phase for all trials should be zero
             if params['amp std'] > 1e-3 or params['phase std'] > 1e-3:
