@@ -110,29 +110,28 @@ __global__ void per_block(const size_t N, const size_t M, const size_t N_stride,
     // extern __shared__ double shared[];
     const size_t
       thread_size_x = 4,
-      shared_len_x = shared_memory ? blockDim_x * thread_size_x : 0;
-    __shared__ Polar x_shared[MAX(shared_len_x, 1)];
-    __shared__ double u_shared[MAX(shared_len_x * DIMS, 1)];
+      // shared_len_x = shared_memory ? blockDim_x * thread_size_x : 1;
+      shared_len_x = blockDim_x * thread_size_x;
+    __shared__ Polar x_shared[shared_len_x];
+    __shared__ double u_shared[shared_len_x * DIMS];
     // WAVE *x_shared = (WAVE*) shared;
     // double *u_shared = (double*) &shared[thread_size.x];
 
     // save results to Y[m, x] instead of Y[m, n]
 
     // NOTE tid != threadIdx
-    if (shared_memory) {
-      for (size_t i = threadIdx.y; i < thread_size_x; i += blockDim_y) {
-        const size_t
-          n = tid.x + i * gridSize.x,
-          k = threadIdx.x * thread_size_x + i; // k = threadIdx.x + i * blockDim_x;
-        if (n < N) {
-          x_shared[k] = x[n];
-          for (int j = 0; j < DIMS; ++j)
-            u_shared[k * DIMS + j] = u[n * DIMS + j];
-        }
+    for (size_t i = threadIdx.y; i < thread_size_x; i += blockDim_y) {
+      const size_t
+        n = tid.x + i * gridSize.x,
+        k = threadIdx.x * thread_size_x + i; // k = threadIdx.x + i * blockDim_x;
+      if (n < N) {
+        x_shared[k] = x[n];
+        for (int j = 0; j < DIMS; ++j)
+          u_shared[k * DIMS + j] = u[n * DIMS + j];
       }
-      __syncthreads(); // 1.95539 TFLOPS
-      // no sync: 1.96803 TFLOPS
     }
+    __syncthreads(); // 1.95539 TFLOPS
+    // no sync: 1.96803 TFLOPS
 #endif
 #ifdef V_SHARED
     double *v_shared = (double *) &y_shared[0];
@@ -164,14 +163,14 @@ __global__ void per_block(const size_t N, const size_t M, const size_t N_stride,
             k = threadIdx.x * thread_size_x + i; // k = threadIdx.x + i * blockDim_x;
           // is this slow due to memory bank conflicts?
           // double p[3] = {0,0,0}, w[3] = {1,2,3};
-// #ifdef V_SHARED
-//             if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y)
-//               y = cuCadd(y, phasor_displacement<direction>(x_shared[k], &u_shared[k * DIMS], &v_shared[threadIdx.y * DIMS]));
-//             else
-// #endif
+          // #ifdef V_SHARED
+          //             if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y)
+          //               y = cuCadd(y, phasor_displacement<direction>(x_shared[k], &u_shared[k * DIMS], &v_shared[threadIdx.y * DIMS]));
+          //             else
+          // #endif
           if (n < N)
-              y = cuCadd(y, phasor_displacement<direction>(x_shared[k], &u_shared[k * DIMS], &v[m * DIMS]));
-          // y = cuCadd(y, phasor_displacement<direction>(x_shared[k], &u_shared[k * DIMS], &v[m * DIMS]));
+            y = cuCadd(y, phasor_displacement<direction>(x_shared[k], &u_shared[k * DIMS], &v[m * DIMS]));
+          // y = cuCadd(y, phasor_displacement<direction>(x_shared[0], &u_shared[0 * DIMS], &v[m * DIMS])); // broadcast -p2 1.59646 tf, -p3 1.97235 tf vs. 1.97293
           // y = cuCadd(y, phasor_displacement<direction>(x[k], &u[k * DIMS], &v[m * DIMS]));
           // y = cuCadd(y, phasor_displacement<direction>(x_shared[k], p, w)); // 2.88703 TFLOPS
           // y = cuCadd(y, phasor_displacement<direction>({1,2}, p, w)); // 3.17016 TFLOPS
