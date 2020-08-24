@@ -158,8 +158,6 @@ int main(int argc, char** argv) {
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
       init::plane(w, z_plane);
-      printf("x offsets obj: %f, projector: %f\n", obj_offset.x, z_plane.offset.x);
-      printf("z offsets obj: %f, projector: %f\n", obj_offset.z, z_plane.offset.z);
 
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WAVE>(n.z);

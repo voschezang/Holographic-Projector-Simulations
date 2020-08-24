@@ -22,7 +22,8 @@ Params read_args(int argc, char **argv) {
   /* const double projection_width = N_sqrt * 7e-6; */
   /* const double obj_width =  PROJECTOR_WIDTH; */
   /* const double obj_width =  N_sqrt * 7e-6; */
-  const double obj_width =  0.00003;
+  /* const double obj_width =  0.00003; */
+  const double obj_width =  0.0003;
   // projector z_offset is always zero
   // TODO use json file (similar to meta data)
   // TODO add rand seed
@@ -50,12 +51,12 @@ Params read_args(int argc, char **argv) {
      /* projection_width: {min: 0.000018, max: 0.01}, */
      projection_z_offset: {min: 0., max: 0.}, // added to obj offset
 
-     algorithm: 2,
+     algorithm: 3,
      quadrant_projection: false,
      randomize: false,
      /* randomize: true, */
      n_streams: 16,
-     thread_size: {16, 4},
+     thread_size: {4, 32},
      blockDim: {BLOCKDIMX, BLOCKDIMY, 1},
      gridDim: {GRIDDIMX, GRIDDIMY, 1}
     };

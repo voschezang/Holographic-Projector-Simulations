@@ -9,16 +9,16 @@ enum class Algorithm {Naive, Alt};
 enum class Shape {Line, LogLine, Cross, Circle, DottedCircle};
 enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
 
+template<typename T = double>
+struct Range { T min, max; };
+
 template<typename T>
 struct Setup { T obj, projector, projection; };
 
-template<typename T>
-struct Cartesian { T x,y,z; }; // 3D space
-
 struct Polar { double amp, phase; };
 
-template<typename T = double>
-struct Range { T min, max; };
+template<typename T>
+struct Cartesian { T x,y,z; }; // 3D space, generic version of dim3
 
 // similar to CUDA dim3 but fewer dims and larger size
 struct dim2 { size_t x, y; };
@@ -89,6 +89,12 @@ template<typename T>
 struct CUDAVector {
   T *data;
   size_t size;
+};
+
+template<typename T>
+struct ConstCUDAVector {
+  const T *data;
+  const size_t size;
 };
 
 #endif

@@ -130,12 +130,11 @@ void rm_phase(std::vector<WAVE> &c) {
     c[i] = {cuCabs(c[i]), 0.};
 }
 
-
 template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
 inline std::vector<WAVE> transform(const std::vector<Polar> &x,
-                                    const std::vector<double> &u,
-                                    const std::vector<double> &v,
-                                    const Geometry& p) {
+                                   const std::vector<double> &u,
+                                   const std::vector<double> &v,
+                                   const Geometry& p) {
   // x = input or source data, y = output or target data
   if (algorithm == Algorithm::Naive) assert(!shared_memory);
 
@@ -157,34 +156,38 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
   assert(x.size() >= 1);
 #endif
-  if (x.size() < p.gridSize.x)
-    printf("Warning, suboptimal input size: %u < %u\n", x.size(), p.gridSize.x);
 
   // TODO duplicate stream batches to normal memory if too large
   auto y = std::vector<WAVE>(p.batch_size.y * p.n_batches.y);
 
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
-  const thrust::device_vector<Polar> d_x = x;
-  const thrust::device_vector<double> d_u = u;
+  thrust::device_vector<Polar> d_x = x;
+  thrust::device_vector<double> d_u = u;
   // cast to pointers to allow usage in non-thrust kernels
-  const Polar* d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
-  const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
+  Polar* d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
+  auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
+
+  // d_y_tmp contains block results of (partial) superposition kernel (TODO rename => d_y_block?)
+  // d_y_sum contains the full superpositions, i.e. the summed rows of d_y_tmp
 
   // malloc data using pinned memory for all batches before starting streams
   // TODO consider std::unique_ptr<>
-  WAVE *y_pinned_ptr;
-  WAVE *d_y_tmp_ptr;
+  WAVE *y_pinned_ptr, *d_y_tmp_ptr, *d_y_sum_ptr, *d_y_prev_ptr;
   double *v_pinned_ptr, *d_v_ptr;
   // TODO don't use pinned memory for d_y_
-  auto d_y_tmp  = init::malloc_matrix<WAVE>(          &d_y_tmp_ptr,  p.n_streams, tmp_out_size);
-  auto d_v      = init::malloc_matrix<double>(        &d_v_ptr,      p.n_streams, p.batch_size.y * DIMS);
+  auto d_y_tmp  = init::malloc_matrix<WAVE>(  &d_y_tmp_ptr,  p.n_streams, tmp_out_size);
+  auto d_y_sum  = init::malloc_matrix<WAVE>(  &d_y_sum_ptr,  p.n_streams, p.batch_size.y);
+  auto d_y_prev = init::malloc_matrix<WAVE>(  &d_y_prev_ptr, p.n_streams, p.batch_size.y);
+  auto d_v      = init::malloc_matrix<double>(&d_v_ptr,      p.n_streams, p.batch_size.y * DIMS);
+
   auto v_pinned = init::pinned_malloc_vectors<double>(&v_pinned_ptr, p.n_streams, p.batch_size.y * DIMS);
   auto y_pinned = init::pinned_malloc_vectors<WAVE>(  &y_pinned_ptr, p.n_streams, p.batch_size.y);
 
   // TODO d_b is too large
   // const auto d_unit = thrust::device_vector<WAVE>(p.batch_size.y, {1., 0.}); // unit vector for blas
-  const auto d_unit = thrust::device_vector<WAVE>(d_y_tmp[0].size / p.batch_size.y, {1., 0.}); // unit vector for blas
-  const auto *d_b = thrust::raw_pointer_cast(d_unit.data());
+  const auto d_unit_ = thrust::device_vector<WAVE>(d_y_tmp[0].size / p.batch_size.y, {1., 0.}); // unit vector for blas
+  const auto d_unit  = ConstCUDAVector<WAVE> {thrust::raw_pointer_cast(d_unit_.data()),
+                                              d_unit_.size()};
 
   cudaStream_t streams[p.n_streams];
   cublasHandle_t handles[p.n_streams];
@@ -196,81 +199,155 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     cublasSetStream(handles[i_stream], streams[i_stream]);
   }
 
-  for (size_t i = 0; i < p.n_batches.y; i+=p.n_streams) {
-    for (size_t n = 0; n < p.n_batches.x; ++n) {
-      // // each final x-batch may be under-used/occupied
-      if (i == 0) {
-        // cp x batch data for all streams and sync
-        // TODO
-      }
+  // batch/iter indices
+  auto m_per_stream = range(p.n_streams); // TODO add range<size_t> template>
+  auto n_per_stream = std::vector<size_t>(p.n_streams, 0); // rename => i_iter
+  auto converging = std::vector<bool>(p.n_streams, false); // not strictly converging but "undergoing convergence checking"
+
+  // const auto shuffle_period = FLOOR(p.n_batches.x, p.n_streams);
+
+  // data indcides
+  // rand alg 1: resample, independent samples
+  // - shuffle global x, then use diagonal matrix to select indices per stream and repeat
+  // - worst case n_streams times lower shuffles
+  //  let float *r = rand(len) floats
+  //  do  x = sort_by_key(x, r) // radix sort? linear; using hash buckets
+  //   note: use Cartesian<double> to avoid column-major storage
+
+  // rand alg 2: shuffle
+  // - gen rand indices for each y-batch, then use rand accessing in kernel
+  // indices = sort_by_key(range(len), r)
+
+  float *d_rand;
+  cu( cudaMalloc( &d_rand, p.n.x * sizeof(float) ) );
+  curandGenerator_t generator;
+  init_random(&generator);
+
+  // size_t *x_indices_ptr;
+  // auto x_indices = init::malloc_matrix<size_t>(x_indices_ptr, p.n_streams, p.n.x);
+  // std::vector<std::vector<size_t>>(p.n_streams, std::vector<size_t>(p.n.x));
+  // for (auto &i : range(p.n_streams))
+  //   x_indices[i];
+  //   x_indices[i] = range(p.n.x);
+
+  // assert(0); // TODO shuffle x_indices for every y-batch
+
+  // auto n_datapoints = std::vector<size_t>(p.n_streams, 0);
+  // auto n = range(p.n_streams);
+  // for (size_t i = 0; i < p.n_batches.y; i+=p.n_streams) {
+  const size_t min_n_datapoints = 1000; // before convergence computation
+  unsigned int
+    i_shuffle = 0,
+    i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
+  const bool randomize = 0;
+  auto compare_func = [&](auto m){ return m < p.n_batches.y;};
+  while (std::any_of(m_per_stream.begin(), m_per_stream.end(), compare_func)) {
+    if (randomize && i_shuffle >= i_shuffle_max) {
+      // shuffle
+      curandGenerateUniform(generator, d_rand, p.n.x);
+      thrust::sort_by_key(d_rand, d_rand + p.n.x, d_x_ptr);
+      thrust::sort_by_key(d_rand, d_rand + p.n.x, (Cartesian<double> *) d_u_ptr); // reorder all dims at once
+
+        // reset
+      i_shuffle = 0;
+    }
+
+    for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+      const size_t
+        n = n_per_stream[i_stream],
+        m = m_per_stream[i_stream],
+        n_datapoints = n * p.batch_size.x;
+      if (m >= p.n_batches.y) continue;
+      else i_shuffle++;
+
+      if (n == 0)
+        cp_batch_data_to_device<double>(&v[m * d_v[i_stream].size],
+                                        v_pinned[i_stream], d_v[i_stream],
+                                        streams[i_stream]);
+      if (n == 0)
+        assert(!converging[i_stream]);
+      // // TODO memset can be avoided by directly overwriting the sum_rows result
+      if (n == 0)
+        cu( cudaMemsetAsync(d_y_sum_ptr, 0, d_y_sum[i_stream].size * sizeof(WAVE), streams[i_stream]) );
 
       // Derive current batch size in case of underutilized x-batches
       size_t local_batch_size = p.batch_size.x;
-      if (p.n.x != p.n_batches.x * p.batch_size.x && n == p.n_batches.x - 1)
-        local_batch_size = p.n.x - n * p.batch_size.x;
+      if (!randomize)
+        if (p.n.x != p.n_batches.x * p.batch_size.x && n == p.n_batches.x - 1)
+          local_batch_size = p.n.x - n * p.batch_size.x;
 
-      for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-        const auto m = i + i_stream;
-        if (m >= p.n_batches.y) break;
-        if (p.n_batches.y > 10 && m % (int) (p.n_batches.y / 10) == 0 && n == 0)
-          printf("\tbatch %0.3fk / %0.3fk\n", m * 1e-3, p.n_batches.y * 1e-3);
+      const size_t n_offset = (randomize ? i_shuffle : n) * p.batch_size.x;
+      // const size_t n_offset = n * p.batch_size.x;
+      // Note, appending result to prev results slows down computation
+      const bool append_result = n > 0 && !converging[i_stream];
+      // const bool append_result = n > 0 && n_datapoints < min_n_datapoints;
 
-        if (n == 0)
-          cp_batch_data_to_device<double>(&v[m * d_v[i_stream].size],
-                                          v_pinned[i_stream], d_v[i_stream],
-                                          streams[i_stream]);
+      superposition_per_block<direction, algorithm, shared_memory> \
+        (p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
+         p.batch_size.x,
+         d_x_ptr + n_offset, d_u_ptr + n_offset * DIMS,
+         d_v[i_stream].data, d_y_tmp[i_stream].data, append_result);
 
-        const bool append_result = n > 0;
-        const size_t n_offset = n * p.batch_size.x;
-        superposition_per_block<direction, algorithm, shared_memory> \
-          (p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
-           p.batch_size.x,
-           d_x_ptr + n_offset, d_u_ptr + n_offset * DIMS,
-           d_v[i_stream].data, d_y_tmp[i_stream].data, append_result);
-      }
-#ifdef TEST_CONST_PHASE
-      for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-        const auto m = i + i_stream;
-        if (m >= p.n_batches.y) break;
-        cudaStreamSynchronize(streams[i_stream]);
-        auto d = thrust::device_vector<WAVE> (d_y_tmp[i_stream].data, d_y_tmp[i_stream].data + d_y_tmp[i_stream].size);
-        auto h = thrust::host_vector<WAVE> (d);
-        auto x_per_batch = p.batch_size.x * p.batch_size.y / tmp_out_size;
-        // printf("%lu \t %lu \t %lu\n", tmp_out_size, p.batch_size.x * p.batch_size.y, x_per_batch);
-        assert(x_per_batch > 0);
-        for (size_t j = 0; j < tmp_out_size; ++j)
-          assert(cuCabs(h[j]) == (1. + n % p.n_batches.x) * x_per_batch);
-        for (size_t j = 0; j < tmp_out_size; ++j)
-          assert(cuCabs(h[j]) == (1. + n ) * x_per_batch);
+      bool finished = false;
+      if (n >= p.n_batches.x - 1)
+        finished = true;
+
+      if (finished || n_datapoints > min_n_datapoints) {
+        // TODO instead of memset, do
+        // after the first sum_rows call, the following results should be added the that first result
+        const auto beta = converging[i_stream] ? WAVE {1,0} : WAVE {0,0};
+        kernel::sum_rows<false>(d_y_tmp[i_stream].size / p.batch_size.y, p.batch_size.y,
+                                handles[i_stream], d_y_tmp[i_stream].data, d_unit,
+                                d_y_sum[i_stream].data, beta);
+        if (!finished && converging[i_stream]) {
+          // double threshold = 1e-9;
+          // kernel::any_is_greater<<<,,>>>(d_y_tmp, d_y_prev, &finished); // stop as soon as first nonconv. item is found
+          // auto is_smaller = [](auto a, auto b) { return abs(a - b * n / (n-1) ) < threshold; };
+          // thrust_equal<<<, streams[i_stream]>>>(d_y_tmp, d_y_prev, is_smaller);
+          // thrust::equal<double>(d_y_sum, d_y_prev, binary_pred);
+          // // any(|y - y_prev| > threshold)
+          // if (converged)
+          // finished = true;
         }
-#endif
-    } // end for n in [0,p.n_batches.x)
+        // if still not finished
+        if (!finished) {
+          // cp d_y_tmp to dedicated memory (d_y_prev)
+          // TODO check if cudaMemcpyAsync blocks kernels in other streams
+          cu( cudaMemcpyAsync(d_y_prev[i_stream].data, d_y_sum[i_stream].data,
+                              d_y_sum[i_stream].size * sizeof(WAVE),
+                              cudaMemcpyDeviceToDevice, streams[i_stream]) );
+          converging[i_stream] = true;
+        }
+      }
+      assert(n >= p.n_batches.x - 1 || !finished);
 
-    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-      const auto m = i + i_stream;
-      if (m >= p.n_batches.y) break;
-      kernel::sum_rows<false>(d_y_tmp[i_stream].size / p.batch_size.y, p.batch_size.y,
-                              handles[i_stream], d_y_tmp[i_stream].data, d_b, d_y_tmp[i_stream].data);
-      // Note that a subset of d_y_tmp is re-used
-      cp_batch_data_to_host<WAVE>(d_y_tmp[i_stream].data, y_pinned[i_stream],
-                                  p.batch_size.y, streams[i_stream]);
-#ifdef TEST_CONST_PHASE
-      cudaStreamSynchronize(streams[i_stream]);
-      for (size_t j = 0; j < p.batch_size.y; ++j)
-        assert(cuCabs(y_pinned[i_stream][j]) == N);
-#endif
-    }
-    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-      const auto m = i + i_stream;
-      if (m >= p.n_batches.y) break;
-      cudaStreamSynchronize(streams[i_stream]);
-      // TODO stage copy-phase of next batch before copy/sync?
-      for (size_t j = 0; j < p.batch_size.y; ++j) {
-        y[j + m * p.batch_size.y] = y_pinned[i_stream][j];
+      if (!finished) {
+        // // cp d_y_tmp to dedicated memory (d_y_prev)
+        // // TODO check if cudaMemcpyAsync blocks kernels in other streams
+        // cu( cudaMemcpyAsync(d_y_prev[i_stream].data, d_y_sum[i_stream].data, d_y_sum[i_stream].size * sizeof(WAVE),
+        //                     cudaMemcpyDeviceToDevice, streams[i_stream]) );
+        n_per_stream[i_stream]++;
+      }
+      else {
+        // Note that a subset of d_y_tmp is re-used // TODO rm?
+        cp_batch_data_to_host<WAVE>(d_y_sum[i_stream].data, y_pinned[i_stream],
+                                    p.batch_size.y, streams[i_stream]);
+
+        // TODO add dedicated loop for better work distribution (similar to in func transform_full)
+        cudaStreamSynchronize(streams[i_stream]);
+        // TODO stage copy-phase of next batch before copy/sync?
+        for (size_t j = 0; j < p.batch_size.y; ++j) {
+          y[j + m * p.batch_size.y] = y_pinned[i_stream][j];
+        }
+
+        n_per_stream[i_stream] = 0;
+        m_per_stream[i_stream] = *std::max_element(m_per_stream.begin(), m_per_stream.end()) + 1;
+        converging[i_stream] = false;
       }
     }
-  }
+  } // end while
 
+  curandDestroyGenerator(generator);
   // sync all streams before returning
   // cudaDeviceSynchronize();
   CubDebugExit(cudaPeekAtLastError());
@@ -287,11 +364,175 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     cuB( cublasDestroy(handle) );
 
   cu( cudaFree(d_y_tmp_ptr ) );
+  cu( cudaFree(d_y_sum_ptr ) );
+  cu( cudaFree(d_y_prev_ptr ) );
   cu( cudaFree(d_v_ptr       ) );
   cu( cudaFreeHost(v_pinned_ptr ) );
   cu( cudaFreeHost(y_pinned_ptr ) );
   return y;
 }
+
+// template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
+// inline std::vector<WAVE> transform_full(const std::vector<Polar> &x,
+//                                         const std::vector<double> &u,
+//                                         const std::vector<double> &v,
+//                                         const Geometry& p) {
+//   // x = input or source data, y = output or target data
+//   if (algorithm == Algorithm::Naive) assert(!shared_memory);
+
+//   // derive size of matrix y_tmp
+//   size_t tmp_out_size = p.batch_size.x * p.batch_size.y;
+//   if (algorithm == Algorithm::Alt)
+//     if (shared_memory)
+//       tmp_out_size = MIN(p.batch_size.x, p.gridDim.x) * p.batch_size.y;
+//     else
+//       tmp_out_size = MIN(p.batch_size.x, p.gridSize.x) * p.batch_size.y;
+
+//   assert(tmp_out_size > 0);
+//   assert(u[2] != v[2]);
+//   // printf("batch out size %lu\n", tmp_out_size);
+//   // printf("gridSize: %u, %u\n", p.gridSize.x, p.gridSize.y);
+//   // printf("geometry new: <<< {%u, %u}, {%u, %u} >>>\n", p.gridDim.x, p.gridDim.y, p.blockDim.x, p.blockDim.y);
+
+// #ifdef DEBUG
+//   assert(std::any_of(x.begin(), x.end(), abs_of_is_positive));
+//   assert(x.size() >= 1);
+// #endif
+// //   if (x.size() < p.gridSize.x)
+// //     printf("Warning, suboptimal input size: %u < %u\n", x.size(), p.gridSize.x);
+
+//   // TODO duplicate stream batches to normal memory if too large
+//   auto y = std::vector<WAVE>(p.batch_size.y * p.n_batches.y);
+
+//   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
+//   const thrust::device_vector<Polar> d_x = x;
+//   const thrust::device_vector<double> d_u = u;
+//   // cast to pointers to allow usage in non-thrust kernels
+//   const Polar* d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
+//   const auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
+
+//   // malloc data using pinned memory for all batches before starting streams
+//   // TODO consider std::unique_ptr<>
+//   WAVE *y_pinned_ptr;
+//   WAVE *d_y_tmp_ptr;
+//   double *v_pinned_ptr, *d_v_ptr;
+//   // TODO don't use pinned memory for d_y_
+//   auto d_y_tmp  = init::malloc_matrix<WAVE>(          &d_y_tmp_ptr,  p.n_streams, tmp_out_size);
+//   auto d_v      = init::malloc_matrix<double>(        &d_v_ptr,      p.n_streams, p.batch_size.y * DIMS);
+//   auto v_pinned = init::pinned_malloc_vectors<double>(&v_pinned_ptr, p.n_streams, p.batch_size.y * DIMS);
+//   auto y_pinned = init::pinned_malloc_vectors<WAVE>(  &y_pinned_ptr, p.n_streams, p.batch_size.y);
+
+//   // TODO d_b is too large
+//   // const auto d_unit = thrust::device_vector<WAVE>(p.batch_size.y, {1., 0.}); // unit vector for blas
+//   const auto d_unit = thrust::device_vector<WAVE>(d_y_tmp[0].size / p.batch_size.y, {1., 0.}); // unit vector for blas
+//   const auto *d_b = thrust::raw_pointer_cast(d_unit.data());
+
+//   cudaStream_t streams[p.n_streams];
+//   cublasHandle_t handles[p.n_streams];
+//   for (auto& stream : streams)
+//     cu( cudaStreamCreate(&stream) );
+
+//   for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+//     cuB( cublasCreate(&handles[i_stream]) );
+//     cublasSetStream(handles[i_stream], streams[i_stream]);
+//   }
+
+//   for (size_t i = 0; i < p.n_batches.y; i+=p.n_streams) {
+//     for (size_t n = 0; n < p.n_batches.x; ++n) {
+//       // // each final x-batch may be under-used/occupied
+//       if (i == 0) {
+//         // cp x batch data for all streams and sync
+//         // TODO
+//       }
+
+//       // Derive current batch size in case of underutilized x-batches
+//       size_t local_batch_size = p.batch_size.x;
+//       if (p.n.x != p.n_batches.x * p.batch_size.x && n == p.n_batches.x - 1)
+//         local_batch_size = p.n.x - n * p.batch_size.x;
+
+//       for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+//         const auto m = i + i_stream;
+//         if (m >= p.n_batches.y) break;
+//         if (p.n_batches.y > 10 && m % (int) (p.n_batches.y / 10) == 0 && n == 0)
+//           printf("\tbatch %0.3fk / %0.3fk\n", m * 1e-3, p.n_batches.y * 1e-3);
+
+//         if (n == 0)
+//           cp_batch_data_to_device<double>(&v[m * d_v[i_stream].size],
+//                                           v_pinned[i_stream], d_v[i_stream],
+//                                           streams[i_stream]);
+
+//         const bool append_result = n > 0;
+//         const size_t n_offset = n * p.batch_size.x;
+//         superposition_per_block<direction, algorithm, shared_memory> \
+//           (p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
+//            p.batch_size.x,
+//            d_x_ptr + n_offset, d_u_ptr + n_offset * DIMS,
+//            d_v[i_stream].data, d_y_tmp[i_stream].data, append_result);
+//       }
+// #ifdef TEST_CONST_PHASE
+//       for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+//         const auto m = i + i_stream;
+//         if (m >= p.n_batches.y) break;
+//         cudaStreamSynchronize(streams[i_stream]);
+//         auto d = thrust::device_vector<WAVE> (d_y_tmp[i_stream].data, d_y_tmp[i_stream].data + d_y_tmp[i_stream].size);
+//         auto h = thrust::host_vector<WAVE> (d);
+//         auto x_per_batch = p.batch_size.x * p.batch_size.y / tmp_out_size;
+//         // printf("%lu \t %lu \t %lu\n", tmp_out_size, p.batch_size.x * p.batch_size.y, x_per_batch);
+//         assert(x_per_batch > 0);
+//         for (size_t j = 0; j < tmp_out_size; ++j)
+//           assert(cuCabs(h[j]) == (1. + n % p.n_batches.x) * x_per_batch);
+//         for (size_t j = 0; j < tmp_out_size; ++j)
+//           assert(cuCabs(h[j]) == (1. + n ) * x_per_batch);
+//         }
+// #endif
+//     } // end for n in [0,p.n_batches.x)
+
+//     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+//       const auto m = i + i_stream;
+//       if (m >= p.n_batches.y) break;
+//       kernel::sum_rows<false>(d_y_tmp[i_stream].size / p.batch_size.y, p.batch_size.y,
+//                               handles[i_stream], d_y_tmp[i_stream].data, d_b, d_y_tmp[i_stream].data);
+//       // Note that a subset of d_y_tmp is re-used
+//       cp_batch_data_to_host<WAVE>(d_y_tmp[i_stream].data, y_pinned[i_stream],
+//                                   p.batch_size.y, streams[i_stream]);
+// #ifdef TEST_CONST_PHASE
+//       cudaStreamSynchronize(streams[i_stream]);
+//       for (size_t j = 0; j < p.batch_size.y; ++j)
+//         assert(cuCabs(y_pinned[i_stream][j]) == N);
+// #endif
+//     }
+//     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+//       const auto m = i + i_stream;
+//       if (m >= p.n_batches.y) break;
+//       cudaStreamSynchronize(streams[i_stream]);
+//       // TODO stage copy-phase of next batch before copy/sync?
+//       for (size_t j = 0; j < p.batch_size.y; ++j) {
+//         y[j + m * p.batch_size.y] = y_pinned[i_stream][j];
+//       }
+//     }
+//   }
+
+//   // sync all streams before returning
+//   // cudaDeviceSynchronize();
+//   CubDebugExit(cudaPeekAtLastError());
+//   CubDebugExit(cudaDeviceSynchronize());
+
+// #ifdef TEST_CONST_PHASE
+//   for (size_t j = 0; j < p.n.y; ++j)
+//     assert(y[j].amp == N);
+// #endif
+
+//   for (unsigned int i = 0; i < p.n_streams; ++i)
+//     cudaStreamDestroy(streams[i]);
+//   for (auto& handle : handles)
+//     cuB( cublasDestroy(handle) );
+
+//   cu( cudaFree(d_y_tmp_ptr ) );
+//   cu( cudaFree(d_v_ptr       ) );
+//   cu( cudaFreeHost(v_pinned_ptr ) );
+//   cu( cudaFreeHost(y_pinned_ptr ) );
+//   return y;
+// }
 
 /**
  * Time the transform operation over the full input.

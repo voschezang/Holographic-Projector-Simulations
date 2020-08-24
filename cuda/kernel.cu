@@ -188,7 +188,7 @@ __global__ void reduce_rows(Iterator first, const size_t width, const size_t n_r
 
 template<bool transpose = false>
 inline void sum_rows(const size_t width, const size_t n_rows, cublasHandle_t handle,
-                     const WAVE *A, const WAVE *x,
+                     const WAVE *A, const ConstCUDAVector<WAVE> x,
                      WAVE *y, const WAVE beta = {0., 0.}) {
   /**
    * Sum all rows of matrix A. `A,x,y` must be device pointers.
@@ -197,11 +197,12 @@ inline void sum_rows(const size_t width, const size_t n_rows, cublasHandle_t han
    * `y = alpha * op(A)x + beta y`
    * Note, argument width = lda = stride of matrix
    */
+  assert(width == x.size);
   const WAVE alpha = {1., 0.};
   if (transpose)
-    cuB( cublasZgemv(handle, CUBLAS_OP_T, width, n_rows, &alpha, A, width, x, 1, &beta, y, 1) );
+    cuB( cublasZgemv(handle, CUBLAS_OP_T, width, n_rows, &alpha, A, width, x.data, 1, &beta, y, 1) );
   else
-    cuB( cublasZgemv(handle, CUBLAS_OP_N, n_rows, width, &alpha, A, n_rows, x, 1, &beta, y, 1) );
+    cuB( cublasZgemv(handle, CUBLAS_OP_N, n_rows, width, &alpha, A, n_rows, x.data, 1, &beta, y, 1) );
 }
 
 inline void sum_rows_thrust(const size_t width, const size_t n_rows, cudaStream_t stream,
