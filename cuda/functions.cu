@@ -164,8 +164,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   thrust::device_vector<Polar> d_x = x;
   thrust::device_vector<double> d_u = u;
   // cast to pointers to allow usage in non-thrust kernels
-  Polar* d_x_ptr = thrust::raw_pointer_cast(&d_x[0]);
-  auto d_u_ptr = thrust::raw_pointer_cast(&d_u[0]);
+  Polar *d_x_ptr = thrust::raw_pointer_cast(d_x.data());
+  auto *d_u_ptr = thrust::raw_pointer_cast(d_u.data());
 
   // d_y_tmp contains block results of (partial) superposition kernel (TODO rename => d_y_block?)
   // d_y_sum contains the full superpositions, i.e. the summed rows of d_y_tmp
@@ -218,8 +218,9 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   // - gen rand indices for each y-batch, then use rand accessing in kernel
   // indices = sort_by_key(range(len), r)
 
-  float *d_rand;
-  cu( cudaMalloc( &d_rand, p.n.x * sizeof(float) ) );
+  // cu( cudaMalloc( &d_rand, p.n.x * sizeof(float) ) );
+  auto d_rand = thrust::device_vector<float>(p.n.x); // sort_by_key() requires device vectors
+  auto d_rand_ptr = thrust::raw_pointer_cast(d_rand.data());
   curandGenerator_t generator;
   init_random(&generator);
 
@@ -239,14 +240,17 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   unsigned int
     i_shuffle = 0,
     i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
-  const bool randomize = 0;
+  const bool randomize = 1 && p.n_batches.x > 1;
   auto compare_func = [&](auto m){ return m < p.n_batches.y;};
   while (std::any_of(m_per_stream.begin(), m_per_stream.end(), compare_func)) {
     if (randomize && i_shuffle >= i_shuffle_max) {
       // shuffle
-      curandGenerateUniform(generator, d_rand, p.n.x);
-      thrust::sort_by_key(d_rand, d_rand + p.n.x, d_x_ptr);
-      thrust::sort_by_key(d_rand, d_rand + p.n.x, (Cartesian<double> *) d_u_ptr); // reorder all dims at once
+      // Note that the following operations are blocking
+      print("Shuffle source data...");
+      curandGenerateUniform(generator, d_rand_ptr, p.n.x);
+      printf("p.n: <%lu, %lu>\n", p.n.x, p.n.y);
+      thrust::sort_by_key(d_rand.begin(), d_rand.end(), d_x_ptr); // Note, thrust::raw_pointer_cast causes Segfaults
+      thrust::sort_by_key(d_rand.begin(), d_rand.end(), (Cartesian<double> *) d_u_ptr); // reorder all dims at once
 
         // reset
       i_shuffle = 0;
