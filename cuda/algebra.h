@@ -94,6 +94,11 @@ std::vector<double> geomspace(size_t len, double a, double b) {
 // Statistics
 
 template<typename T = double>
+inline T sum(const T* x, const size_t len) {
+  return std::accumulate(x, x + len, (T) 0);
+}
+
+template<typename T = double>
 inline T sum(const std::vector<T> &x) {
   return std::accumulate(x.begin(), x.end(), (T) 0);
 }
@@ -107,10 +112,15 @@ inline double transform_reduce(const std::vector<T> &x, double (*f)(T)) {
 }
 
 template<typename T = double>
-inline double mean(const std::vector<T> &x) {
-  assert(x.size() > 0);
+inline double mean(const T* x, const size_t len) {
+  assert(len > 0);
   // note that mean of int vector is a double
-  return sum(x) / (double) x.size();
+  return sum(x, len) / (double) len;
+}
+
+template<typename T = double>
+inline double mean(const std::vector<T> &x) {
+  return mean<T>(x.data(), x.size());
 }
 
 template<typename T = double>

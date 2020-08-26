@@ -131,10 +131,41 @@ void rm_phase(std::vector<WAVE> &c) {
 }
 
 template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
-inline std::vector<WAVE> transform(const std::vector<Polar> &x,
-                                   const std::vector<double> &u,
+inline std::vector<WAVE> transform(const std::vector<Polar> &x2,
+                                   const std::vector<double> &u2,
                                    const std::vector<double> &v,
                                    const Geometry& p) {
+  // TODO rm x2, u2
+  auto x = x2;
+  auto u = u2;
+  // // test manual ranzomization
+  // if (p.n.x >= 1000) {
+  //   double tmp;
+  //   for (int n = 0; n < p.n.x; ++n) {
+  //     auto j = rand() % p.n.x;
+  //     assert(j < p.n.x);
+  //     // j = n;
+  //     // if (j > 1)
+  //     //   j = n - 1;
+  //     tmp = x[n].amp; x[n].amp = x[j].amp; x[j].amp = tmp;
+  //     tmp = x[n].phase; x[n].phase = x[j].phase; x[j].phase = tmp;
+  //     for (int dim = 0; dim < DIMS; ++dim) {
+  //       tmp = u[Ix(n, dim)]; u[Ix(n, dim)] = u[Ix(j, dim)]; u[Ix(j, dim)] = tmp;
+  //     }
+  //   }
+  //   assert(x[0].amp != x2[0].amp ||
+  //          x[1].amp != x2[1].amp ||
+  //          x[2].amp != x2[2].amp);
+  //   printf("sum x: %f vs. %f\n",
+  //          sum( (double *) x.data(), x.size() * 2),
+  //          sum( (double *) x2.data(), x2.size() * 2));
+  //   assert(abs(sum( (double *) x.data(), x.size() * 2) - sum( (double *) x2.data(), x2.size() * 2)) < 1e-6);
+  //   assert(abs(sum(u) - sum(u2)) < 1e-6);
+  // }
+  //
+
+
+
   // x = input or source data, y = output or target data
   if (algorithm == Algorithm::Naive) assert(!shared_memory);
 
@@ -183,7 +214,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   auto v_pinned = init::pinned_malloc_vectors<double>(&v_pinned_ptr, p.n_streams, p.batch_size.y * DIMS);
   auto y_pinned = init::pinned_malloc_vectors<WAVE>(  &y_pinned_ptr, p.n_streams, p.batch_size.y);
 
-  // TODO d_b is too large
   // const auto d_unit = thrust::device_vector<WAVE>(p.batch_size.y, {1., 0.}); // unit vector for blas
   const auto d_unit_ = thrust::device_vector<WAVE>(d_y_tmp[0].size / p.batch_size.y, {1., 0.}); // unit vector for blas
   const auto d_unit  = ConstCUDAVector<WAVE> {thrust::raw_pointer_cast(d_unit_.data()),
@@ -224,35 +254,94 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   curandGenerator_t generator;
   init_random(&generator);
 
-  // size_t *x_indices_ptr;
-  // auto x_indices = init::malloc_matrix<size_t>(x_indices_ptr, p.n_streams, p.n.x);
-  // std::vector<std::vector<size_t>>(p.n_streams, std::vector<size_t>(p.n.x));
-  // for (auto &i : range(p.n_streams))
-  //   x_indices[i];
-  //   x_indices[i] = range(p.n.x);
+  //
+  // assert(p.n.x > 1);
+  cudaDeviceSynchronize();
+  curandGenerateUniform(generator, d_rand_ptr, p.n.x);
 
-  // assert(0); // TODO shuffle x_indices for every y-batch
+  // d_rand = thrust::host_vector<double>(linspace(p.n.x, 0, 1));
+  // d_rand = thrust::host_vector<double>(linspace(p.n.x, 1, 0));
 
-  // auto n_datapoints = std::vector<size_t>(p.n_streams, 0);
-  // auto n = range(p.n_streams);
-  // for (size_t i = 0; i < p.n_batches.y; i+=p.n_streams) {
+  // Copy indices because both keys and values will be sorted
+  auto d_rand2 = d_rand;
+
+  thrust::device_vector<Cartesian<double>> d_u_vector;
+  Cartesian<double> *d_u_ptr2 = (Cartesian<double> *) d_u_ptr;
+  thrust::sort_by_key(d_rand.begin(), d_rand.end(), d_x.begin()); // Note, thrust::raw_pointer_cast causes Segfaults
+  double *d_u_vector_ptr;
+  if (0) {
+    // this throws [functions.cu:28] CUDA Runtime Error: an illegal memory access was encountered
+    thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), (Cartesian<double> *) d_u_ptr); // reorder all dims at once
+    cudaDeviceSynchronize();
+  }
+  else {
+    // TODO this copies data
+    // use either of:
+    //  1) sort using casting (see above)
+    //  2) ArrayOfStruct: use Cartesian<double> everywhere
+    //  3) StructOfArray: split u.x,y,z and sort them individually - this requires additional copying of indices
+    d_u_vector = thrust::device_vector<Cartesian<double>>(d_u_ptr2, d_u_ptr2 + p.n.x);
+    thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), d_u_vector.begin()); // reorder all dims at once
+    // d_u = thrust::device_vector<double>((double *) d_u_ptr2, 3*p.n.x + (double *) d_u_ptr2); // this does nothing
+    d_u_vector_ptr = (double *) thrust::raw_pointer_cast(d_u_vector.data());
+    // (optional), update d_u
+    d_u = thrust::device_vector<double>(d_u_vector_ptr, 3*p.n.x + d_u_vector_ptr);
+    cudaDeviceSynchronize();
+    // printf("equals: %e == %e ?\n", d_u[0], d_u_vector[0]);
+    if (p.n.x >= 100)
+      for (int i = p.n.x - 100; i < p.n.x; ++i) {
+        // for (int i = 0; i < p.n.x; ++i) {
+        Cartesian<double> w = d_u_vector[i];
+        // printf("equals[%i]: %e == %e?\n", i, d_u[Ix(i,0)], w.x);
+        // printf("equals[%i]: %e == %e?\n", i, d_u[Ix(i,1)], w.y);
+        // printf("equals[%i]: %e == %e?\n", i, d_u[Ix(i,2)], w.z);
+        assert(d_u[Ix(i,0)] == w.x);
+        assert(d_u[Ix(i,1)] == w.y);
+        assert(d_u[Ix(i,2)] == w.z);
+      }
+  }
+
+  // cudaDeviceSynchronize();
+  // if (p.n.x > 100) {
+  //   print("raw1");
+  //   double raw;
+  //   print("raw2");
+  //   raw = thrust::reduce(d_u.begin(), d_u.end(), (double) 0);
+  //   cudaDeviceSynchronize();
+  //   print("assert2");
+  //   assert(equals(raw, sum(u)));
+  //   cudaDeviceSynchronize();
+
+  //   auto x3 = thrust::device_vector<double>((double *) d_x_ptr, 2*p.n.x + (double *) d_x_ptr);
+  //   raw = thrust::reduce(x3.begin(), x3.end(), (double) 0);
+  //   cudaDeviceSynchronize();
+  //   print("assert1");
+  //   assert(equals(raw, sum((double*) x.data(), 2*x.size())));
+  // }
+  //
+
   const size_t min_n_datapoints = 1000; // before convergence computation
   unsigned int
     i_shuffle = 0,
     i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
-  const bool randomize = 1 && p.n_batches.x > 1;
+  if (i_shuffle_max * p.batch_size.x >= p.n.x) i_shuffle_max--;
+
+  const bool randomize = 1 && p.n.x > 1 && p.n_batches.x > 1;
   auto compare_func = [&](auto m){ return m < p.n_batches.y;};
   while (std::any_of(m_per_stream.begin(), m_per_stream.end(), compare_func)) {
     if (randomize && i_shuffle >= i_shuffle_max) {
       // shuffle
-      // Note that the following operations are blocking
-      print("Shuffle source data...");
+      // print("Shuffle source data...");
+      cudaDeviceSynchronize();
       curandGenerateUniform(generator, d_rand_ptr, p.n.x);
-      printf("p.n: <%lu, %lu>\n", p.n.x, p.n.y);
-      thrust::sort_by_key(d_rand.begin(), d_rand.end(), d_x_ptr); // Note, thrust::raw_pointer_cast causes Segfaults
-      thrust::sort_by_key(d_rand.begin(), d_rand.end(), (Cartesian<double> *) d_u_ptr); // reorder all dims at once
+      d_rand2 = d_rand;
+      thrust::sort_by_key(d_rand.begin(), d_rand.end(), d_x.begin()); // Note, thrust::raw_pointer_cast causes Segfaults
+      thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), d_u_vector.begin()); // reorder all dims at once
+      // (optional), update d_u
+      d_u = thrust::device_vector<double>(d_u_vector_ptr, 3*p.n.x + d_u_vector_ptr);
+      cudaDeviceSynchronize();
 
-        // reset
+      // reset
       i_shuffle = 0;
     }
 
@@ -262,7 +351,9 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         m = m_per_stream[i_stream],
         n_datapoints = n * p.batch_size.x;
       if (m >= p.n_batches.y) continue;
-      else i_shuffle++;
+
+      if (p.n_batches.y > 10 && m % (int) (p.n_batches.y / 10) == 0 && n == 0)
+        printf("\tbatch %0.3fk / %0.3fk\n", m * 1e-3, p.n_batches.y * 1e-3);
 
       if (n == 0)
         cp_batch_data_to_device<double>(&v[m * d_v[i_stream].size],
@@ -271,8 +362,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       if (n == 0)
         assert(!converging[i_stream]);
       // // TODO memset can be avoided by directly overwriting the sum_rows result
-      if (n == 0)
-        cu( cudaMemsetAsync(d_y_sum_ptr, 0, d_y_sum[i_stream].size * sizeof(WAVE), streams[i_stream]) );
+      // if (n == 0)
+      //   cu( cudaMemsetAsync(d_y_sum_ptr, 0, d_y_sum[i_stream].size * sizeof(WAVE), streams[i_stream]) );
 
       // Derive current batch size in case of underutilized x-batches
       size_t local_batch_size = p.batch_size.x;
@@ -281,6 +372,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           local_batch_size = p.n.x - n * p.batch_size.x;
 
       const size_t n_offset = (randomize ? i_shuffle : n) * p.batch_size.x;
+      assert(i_shuffle_max * p.batch_size.x < p.n.x);
+      if (randomize)
+        assert(n_offset + p.batch_size.x < p.n.x);
+
       // const size_t n_offset = n * p.batch_size.x;
       // Note, appending result to prev results slows down computation
       const bool append_result = n > 0 && !converging[i_stream];
@@ -289,10 +384,15 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       superposition_per_block<direction, algorithm, shared_memory> \
         (p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
          p.batch_size.x,
-         d_x_ptr + n_offset, d_u_ptr + n_offset * DIMS,
+         // d_x_ptr + n_offset, d_u_ptr + n_offset * DIMS,
+         d_x_ptr + n_offset, d_u_vector_ptr + n_offset * DIMS,
          d_v[i_stream].data, d_y_tmp[i_stream].data, append_result);
 
       bool finished = false;
+      // if (randomize && n >= (p.n_batches.x - 1) / 2)
+      //   finished = true;
+      // if (!randomize && n >= p.n_batches.x - 1)
+      //   finished = true;
       if (n >= p.n_batches.x - 1)
         finished = true;
 
@@ -323,7 +423,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           converging[i_stream] = true;
         }
       }
-      assert(n >= p.n_batches.x - 1 || !finished);
 
       if (!finished) {
         // // cp d_y_tmp to dedicated memory (d_y_prev)
@@ -348,6 +447,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         m_per_stream[i_stream] = *std::max_element(m_per_stream.begin(), m_per_stream.end()) + 1;
         converging[i_stream] = false;
       }
+      i_shuffle++;
     }
   } // end while
 
@@ -377,10 +477,40 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 }
 
 // template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
-// inline std::vector<WAVE> transform_full(const std::vector<Polar> &x,
-//                                         const std::vector<double> &u,
+// inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
+//                                         const std::vector<double> &u2,
 //                                         const std::vector<double> &v,
 //                                         const Geometry& p) {
+
+//   //
+//   auto x = x2;
+//   auto u = u2;
+//   if (p.n.x >= 1000) {
+//     double tmp;
+//     for (int n = 0; n < p.n.x; ++n) {
+//       auto j = rand() % p.n.x;
+//       assert(j < p.n.x);
+//       // j = n;
+//       // if (j > 1)
+//       //   j = n - 1;
+//       tmp = x[n].amp; x[n].amp = x[j].amp; x[j].amp = tmp;
+//       tmp = x[n].phase; x[n].phase = x[j].phase; x[j].phase = tmp;
+//       for (int dim = 0; dim < DIMS; ++dim) {
+//         tmp = u[Ix(n, dim)]; u[Ix(n, dim)] = u[Ix(j, dim)]; u[Ix(j, dim)] = tmp;
+//       }
+//     }
+//     assert(x[0].amp != x2[0].amp ||
+//            x[1].amp != x2[1].amp ||
+//            x[2].amp != x2[2].amp);
+//     printf("sum x: %f vs. %f\n",
+//            sum( (double *) x.data(), x.size() * 2),
+//            sum( (double *) x2.data(), x2.size() * 2));
+//     assert(abs(sum( (double *) x.data(), x.size() * 2) - sum( (double *) x2.data(), x2.size() * 2)) < 1e-6);
+//     assert(abs(sum(u) - sum(u2)) < 1e-6);
+//   }
+//   //
+
+
 //   // x = input or source data, y = output or target data
 //   if (algorithm == Algorithm::Naive) assert(!shared_memory);
 
@@ -426,10 +556,12 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 //   auto v_pinned = init::pinned_malloc_vectors<double>(&v_pinned_ptr, p.n_streams, p.batch_size.y * DIMS);
 //   auto y_pinned = init::pinned_malloc_vectors<WAVE>(  &y_pinned_ptr, p.n_streams, p.batch_size.y);
 
-//   // TODO d_b is too large
 //   // const auto d_unit = thrust::device_vector<WAVE>(p.batch_size.y, {1., 0.}); // unit vector for blas
-//   const auto d_unit = thrust::device_vector<WAVE>(d_y_tmp[0].size / p.batch_size.y, {1., 0.}); // unit vector for blas
-//   const auto *d_b = thrust::raw_pointer_cast(d_unit.data());
+//   // const auto d_unit = thrust::device_vector<WAVE>(d_y_tmp[0].size / p.batch_size.y, {1., 0.}); // unit vector for blas
+//   // const auto *d_b = thrust::raw_pointer_cast(d_unit.data());
+//   const auto d_unit_ = thrust::device_vector<WAVE>(d_y_tmp[0].size / p.batch_size.y, {1., 0.}); // unit vector for blas
+//   const auto d_unit  = ConstCUDAVector<WAVE> {thrust::raw_pointer_cast(d_unit_.data()),
+//                                               d_unit_.size()};
 
 //   cudaStream_t streams[p.n_streams];
 //   cublasHandle_t handles[p.n_streams];
@@ -495,7 +627,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 //       const auto m = i + i_stream;
 //       if (m >= p.n_batches.y) break;
 //       kernel::sum_rows<false>(d_y_tmp[i_stream].size / p.batch_size.y, p.batch_size.y,
-//                               handles[i_stream], d_y_tmp[i_stream].data, d_b, d_y_tmp[i_stream].data);
+//                               handles[i_stream], d_y_tmp[i_stream].data, d_unit,
+//                               d_y_tmp[i_stream].data);
 //       // Note that a subset of d_y_tmp is re-used
 //       cp_batch_data_to_host<WAVE>(d_y_tmp[i_stream].data, y_pinned[i_stream],
 //                                   p.batch_size.y, streams[i_stream]);
@@ -568,8 +701,9 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   case 3: y = transform<direction, Algorithm::Alt, true>(x, u, v, p); break;
   default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
   }
+  // y = transform<direction, Algorithm::Alt, false>(x, u, v, p);
+  // y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
 
-  const bool shared_memory = false;
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
 
@@ -583,6 +717,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
     // TODO do this on CPU?
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     printf("ref v[2]: %e\n", v[2]);
+    const bool shared_memory = false;
     auto y_reference = transform<direction, Algorithm::Alt, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
     // let full reference wave (amp+phase) interfere with original wave
