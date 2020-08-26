@@ -128,6 +128,7 @@ void test_superposition() {
   p.algorithm = 1;
   p.blockDim = blockDim;
   p.gridDim = gridDim;
+  const bool allow_random = 1;
   for (auto& n_streams : std::array<int, 2> {1, n_batches / 2}) {
     p.n_streams = n_streams;
     for (auto& thread_size_x : std::array<size_t, 2> {16, 1}) {
@@ -142,22 +143,25 @@ void test_superposition() {
           if (M <= p.batch_size.y) assert(p.n_batches.y == 1);
           const std::vector<Polar> X (x.begin(), x.begin() + N);
           auto z = transform<Direction::Forwards, Algorithm::Naive, false>(X, u, v, p);
-          // printf("\n\tparams: thread_size: %lu, %lu \t n_streams: %i, batch size: %lu, %lu\n",
-          //        thread_size_x, thread_size_y, n_streams, p.batch_size.x, p.batch_size.y);
+          printf("\n\tparams: thread_size: %lu, %lu \t n_streams: %i, batch size: %lu, %lu\n",
+                 thread_size_x, thread_size_y, n_streams, p.batch_size.x, p.batch_size.y);
           for (size_t i = 0; i < M; ++i) {
-            // printf("z[%i]: %f, %f - N: %lu\n", i, cuCabs(z[i]), angle(z[i]), N);
+            printf("z[%i]: %f, %f - N: %lu\n", i, cuCabs(z[i]), angle(z[i]), N);
             assert(equals(angle(z[i]), phi));
-            assert(equals(cuCabs(z[i]), N));
+            if (!allow_random)
+              assert(equals(cuCabs(z[i]), N));
           }
           z = transform<Direction::Forwards, Algorithm::Alt, false>(X, u, v, p);
           for (size_t i = 0; i < M; ++i) {
             assert(equals(angle(z[i]), phi));
-            assert(equals(cuCabs(z[i]), N));
+            if (!allow_random)
+              assert(equals(cuCabs(z[i]), N));
           }
           z = transform<Direction::Forwards, Algorithm::Alt, true>(X, u, v, p);
           for (size_t i = 0; i < M; ++i) {
             assert(equals(angle(z[i]), phi));
-            assert(equals(cuCabs(z[i]), N));
+            if (!allow_random)
+              assert(equals(cuCabs(z[i]), N));
           }
         }
       }
