@@ -150,12 +150,14 @@ def _scatter_wrapper(x, y, z, **kwargs):
         lim_func(a, b)
 
 
-def _hist2d_wrapper(x, y, z, density=True, bins=10, **kwargs):
+def _hist2d_wrapper(x, y, z, density=True, bins=10, range=None, **kwargs):
     # create tmp figure
     # fig = plt.figure()
     # hist = plt.hist2d(x, y, weights=z, density=density, bins=bins)[0]
     # plt.close(fig)
     hist = np.histogram2d(x, y, weights=z, density=density, bins=bins)[0]
+    if range is not None:
+        hist = util.standardize(hist) * (range[1] - range[0]) + range[0]
     # supply bins as positions s.t. the axis range equals the bins range
     _imshow_wrapper(bins[0], bins[1], hist, **kwargs)
 
@@ -170,6 +172,7 @@ def _imshow_wrapper(x, y, color, ratio=1., **kwargs):
     # plt.imshow(reshape(z[:, 0], hd), origin='lower', aspect='auto', **kwargs)
     plt.imshow(util.soft_round(color, verbose=3).T, origin='lower', aspect=ratio,
                extent=(x.min(), x.max(), y.min(), y.max()),
+               vmin=color.min(), vmax=color.max(),
                **kwargs)
 
 
@@ -253,8 +256,15 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
 
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = cyclic_cmap
-    plot_func(x, y, phi, **kwargs)
-    markup(ax, unit='m')
+    print(plot_func.__name__)
+    if plot_func.__name__ == '_hist2d_wrapper':
+        plot_func(x, y, phi, range=(phi.min() / np.pi, phi.max() / np.pi),
+                  **kwargs)
+    else:
+        plot_func(x, y, phi, **kwargs)
+
+    markup(ax, unit='m', colorbar_unit='$\pi$')
+
     plt.title('Phase', fontsize=16)
     try:
         plt.tight_layout()
@@ -292,14 +302,17 @@ def sci_labels(ax, decimals=1, x=True, y=True, z=False, unit='',
         ax.yaxis.set_major_formatter(formatter)
 
 
-def markup(ax, unit='', colorbar=True, **kwargs):
+def markup(ax, unit='', colorbar=True, colorbar_unit='', **kwargs):
     sci_labels(ax, unit=unit, **kwargs)
     plt.xlabel("Space dimension 1")
     plt.ylabel("Space dimension 2")
     # plt.colorbar(fraction=0.052, pad=0.05,
     #              ticks=LogLocator(subs='all'), format=LogFormatterSciNotation())
     if colorbar:
-        plt.colorbar(fraction=0.052, pad=0.05)
+        format = None
+        if colorbar_unit:
+            format = tck.FormatStrFormatter(f'%.2f {colorbar_unit}')
+        plt.colorbar(fraction=0.052, pad=0.05, format=format)
 
 
 def format_title(major, minor, info: dict = None):

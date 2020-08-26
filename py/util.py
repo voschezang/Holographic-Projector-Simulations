@@ -952,6 +952,9 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
                 pos = _parse_doubles(p['pos'] + '.dat', p['len'] * p['dims'],
                                      p['precision'], archive=z)
 
+                # phase = (phase + np.pi) % (2 * np.pi)
+                # normalize phase for hist
+                # phase = (phase + np.pi) / 2 / np.pi
                 data[k1].append(np.array([amp, phase]).T)
                 data[k2].append(pos.reshape(-1, DIMS))
                 for x in (amp, phase, pos):
