@@ -29,6 +29,7 @@ void init_random(curandGenerator_t *gen) {
 void randomize(float *x, float *d_x, size_t len, curandGenerator_t gen) {
   // TODO do this on cpu or at runtime (per batch)
   curandGenerateUniform(gen, d_x, len);
+  cuR( curandGenerateUniform(gen, d_x, len * sizeof(float) / 32) );
   cudaMemcpy(x, d_x, len * sizeof(float), cudaMemcpyDeviceToHost);
   cudaDeviceSynchronize();
 }
