@@ -27,39 +27,62 @@ def surf(x, y, z, Nx: int, Ny: int, ax=None, **kwargs):
     Z = z.reshape((Nx, Ny))
 
     surf = ax.plot_surface(X, Y, Z, linewidth=0, antialiased=False, **kwargs)
-    return surf
+    return ax, surf
 
 
 def surf_multiple(phasor, position, Nx: int, Ny: int, prefix='', filename=None):
-    labels = ['Amplitude$^2$', 'Phase', 'Log Irradiance']
-    suffix = ['amp', 'phi', 'irr']
+    labels = ['Amplitude', 'Amplitude', 'Irradiance',
+              'Log Irradiance']
     for i, label in enumerate(labels):
-        if i == 1:
-            # skip phase plots
-            continue
-
+        amp = phasor[:, 0]
         if i < 2:
-            # square amp
-            z = phasor[:, i]
-            if i == 1:
-                z = z ** 2
+            z = amp
         else:
-            a, phi = phasor.T
-            log_irradiance = np.log(util.irradiance(
-                util.to_polar(a, phi), normalize=False))
+            z = amp ** 2
+        if i == 3:
+            log_irradiance = np.log(np.clip(amp ** 2, 1e-9, None))
+            # z = log_irradiance
+            # log_irradiance = np.log(util.irradiance(
+            #     util.to_polar(a, phi), normalize=False))
             z = util.standardize(log_irradiance)
             assert abs(z.min()) < 1e-3
             assert abs(1 - z.max()) < 1e-3
 
-        # ignore third dimension
-        surf(position[:, 0], position[:, 1],
-             z, Nx, Ny)
+        z_log = i in [1, 2]
+        lower_bound = 1e-6  # assume max = 1
+        if z_log:
+            # manual log zscale
+            z = np.clip(z, lower_bound, None)
+            mini, maxi = z.min(), z.max()
+            if mini == maxi or mini <= 0:
+                continue
+            else:
+                mini = round(np.log10(mini))
+                maxi = round(np.log10(maxi))
+                if mini == maxi:
+                    continue
+                z = np.log10(z)
+
+        # ignore third dimension in position
+        ax, _ = surf(position[:, 0], position[:, 1], z, Nx, Ny)
+        if z_log and mini != maxi:
+            n_ticks = int(maxi - mini) + 1
+            if n_ticks > 8 and n_ticks % 2 == 1:
+                n_ticks = round(n_ticks / 2.)
+
+            assert(n_ticks > 1)
+            ticks = np.linspace(mini, maxi, n_ticks, endpoint=True).round()
+            labels = [f'$10^{{{v}}}$' for v in ticks]
+            # ax.set_zticks(ticks) # auto
+            ax.set_zticklabels(labels)
+
         plt.title(f'{prefix}{label}')
         plt.tight_layout()
         if filename is None:
             plt.show()
         else:
-            plot.save_fig(f'{filename}_{suffix[i]}', ext='png')
+            suffix = label.replace(' ', '') + f'-{i}'
+            plot.save_fig(f'{filename}_{suffix}', ext='png')
 
         plt.close()
 

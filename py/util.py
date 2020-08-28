@@ -547,10 +547,14 @@ def stratified(n_samples: int, n_subspaces: int):
 
 
 def semilog(x):
-    """ Save log: np.ndarray
+    """ Safe log: np.ndarray
     x : float or np.array of floats
     """
-    return np.log(np.clip(np.abs(x), 1e-12, None))
+    return np.log(np.clip(np.abs(x), 1e-15, None))
+
+
+def semilog10(x):
+    return np.log10(np.clip(np.abs(x), 1e-15, None))
 
 
 def pendulum(n: int):
@@ -952,9 +956,6 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
                 pos = _parse_doubles(p['pos'] + '.dat', p['len'] * p['dims'],
                                      p['precision'], archive=z)
 
-                # phase = (phase + np.pi) % (2 * np.pi)
-                # normalize phase for hist
-                # phase = (phase + np.pi) / 2 / np.pi
                 data[k1].append(np.array([amp, phase]).T)
                 data[k2].append(pos.reshape(-1, DIMS))
                 for x in (amp, phase, pos):

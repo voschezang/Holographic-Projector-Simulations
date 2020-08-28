@@ -152,14 +152,12 @@ def _scatter_wrapper(x, y, z, **kwargs):
 
 def _hist2d_wrapper(x, y, z, density=True, bins=10, range=None, **kwargs):
     # create tmp figure
-    # fig = plt.figure()
-    # hist = plt.hist2d(x, y, weights=z, density=density, bins=bins)[0]
-    # plt.close(fig)
     hist = np.histogram2d(x, y, weights=z, density=density, bins=bins)[0]
-    if range is not None:
-        hist = util.standardize(hist) * (range[1] - range[0]) + range[0]
+    if range is None:
+        range = [z.min(), z.max()]
+    hist = util.standardize(hist) * (range[1] - range[0]) + range[0]
     # supply bins as positions s.t. the axis range equals the bins range
-    _imshow_wrapper(bins[0], bins[1], hist, **kwargs)
+    return _imshow_wrapper(bins[0], bins[1], hist, **kwargs)
 
 
 def _imshow_wrapper(x, y, color, ratio=1., **kwargs):
@@ -170,10 +168,10 @@ def _imshow_wrapper(x, y, color, ratio=1., **kwargs):
     # return plt.imshow(x, y, weights=z, density=density, **kwargs)
     # vmin, vmax
     # plt.imshow(reshape(z[:, 0], hd), origin='lower', aspect='auto', **kwargs)
-    plt.imshow(util.soft_round(color, verbose=3).T, origin='lower', aspect=ratio,
-               extent=(x.min(), x.max(), y.min(), y.max()),
-               vmin=color.min(), vmax=color.max(),
-               **kwargs)
+    return plt.imshow(util.soft_round(color, verbose=3).T, origin='lower', aspect=ratio,
+                      extent=(x.min(), x.max(), y.min(), y.max()),
+                      vmin=color.min(), vmax=color.max(),
+                      **kwargs)
 
 
 def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filename=None,
@@ -238,16 +236,50 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
         ax = plt.subplot(313)
 
     # |E|^2 == irradiance(E)
-    log_irradiance = np.log(np.clip(a ** 2, 1e-9, None))
+
+    # avoid zero-values
+    assert not np.isnan(a).any()
+    irradiance = a ** 2
+    irradiance /= irradiance.max()
+    # add lower bound to allow plotting with log scale
+    lower_bound = 1e-9
+    np.clip(irradiance, lower_bound, None, out=irradiance)
+    range = irradiance.max() - irradiance.min()
+    log_cmap = range > 0.1
+    mini = irradiance.min()
+    log_irradiance = np.log10(irradiance)
+
+    # use custom colormap to highlight different order of magnitude in log axis
+    kwargs['cmap'] = 'rainbow'
+    # kwargs['cmap'] = 'cubehelix'
+    # kwargs['cmap'] = 'gist_ncar'
+    # kwargs['cmap'] = 'viridis'
     if density3 is not None:
         # hack to allow optional 3rd param for histogram plot func
         kwargs['density'] = density3
 
-    plot_func(x, y, standardize(log_irradiance), **kwargs)
+    # TODO don't standardize, only scale down
+    # plot_func(x, y, util.standardize(log_irradiance), **kwargs)
+    plot_func(x, y, log_irradiance, **kwargs)
+    if log_cmap:
+        n_ticks = int(-round(np.log10(mini))) + 1
+        assert n_ticks > 1, range
+        ticks = np.linspace(round(np.log10(mini)), 0, n_ticks, endpoint=True) \
+            .round().astype(int)
+        labels = [f'$10^{{{v}}}$' for v in ticks]
+        print(n_ticks, ticks)
+        print(labels)
+        cb = plt.colorbar(fraction=0.052, pad=0.05)
+        min2 = round(log_irradiance.min())
+        print('real min', min2, log_irradiance.min())
+        cb.set_ticks(np.linspace(log_irradiance.min(),
+                                 log_irradiance.max(), n_ticks, endpoint=True))
+        cb.set_ticklabels(labels)
+
     if density3 is not None:
         del kwargs['density']
 
-    markup(ax, unit='m')
+    markup(ax, unit='m', colorbar=not log_cmap)
     plt.title('Log Irradiance', fontsize=16)
     if horizontal:
         ax = plt.subplot(132)
@@ -256,7 +288,6 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
 
     # cyclic cmap: hsv, twilight
     kwargs['cmap'] = cyclic_cmap
-    print(plot_func.__name__)
     if plot_func.__name__ == '_hist2d_wrapper':
         plot_func(x, y, phi, range=(phi.min() / np.pi, phi.max() / np.pi),
                   **kwargs)
