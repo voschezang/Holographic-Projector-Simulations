@@ -136,30 +136,57 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                    const std::vector<double> &v2,
                                    const Geometry& p) {
 
-  auto map = std::vector<size_t>(p.n.y);
-  std::iota(map.begin(), map.end(), 0);
-  std::random_shuffle(map.begin(), map.end());
-  // for (size_t i = 0; i < indices.size(); ++i)
-  //   rev_indices[indices[i]] = i;
-
   auto v = v2;
-  // double * v_ptr = v.data();
-  // auto v_row_ptr = (Cartesian<double> *) v_ptr;
-  for (size_t i = 0; i < map.size(); ++i)
-    for (int dim = 0; dim < DIMS; ++dim)
-      v[Ix(i,dim)] = v2[Ix(map[i],dim)];
-
-  if (0) {
-    // test revert
-    auto v_copy = v;
+  const bool shuffle_v = 0;
+  const bool reorder_v = 1, reorder_v_rm_phase = 1;
+  auto map = std::vector<size_t>(p.n.y);
+  if (shuffle_v) {
+    std::iota(map.begin(), map.end(), 0);
+    std::random_shuffle(map.begin(), map.end());
     for (size_t i = 0; i < map.size(); ++i)
       for (int dim = 0; dim < DIMS; ++dim)
-        v[Ix(map[i],dim)] = v_copy[Ix(i,dim)];
+        v[Ix(i,dim)] = v2[Ix(map[i],dim)];
 
-    for (size_t i = 0; i < v.size(); ++i)
-      assert(v[i] == v2[i]);
+    if (0) {
+      // test revert
+      auto v_copy = v;
+      for (size_t i = 0; i < map.size(); ++i)
+        for (int dim = 0; dim < DIMS; ++dim)
+          v[Ix(map[i],dim)] = v_copy[Ix(i,dim)];
+
+      for (size_t i = 0; i < v.size(); ++i)
+        assert(v[i] == v2[i]);
+    }
   }
 
+  // only in case of second transformation
+  if (p.n.x > p.batch_size.x)
+    if (reorder_v) {
+      // reorder v data s.t. each grid represents a square area in space
+      // neglect boundary cells/pixels
+
+      // assume aspect ratio = 1
+      size_t m_sqrt = (size_t) sqrt(p.n.y);
+      assert(m_sqrt*m_sqrt == p.n.y);
+      size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
+      size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
+      assert(m_sqrt > 0);
+
+      for (size_t i = 0; i < m_sqrt2; ++i) {
+        for (size_t j = 0; j < m_sqrt2; ++j) {
+          dim2
+            i_batch = {i / G, j / G},
+            g = {i % G, j % G};
+          size_t i_transpose = (i_batch.x * m_sqrt2/G + i_batch.y) * G*G + g.x * G + g.y;
+          for (int dim = 0; dim < DIMS; ++dim) {
+            // v[Ix(i_transpose, dim)];
+            v[Ix(i_transpose, dim)] = v2[Ix2D(i,j,dim,m_sqrt)];
+            // v[Ix2D(i_batch.x * G + g.x,
+            //        i_batch.y * G + g.y, dim, m_sqrt2)] = v2[Ix2D(i,j,dim,m_sqrt)];
+          }
+        }
+      }
+    }
 
 
 
@@ -465,8 +492,9 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           // TODO make threshold dependent on max distance?
           const double threshold = 1e-4;
           const double
+            prev_n = (n+1 - batches_between_convergence) * p.batch_size.x,
             scale_a = 1. / (double) n_datapoints,
-            scale_b = 1. / ( (double) (n+1 - batches_between_convergence) * p.batch_size.x); // to re-normalize the prev result
+            scale_b = 1. / prev_n; // to re-normalize the prev result
           // TOOD try this, and don't use pinned memory
           finished[i_stream] = thrust::equal(thrust::cuda::par.on(streams[i_stream]),
                                              (double *) d_y_sum[i_stream].data,
@@ -552,13 +580,54 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   cu( cudaFreeHost(y_pinned_ptr ) );
 
 
-  // return y;
-  auto y2 = y;
-  for (size_t i = 0; i < map.size(); ++i)
-    for (int dim = 0; dim < DIMS; ++dim)
-      y2[map[i]] = {y[i].x, y[i].y};
+  // only in case of second transformation
+  if (p.n.x > p.batch_size.x)
+    if (reorder_v) {
+      // revert y data (v data)
+      assert(!shuffle_v);
+      // assume aspect ratio = 1
+      size_t m_sqrt = (size_t) sqrt(p.n.y);
+      assert(m_sqrt*m_sqrt == p.n.y);
+      size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
+      size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
+      assert(m_sqrt > 0);
 
-  return y2;
+      auto y2 = y;
+      for (size_t i = 0; i < m_sqrt2; ++i) {
+        for (size_t j = 0; j < m_sqrt2; ++j) {
+          dim2
+            i_batch = {i / G, j / G},
+            g = {i % G, j % G};
+          size_t i_transpose = (i_batch.x * m_sqrt2/G + i_batch.y) * G*G + g.x * G + g.y;
+          // y2[i * m_sqrt + j] = y[i_transpose];
+          y2[j * m_sqrt + i] = y[i_transpose];
+          if (reorder_v_rm_phase) {
+            if (i_batch.x % 2 == 0)
+              if (i_batch.y % 2 == 0)
+                y2[j * m_sqrt + i] = from_polar(cuCabs(y2[j * m_sqrt + i]), 0);
+              else
+                y2[j * m_sqrt + i] = from_polar(cuCabs(y2[j * m_sqrt + i]), 1.5);
+            else
+              if (i_batch.y % 2 == 0)
+                y2[j * m_sqrt + i] = from_polar(cuCabs(y2[j * m_sqrt + i]), 3);
+              else
+                y2[j * m_sqrt + i] = from_polar(cuCabs(y2[j * m_sqrt + i]), 4.5);
+          }
+        }
+      }
+      return y2;
+    }
+
+  if (shuffle_v) {
+    auto y2 = y;
+    for (size_t i = 0; i < map.size(); ++i)
+      for (int dim = 0; dim < DIMS; ++dim)
+        y2[map[i]] = {y[i].x, y[i].y};
+
+    return y2;
+  }
+  else
+    return y;
 }
 
 // template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
