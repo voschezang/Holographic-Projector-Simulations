@@ -133,8 +133,37 @@ void rm_phase(std::vector<WAVE> &c) {
 template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
 inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                    const std::vector<double> &u,
-                                   const std::vector<double> &v,
+                                   const std::vector<double> &v2,
                                    const Geometry& p) {
+
+  auto map = std::vector<size_t>(p.n.y);
+  std::iota(map.begin(), map.end(), 0);
+  std::random_shuffle(map.begin(), map.end());
+  // for (size_t i = 0; i < indices.size(); ++i)
+  //   rev_indices[indices[i]] = i;
+
+  auto v = v2;
+  // double * v_ptr = v.data();
+  // auto v_row_ptr = (Cartesian<double> *) v_ptr;
+  for (size_t i = 0; i < map.size(); ++i)
+    for (int dim = 0; dim < DIMS; ++dim)
+      v[Ix(i,dim)] = v2[Ix(map[i],dim)];
+
+  if (0) {
+    // test revert
+    auto v_copy = v;
+    for (size_t i = 0; i < map.size(); ++i)
+      for (int dim = 0; dim < DIMS; ++dim)
+        v[Ix(map[i],dim)] = v_copy[Ix(i,dim)];
+
+    for (size_t i = 0; i < v.size(); ++i)
+      assert(v[i] == v2[i]);
+  }
+
+
+
+
+
   // x = input or source data, y = output or target data
   if (algorithm == Algorithm::Naive) assert(!shared_memory);
 
@@ -202,20 +231,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   auto converging   = std::vector<bool>(p.n_streams, false); // not strictly converging but "undergoing convergence checking"
   auto finished     = std::vector<bool>(p.n_streams, false);
 
-
   // const auto shuffle_period = FLOOR(p.n_batches.x, p.n_streams);
-
-  // data indcides
-  // rand alg 1: resample, independent samples
-  // - shuffle global x, then use diagonal matrix to select indices per stream and repeat
-  // - worst case n_streams times lower shuffles
-  //  let float *r = rand(len) floats
-  //  do  x = sort_by_key(x, r) // radix sort? linear; using hash buckets
-  //   note: use Cartesian<double> to avoid column-major storage
-
-  // rand alg 2: shuffle
-  // - gen rand indices for each y-batch, then use rand accessing in kernel
-  // indices = sort_by_key(range(len), r)
 
   // cu( cudaMalloc( &d_rand, p.n.x * sizeof(float) ) );
   auto d_rand = thrust::device_vector<float>(p.n.x); // sort_by_key() requires device vectors
@@ -223,8 +239,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   curandGenerator_t generator;
   init_random(&generator);
 
-  //
-  // assert(p.n.x > 1);
   cudaDeviceSynchronize();
   // curandGenerateUniform(generator, d_rand_ptr, p.n.x);
   cuR( curandGenerateUniform(generator, d_rand_ptr, p.n.x * sizeof(float) / 32) );
@@ -239,6 +253,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
   // init randoms
   thrust::device_vector<size_t> indices(p.n.x);
+  assert(indices.begin()[0] == 0);
+  assert(indices.begin()[0] == 0);
   thrust::counting_iterator<size_t> identity(0);
   thrust::copy_n(identity, p.n.x, indices.begin());
 
@@ -255,6 +271,24 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     thrust::scatter(d_x_original.begin(), d_x_original.end(), indices.begin(), d_x.begin());
     thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
   }
+
+  // if (4) {
+  //   // shuffle v
+  //   auto d_rand_v = thrust::device_vector<float>(p.n.y); // sort_by_key() requires device vectors
+  //   auto d_rand_v_ptr = thrust::raw_pointer_cast(d_rand_v.data());
+
+  //   thrust::device_vector<double> d_v2 = v;
+  //   auto d_v_ptr = thrust::raw_pointer_cast(d_v2.data());
+  //   auto d_v_row_ptr = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_v_ptr );
+  //   const thrust::device_vector<Cartesian<double>> d_v_original (d_v_row_ptr, d_v_row_ptr + p.n.x);
+
+  //   thrust::device_vector<size_t> indices_v(p.n.y);
+  //   thrust::copy_n(identity, p.n.y, indices.begin());
+  //   assert(indices.begin()[0] == 0);
+  //   thrust::sort_by_key(d_rand_v.begin(), d_rand_v.end(), indices_v.begin());
+  //   thrust::scatter(d_v_original.begin(), d_v_original.end(), indices_v.begin(), d_v2.begin());
+  // }
+
 
   // if (0) {
   //   // this throws [functions.cu:28] CUDA Runtime Error: an illegal memory access was encountered
@@ -320,13 +354,19 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   // }
   //
 
-  const size_t min_n_datapoints = 1000; // before convergence computation
-  unsigned int
-    i_shuffle = 0,
-    i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams), // number of batches between shuffles
-    batches_between_convergence = p.batch_size.x > min_n_datapoints ? 1 : CEIL(min_n_datapoints, p.batch_size.x);
+  const size_t
+    min_n_datapoints = 1000, // before convergence computation
+    batches_between_convergence = p.batch_size.x > min_n_datapoints ? 1 : CEIL(min_n_datapoints, p.batch_size.x),
+    //      - TODO make dependent on batch_size.x?
+    i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
+  size_t
+    i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
 
-  if (i_shuffle_max * p.batch_size.x >= p.n.x) i_shuffle_max--;
+  if (randomize && i_shuffle_max * p.batch_size.x >= p.n.x) {
+    printf("TODO?, p.n.x: %zu\n", p.n.x);
+    // i_shuffle_max--;
+    assert(0);
+  }
 
   const bool randomize = 1 && p.n.x > 1 && p.n_batches.x > 1;
   auto compare_func = [&](auto m){ return m < p.n_batches.y;};
@@ -350,6 +390,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         thrust::scatter(d_x_original.begin(), d_x_original.end(), indices.begin(), d_x.begin());
         thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
       }
+      // cudaDeviceSynchronize();
 
       // reset
       i_shuffle = 0;
@@ -370,9 +411,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                         streams[i_stream]);
       if (n == 0)
         assert(!converging[i_stream]);
-      // // TODO memset can be avoided by directly overwriting the sum_rows result
-      // if (n == 0)
-      //   cu( cudaMemsetAsync(d_y_sum_ptr, 0, d_y_sum[i_stream].size * sizeof(WAVE), streams[i_stream]) );
 
       // Derive current batch size in case of underutilized x-batches
       size_t local_batch_size = p.batch_size.x;
@@ -394,9 +432,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         (p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
          p.batch_size.x,
          d_x_ptr + n_offset, d_u_ptr + n_offset * DIMS,
-         // d_x_ptr + n_offset, d_u_vector_ptr + n_offset * DIMS,
          d_v[i_stream].data, d_y_tmp[i_stream].data, append_result);
+      i_shuffle++;
     }
+
     for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const size_t
         n = n_per_stream[i_stream],
@@ -404,17 +443,15 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         n_datapoints = (n+1) * p.batch_size.x;
       if (m >= p.n_batches.y) continue;
 
-      // bool finished = false;
-      // finished[i_stream] = false;
-
       // if (randomize && n >= (p.n_batches.x - 1) / 2)
-      //   finished = true;
+      //   finished[i_stream] = true;
       // if (!randomize && n >= p.n_batches.x - 1)
-      //   finished = true;
+      //   finished[i_stream] = true;
       if (n >= p.n_batches.x - 1)
         finished[i_stream] = true;
 
-      assert(n <= p.n_batches.x);
+      // if (n >= 1)
+      //   finished[i_stream] = true;
 
       if (finished[i_stream] || n_datapoints > min_n_datapoints) {
         // TODO instead of memset, do
@@ -426,7 +463,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
         if (!finished[i_stream] && converging[i_stream] && n % batches_between_convergence == 0) {
           // TODO make threshold dependent on max distance?
-          const double threshold = 1e-3;
+          const double threshold = 1e-4;
           const double
             scale_a = 1. / (double) n_datapoints,
             scale_b = 1. / ( (double) (n+1 - batches_between_convergence) * p.batch_size.x); // to re-normalize the prev result
@@ -465,28 +502,21 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     }
 
     for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
-      const size_t
-        n = n_per_stream[i_stream],
-        m = m_per_stream[i_stream],
-        n_datapoints = (n+1) * p.batch_size.x;
       if (finished[i_stream]) {
+        const size_t
+          n = n_per_stream[i_stream],
+          m = m_per_stream[i_stream],
+          n_datapoints = (n+1) * p.batch_size.x;
+        assert(m < p.n_batches.y);
         const double div_by_n = 1. / (double) n_datapoints;
-        // const double div_by_n = 1.;
         // TODO add dedicated loop for better work distribution (similar to in func transform_full)
         // TODO stage copy-phase of next batch before copy/sync?
         cudaStreamSynchronize(streams[i_stream]);
         for (size_t j = 0; j < p.batch_size.y; ++j) {
-          // save average w.r.t the number of samples used
-          // TODO transformation_full compatible with this average
-          // assert(!isinf(div_by_n));
-          // assert(!isnan(div_by_n));
-          // assert(!isinf(y_pinned[i_stream][j].x));
-          // assert(!isnan(y_pinned[i_stream][j].x));
+          // save average w.r.t the number of samples used per y-batch
+          // TODO make transformation_full compatible with this average
           y[j + m * p.batch_size.y].x = y_pinned[i_stream][j].x * div_by_n;
           y[j + m * p.batch_size.y].y = y_pinned[i_stream][j].y * div_by_n;
-          // assert(!isinf(y[j + m * p.batch_size.y].x));
-          // assert(!isnan(y[j + m * p.batch_size.y].x));
-          // if (m == 0 && n == 0) printf("y[00]: <%e, %e>\n", y[j + m * p.batch_size.y].x, y[j + m * p.batch_size.y].y);
         }
 
         n_per_stream[i_stream] = 0;
@@ -495,7 +525,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         // converged[i_stream] = false;
         finished[i_stream] = false;
       }
-      i_shuffle++;
     }
   } // end while
 
@@ -521,7 +550,15 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   cu( cudaFree(d_v_ptr       ) );
   cu( cudaFreeHost(v_pinned_ptr ) );
   cu( cudaFreeHost(y_pinned_ptr ) );
-  return y;
+
+
+  // return y;
+  auto y2 = y;
+  for (size_t i = 0; i < map.size(); ++i)
+    for (int dim = 0; dim < DIMS; ++dim)
+      y2[map[i]] = {y[i].x, y[i].y};
+
+  return y2;
 }
 
 // template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>

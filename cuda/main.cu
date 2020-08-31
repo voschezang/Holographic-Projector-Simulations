@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
       const Cartesian<double> projection_offset = {x: params.quadrant_projection ? width / 2. : 0.,
                                                    y: params.quadrant_projection ? height / 2. : 0.,
                                                    z: lerp(params.projection_z_offset, ratio)};
-      assert(!params.quadrant_projection);
+      // assert(!params.quadrant_projection); // TODO rm?
       const auto z_plane = Plane {width: width,
                                   offset: {x: obj_offset.x + projection_offset.x,
                                            y: obj_offset.y + projection_offset.y,

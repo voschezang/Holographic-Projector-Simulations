@@ -53,10 +53,12 @@ Params read_args(int argc, char **argv) {
 
      algorithm: 2,
      quadrant_projection: false,
+     /* quadrant_projection: true, */
      randomize: false,
      /* randomize: true, */
      n_streams: 16,
-     thread_size: {4, 32},
+     /* thread_size: {4, 32}, */
+     thread_size: {4, 16},
      blockDim: {BLOCKDIMX, BLOCKDIMY, 1},
      gridDim: {GRIDDIMX, GRIDDIMY, 1}
     };
