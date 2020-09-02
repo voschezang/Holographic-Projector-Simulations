@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <cuComplex.h>
 #include <curand.h>
+#include <curand_kernel.h>
 #include <stdlib.h>
 #include <cuda_profiler_api.h>
 #include <thrust/host_vector.h> // unused in this file but causes error if omitted

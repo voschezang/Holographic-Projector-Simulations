@@ -250,8 +250,23 @@ inline void sum_rows(const size_t width, const size_t n_rows, cublasHandle_t han
 //   kernel::reduce_rows<<< 1,1,0, stream >>>(x_ptr, width, n_rows, 0.0, thrust::plus<double>(), y_ptr);
 // }
 
-  ///////////////////////////////////////////////////////////////////////////////////
-  //////////////////////////////////////////////////////////////////////////////////
+__global__ void init_rng(curandState *state, const unsigned int seed, const unsigned int i_stream) {
+  // seed should be unique for each experiment and may have to be reset after each kernel launch
+  const dim3
+    tid (blockIdx.x * blockDim.x + threadIdx.x,
+         blockIdx.y * blockDim.y + threadIdx.y),
+    gridSize (blockDim.x * gridDim.x,
+              blockDim.y * gridDim.y);
+  const unsigned int sequence_number = tid.x + tid.y * gridSize.x + i_stream * gridSize.x * gridSize.y;
+  curand_init(seed, sequence_number, 0, &state[sequence_number]);
+
+  // test
+  auto x = curand_uniform(&state[sequence_number]);
+  auto y = curand_uniform_double(&state[sequence_number]);
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
 } // end namespace
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////

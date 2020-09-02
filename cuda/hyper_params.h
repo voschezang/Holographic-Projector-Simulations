@@ -45,7 +45,11 @@
 
 #define GRIDDIMY CEIL(GRIDDIMX, 2)
 
+
+// uncomment to enable:
+
 /* #define U_SHARED */
 /* #define V_SHARED */
+#define RANDOMIZE_SUPERPOSITION_INPUT
 
 #endif

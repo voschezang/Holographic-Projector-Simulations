@@ -58,7 +58,11 @@ __global__ void phasor_displacement(const Polar x, const double *u, const double
 }
 
 template<Direction direction, int blockDim_x, int blockDim_y, Algorithm algorithm, bool shared_memory = false>
-__global__ void per_block(const size_t N, const size_t M, const size_t N_stride,
+__global__ void per_block(
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+                          curandState *state, const unsigned int seed, const unsigned int i_stream,
+#endif
+                          const size_t N, const size_t M, const size_t N_stride,
                           const Polar *__restrict__ x,
                           const double *__restrict__ u,
                           const double *__restrict__ v,
@@ -77,6 +81,28 @@ __global__ void per_block(const size_t N, const size_t M, const size_t N_stride,
          blockIdx.y * blockDim.y + threadIdx.y),
     gridSize (blockDim.x * gridDim.x,
               blockDim.y * gridDim.y);
+
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+  // // reset state after every launch
+  // TODO reset only once per transformation?
+  // const unsigned int i_state = tid.x + tid.y * gridSize.x;
+  const unsigned int i_state = tid.x + tid.y * gridSize.x + i_stream * gridSize.x * gridSize.y;
+  curandState state_local;
+  if (N > gridSize.x) {
+    assert(i_state < (i_stream+1) * gridSize.x * gridSize.y);
+    assert(i_state < 16 * gridSize.x * gridSize.y);
+    assert(524288 == 16 * gridSize.x * gridSize.y);
+  //   // printf("stream %u\n", i_stream);
+  //   // printf("i_state %u\n", i_state);
+  //   // size    524288
+  //   // error at 81727
+  //   // curand_init(seed, i_state, 0, &state[i_state]);
+  //   // if (i_stream == 0)
+  //   curand_init(seed, i_state, 0, &state[i_state]);
+    state_local = state[i_state];
+  }
+  // auto state_local = state[i_state];
+#endif
 
   if (algorithm == Algorithm::Naive) {
     for (size_t n = tid.x; n < N; n += gridSize.x) {
@@ -180,6 +206,27 @@ __global__ void per_block(const size_t N, const size_t M, const size_t N_stride,
 #else
         // ------------------------------------------------------------
         for (size_t n = tid.x; n < N; n += gridSize.x) {
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+          // TODO consider conditional MC, i.e. by caching each row and sampling only from that row
+          if (N > gridSize.x) {
+            // TODO use curand_uniform4
+            // curand_uniform(&state_local);
+            // auto xx = curand_uniform(&state_local);
+            // curand_uniform_double(&state_local);
+            // auto n3 = curand_uniform_double(&state_local);
+            const size_t n2 = N * curand_uniform(&state_local) - 1;
+            // printf("n3: %f\n", n3);
+            // printf("n2: %u\n", n3);
+            // const size_t n2 = N * curand_uniform(&state_local) - 1;
+            // const size_t n2 = N-1;
+            // const size_t n2 = 0;
+            // n2 = 0;
+            // assert(n2 < N);
+            y = cuCadd(y, phasor_displacement<direction>(x[n2], &u[n2 * DIMS], &v[m * DIMS]));
+          }
+          else
+            y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS])); // 2.07954 TFLOPS
+#else
           // double p[3] = {0,0,0}, w[3] = {1,2,3};
 #ifdef V_SHARED
           if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y)
@@ -191,6 +238,7 @@ __global__ void per_block(const size_t N, const size_t M, const size_t N_stride,
           // y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], p)); // 2.07954 TFLOPS
           // y = cuCadd(y, phasor_displacement<direction>({1,2}, w, &v[m * DIMS])); 2.98763 TFLOPS
           // y = cuCadd(y, phasor_displacement<direction>({1,2}, w, p)); // ~3.3 TFLOPS
+#endif
         }
         // ------------------------------------------------------------
 #endif
@@ -239,6 +287,12 @@ __global__ void per_block(const size_t N, const size_t M, const size_t N_stride,
       }
     }
   }
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+  // update global state
+  // TODO only when NOT resetting the state in between kernels
+  if (N > gridSize.x)
+    state[i_state] = state_local;
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

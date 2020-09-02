@@ -35,21 +35,44 @@ inline void cp_batch_data_to_host(const T *d_y, T *y_pinned, const size_t len, c
                         cudaMemcpyDeviceToHost, stream ) );
 }
 
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#define SuperpositionPerBlock(blockDim_y) {                             \
+    assert(blockDim_x * blockDim_y <= 1024);                            \
+    superposition::per_block<direction, blockDim_x, blockDim_y, algorithm, shared_memory> \
+      <<< gridDim, blockDim, 0, stream >>>                              \
+      (state, seed, i_stream,                                           \
+       N, M, width, d_x_ptr, d_u_ptr, d_v, d_y_tmp, append_result);     \
+  }
+#else
 #define SuperpositionPerBlock(blockDim_y) {                             \
     assert(blockDim_x * blockDim_y <= 1024);                            \
     superposition::per_block<direction, blockDim_x, blockDim_y, algorithm, shared_memory> \
       <<< gridDim, blockDim, 0, stream >>>                              \
       (N, M, width, d_x_ptr, d_u_ptr, d_v, d_y_tmp, append_result);     \
   }
+#endif
 
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#define SuperpositionPerBlockHelper(blockDim_x) {                       \
+    superposition_per_block_helper<direction, blockDim_x, algorithm, shared_memory> \
+      (state, seed, i_stream,                                           \
+       gridDim, blockDim, stream,                                       \
+       N, M, width, d_x_ptr, d_u_ptr, d_v, d_y_tmp, append_result);     \
+  }
+#else
 #define SuperpositionPerBlockHelper(blockDim_x) {                       \
     superposition_per_block_helper<direction, blockDim_x, algorithm, shared_memory> \
       (gridDim, blockDim, stream,                                       \
        N, M, width, d_x_ptr, d_u_ptr, d_v, d_y_tmp, append_result);     \
   }
+#endif
 
 template<Direction direction, unsigned int blockDim_x, Algorithm algorithm, bool shared_memory>
-inline void superposition_per_block_helper(const dim3 gridDim, const dim3 blockDim, cudaStream_t stream,
+inline void superposition_per_block_helper(
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+                                           curandState *state, const unsigned int seed, const size_t i_stream,
+#endif
+                                           const dim3 gridDim, const dim3 blockDim, cudaStream_t stream,
                                            const size_t N, const size_t M, const size_t width,
                                            const Polar *d_x_ptr, const double *d_u_ptr, const double *d_v,
                                            WAVE *d_y_tmp, const bool append_result)
@@ -70,7 +93,11 @@ inline void superposition_per_block_helper(const dim3 gridDim, const dim3 blockD
 }
 
 template<Direction direction, Algorithm algorithm, bool shared_memory>
-inline void superposition_per_block(const dim3 gridDim, const dim3 blockDim, cudaStream_t stream,
+inline void superposition_per_block(
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+                                    curandState *state, const unsigned int seed, const size_t i_stream,
+#endif
+                                    const dim3 gridDim, const dim3 blockDim, cudaStream_t stream,
                                     const size_t N, const size_t M, const size_t width,
                                     const Polar *d_x_ptr, const double *d_u_ptr, const double *d_v,
                                     WAVE *d_y_tmp, const bool append_result)
@@ -381,6 +408,33 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   // }
   //
 
+
+
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+  static unsigned int seed = 12345;
+  seed++; // TODO handle properly
+  curandState *rng_state;
+  if (p.n.x > p.gridSize.x) {
+    cu( cudaMalloc(&rng_state, p.n_streams * p.gridSize.x * p.gridSize.y * sizeof(curandState)) );
+    printf("---> max i_state %zu, n streams: %zu\n", p.n_streams * p.gridSize.x * p.gridSize.y, p.n_streams);
+    // curandStatePhilox4_32_10_t *rng_state;
+    // cu( cudaMalloc(&rng_state, n_streams * p.gridSize.x * p.gridSize.y * sizeof(curandStatePhilox4_32_10_t)) );
+    // TODO time different rngs
+    // is MRG32k3a better than default XORWOW?
+    // curandStateMRG32k3a *devMRGStates;
+    // curandStatePhilox4_32_10_t *devPHILOXStates;
+    // for (auto& stream : streams)
+    print("init rng:");
+    cudaDeviceSynchronize();
+    for (auto& i_stream : range(p.n_streams))
+      kernel::init_rng<<<p.gridDim, p.blockDim, 0, streams[i_stream]>>>(rng_state, seed, i_stream);
+    cudaDeviceSynchronize();
+    print("init rng post");
+  }
+#endif
+
+
+
   const size_t
     min_n_datapoints = 1000, // before convergence computation
     batches_between_convergence = p.batch_size.x > min_n_datapoints ? 1 : CEIL(min_n_datapoints, p.batch_size.x),
@@ -389,13 +443,14 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   size_t
     i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
 
+  const bool randomize = 0 && p.n.x > 1 && p.n_batches.x > 1;
+
   if (randomize && i_shuffle_max * p.batch_size.x >= p.n.x) {
     printf("TODO?, p.n.x: %zu\n", p.n.x);
     // i_shuffle_max--;
     assert(0);
   }
 
-  const bool randomize = 1 && p.n.x > 1 && p.n_batches.x > 1;
   auto compare_func = [&](auto m){ return m < p.n_batches.y;};
   while (std::any_of(m_per_stream.begin(), m_per_stream.end(), compare_func)) {
 
@@ -423,7 +478,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       i_shuffle = 0;
     }
 
-    for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
+    for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       const size_t
         n = n_per_stream[i_stream],
         m = m_per_stream[i_stream];
@@ -445,22 +500,38 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         if (p.n.x != p.n_batches.x * p.batch_size.x && n == p.n_batches.x - 1)
           local_batch_size = p.n.x - n * p.batch_size.x;
 
-      const size_t n_offset = (randomize ? i_shuffle : n) * p.batch_size.x;
+      size_t n_offset = (randomize ? i_shuffle : n) * p.batch_size.x;
       assert(i_shuffle_max * p.batch_size.x < p.n.x);
       if (randomize)
         assert(n_offset + p.batch_size.x < p.n.x);
+
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+      if (p.n.x > p.gridSize.x) {
+        // TODO add iteration number for x-data in kernel, i.e. independent control of batch size and number of iterations
+        // (currently the local_batch_size controls both the number of iterations in the kernel and the range of data that is sampled from)
+        // local_batch_size = p.n.x;
+        // n_offset = 0;
+      }
+#endif
 
       // const size_t n_offset = n * p.batch_size.x;
       // Note, appending result to prev results slows down computation
       const bool append_result = n > 0 && !converging[i_stream];
       // const bool append_result = n > 0 && n_datapoints < min_n_datapoints;
 
-      superposition_per_block<direction, algorithm, shared_memory> \
-        (p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
+      superposition_per_block<direction, algorithm, shared_memory>  \
+        (
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+         rng_state, seed, i_stream,
+#endif
+         p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
          p.batch_size.x,
          d_x_ptr + n_offset, d_u_ptr + n_offset * DIMS,
-         d_v[i_stream].data, d_y_tmp[i_stream].data, append_result);
+         d_v[i_stream].data, d_y_tmp[i_stream].data, append_result
+         );
+#ifndef RANDOMIZE_SUPERPOSITION_INPUT
       i_shuffle++;
+#endif
     }
 
     for (size_t i_stream = 0; i_stream < p.n_streams; ++i_stream) {
@@ -490,7 +561,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
         if (!finished[i_stream] && converging[i_stream] && n % batches_between_convergence == 0) {
           // TODO make threshold dependent on max distance?
-          const double threshold = 1e-4;
+          // const double threshold = 1e-4;
+          const double threshold = 0;
           const double
             prev_n = (n+1 - batches_between_convergence) * p.batch_size.x,
             scale_a = 1. / (double) n_datapoints,
@@ -572,12 +644,15 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   for (auto& handle : handles)
     cuB( cublasDestroy(handle) );
 
-  cu( cudaFree(d_y_tmp_ptr ) );
-  cu( cudaFree(d_y_sum_ptr ) );
+  if (p.n.x > p.gridSize.x)
+    cu( cudaFree(rng_state) );
+
+  cu( cudaFree(d_y_tmp_ptr  ) );
+  cu( cudaFree(d_y_sum_ptr  ) );
   cu( cudaFree(d_y_prev_ptr ) );
-  cu( cudaFree(d_v_ptr       ) );
-  cu( cudaFreeHost(v_pinned_ptr ) );
-  cu( cudaFreeHost(y_pinned_ptr ) );
+  cu( cudaFree(d_v_ptr      ) );
+  cu( cudaFreeHost(v_pinned_ptr) );
+  cu( cudaFreeHost(y_pinned_ptr) );
 
 
   // only in case of second transformation

@@ -55,7 +55,7 @@ struct Params {
     quadrant_projection,
     randomize; // TODO add option to compute local average
 
-  size_t n_streams;
+  unsigned int n_streams;
   dim2 thread_size;
   dim3 blockDim, gridDim;
   /* std::string input_filename; // input filename or empty string, positions will be scaled to `obj_width` */
