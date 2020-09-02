@@ -665,8 +665,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   for (auto& handle : handles)
     cuB( cublasDestroy(handle) );
 
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
   if (p.n.x > p.gridSize.x)
     cu( cudaFree(rng_state) );
+#endif
 
   cu( cudaFree(d_y_tmp_ptr  ) );
   cu( cudaFree(d_y_sum_ptr  ) );
@@ -950,8 +952,8 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   // case 3: y = transform<direction, Algorithm::Alt, true>(x, u, v, p); break;
   // default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
   // }
-  y = transform<direction, Algorithm::Alt, false>(x, u, v, p);
-  // y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
+  // y = transform<direction, Algorithm::Alt, false>(x, u, v, p);
+  y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
 
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
@@ -967,7 +969,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     printf("ref v[2]: %e\n", v[2]);
     const bool shared_memory = false;
-    auto y_reference = transform<direction, Algorithm::Alt, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
+    auto y_reference = transform_full<direction, Algorithm::Alt, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
     // let full reference wave (amp+phase) interfere with original wave
     add_complex(y, y_reference);
