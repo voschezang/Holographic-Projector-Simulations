@@ -969,7 +969,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     printf("ref v[2]: %e\n", v[2]);
     const bool shared_memory = false;
-    auto y_reference = transform_full<direction, Algorithm::Alt, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
+    auto y_reference = transform_full<Direction::Forwards, Algorithm::Alt, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
     // let full reference wave (amp+phase) interfere with original wave
     add_complex(y, y_reference);
