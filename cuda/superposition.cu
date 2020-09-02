@@ -205,15 +205,17 @@ __global__ void per_block(
         }
 #else
         // ------------------------------------------------------------
-        for (size_t n = tid.x; n < N; n += gridSize.x) {
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
-          // TODO consider conditional MC, i.e. by caching each row and sampling only from that row
-          if (N > gridSize.x) {
+        if (N > gridSize.x)
+          for (size_t n = 0; n < thread_size_x; ++n) {
             // TODO use curand_uniform4
             // curand_uniform(&state_local);
             // auto xx = curand_uniform(&state_local);
             // curand_uniform_double(&state_local);
             // auto n3 = curand_uniform_double(&state_local);
+            const size_t n_offset = gix * local_batch_size,
+              n_range = sample_bin_size;
+
             const size_t n2 = N * curand_uniform(&state_local) - 1;
             // printf("n3: %f\n", n3);
             // printf("n2: %u\n", n3);
@@ -224,9 +226,9 @@ __global__ void per_block(
             // assert(n2 < N);
             y = cuCadd(y, phasor_displacement<direction>(x[n2], &u[n2 * DIMS], &v[m * DIMS]));
           }
-          else
-            y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS])); // 2.07954 TFLOPS
+        else
 #else
+          for (size_t n = tid.x; n < N; n += gridSize.x) {
           // double p[3] = {0,0,0}, w[3] = {1,2,3};
 #ifdef V_SHARED
           if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y)

@@ -436,12 +436,27 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
 
   const size_t
-    min_n_datapoints = 1000, // before convergence computation
-    batches_between_convergence = p.batch_size.x > min_n_datapoints ? 1 : CEIL(min_n_datapoints, p.batch_size.x),
+    min_n_datapoints = 1024, // before convergence computation
+    batches_between_convergence = p.batch_size.x >= min_n_datapoints ? 1 : CEIL(min_n_datapoints, p.batch_size.x),
     //      - TODO make dependent on batch_size.x?
     i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
   size_t
     i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
+
+#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+  if (p.n.x > p.gridSize.x)
+    assert(p.n.x >= min_n_datapoints); // TODO not implemented
+
+  // used iff (p.n.x > p.gridSize.x)
+  const size_t
+    min_kernels_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
+    n_sample_bins_total = min_kernels_per_estimate * p.batch_size.x,
+    sample_bin_size = CEIL(p.n.x, n_sample_bins_total);
+  // n_sample_bins_per_kernel = (n_sample_bins_total)
+  if (p.n.x > p.gridSize.x)
+    printf("N: %zu, min_kernels_per_estimate: %zu, n_sample_bins_total: %zu, sample_bin_size: %zu\n",
+           p.n.x, min_kernels_per_estimate, n_sample_bins_total, sample_bin_size);
+#endif
 
   const bool randomize = 0 && p.n.x > 1 && p.n_batches.x > 1;
 
@@ -511,6 +526,12 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         // (currently the local_batch_size controls both the number of iterations in the kernel and the range of data that is sampled from)
         // local_batch_size = p.n.x;
         // n_offset = 0;
+
+        // min_kernels_per_estimate, n_sample_bins_total, sample_bin_size
+        const size_t n_relative = n * (p.batch_size.x) / min_n_datapoints;
+        local_batch_size = p.batch_size.x * sample_bin_size;
+        n_offset = local_batch_size * n_relative;
+        assert(local_batch_size * (1+n_relative) <= p.n.x);
       }
 #endif
 
@@ -522,7 +543,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       superposition_per_block<direction, algorithm, shared_memory>  \
         (
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
-         rng_state, seed, i_stream,
+         rng_state, seed, i_stream, p.thread_size.x, sample_bin_size
 #endif
          p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
          p.batch_size.x,
@@ -551,7 +572,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       // if (n >= 1)
       //   finished[i_stream] = true;
 
-      if (finished[i_stream] || n_datapoints > min_n_datapoints) {
+      if (finished[i_stream] || n_datapoints >= min_n_datapoints) {
         // TODO instead of memset, do
         // after the first sum_rows call, the following results should be added the that first result
         const auto beta = converging[i_stream] ? WAVE {1,0} : WAVE {0,0};
