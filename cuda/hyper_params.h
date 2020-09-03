@@ -8,7 +8,7 @@
  */
 
 /* #define READ_INPUT */
-#define PROJECT_PHASE 1
+#define PROJECT_PHASE 0
 
 /* #define N_sqrt 4 */
 /* #define N_sqrt 8 */
@@ -17,9 +17,9 @@
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
 /* #define N_sqrt 256 */
-#define N_sqrt 512
+/* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
-/* #define N_sqrt 1440 */
+#define N_sqrt 1440
 
 #if (N_sqrt <= 32)
 #define BLOCKDIMX 4
@@ -50,6 +50,6 @@
 
 /* #define U_SHARED */
 /* #define V_SHARED */
-#define RANDOMIZE_SUPERPOSITION_INPUT
+/* #define RANDOMIZE_SUPERPOSITION_INPUT */
 
 #endif

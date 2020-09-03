@@ -18,25 +18,26 @@ Params read_args(int argc, char **argv) {
   /* const double z_offset = 0.35; */
   /* const double z_offset = 0.01; */
   /* const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset}; */
-  const auto obj_z_offset = Range<double> {min: 0.2, max: 0.01};
+  const auto obj_z_offset = Range<double> {min: 0.3, max: 0.3};
   /* const double projection_width = N_sqrt * 7e-6; */
   /* const double obj_width =  PROJECTOR_WIDTH; */
   /* const double obj_width =  N_sqrt * 7e-6; */
   /* const double obj_width =  0.00003; */
-  const double obj_width =  0.0003;
+  /* const double obj_width =  0.0003; */
+  const double obj_width =  0.003;
   // projector z_offset is always zero
   // TODO use json file (similar to meta data)
   // TODO add rand seed
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
-                    projection: 1}, // number of projection planes per obj plane
+                    projection: 0}, // number of projection planes per obj plane
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,
-                    projector: 1.,
-                    /* projector: HD, */
+                    /* projector: 1., */
+                    projector: HD,
                     projection: 1.},
 
      /* obj_shape: Shape::DottedCircle, // TODO */
@@ -44,8 +45,8 @@ Params read_args(int argc, char **argv) {
                    y: {min: 0.0, max: 0.0},
                    z: obj_z_offset},
 
-     /* obj_width: {min: 0.003, max: 0.01}, */
-     obj_width: {min: obj_width, max: obj_width},
+     obj_width: {min: 0.0025, max: 0.0025},
+     /* obj_width: {min: obj_width, max: obj_width}, */
      projector_width: {min: 1920 * 7e-6, max: 1920 * 7e-6},
      projection_width: {min: obj_width * 1.05, max: obj_width * 1.05},
      /* projection_width: {min: 0.000018, max: 0.01}, */
