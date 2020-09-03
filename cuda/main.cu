@@ -84,7 +84,8 @@ int main(int argc, char** argv) {
   printf("x.amp, uniform_intensity: %d\n", uniform_intensity);
   auto x = std::vector<Polar>(n_per_plane.obj, {amp: 1, phase: 0.});
   if (!uniform_intensity) {
-    auto amp = linspace(x.size(), 0, 1);
+    // descending, s.t. there is always a high-amplitude datapoint
+    auto amp = linspace(x.size(), 1, 0);
     for (auto& i : range(x.size()))
       x[i].amp = amp[i];
   }
