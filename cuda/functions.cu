@@ -19,10 +19,21 @@
 // host superposition functions
 
 template<typename T = double>
-inline void cp_batch_data_to_device(const T *v, T *v_pinned, CUDAVector<T> d_v, cudaStream_t stream) {
+inline void cp_batch_data_to_device(const std::vector<T> v, const size_t v_offset,
+                                    T *v_pinned, CUDAVector<T> d_v, cudaStream_t stream) {
   // any host memory involved in async/overlapping data transfers must be page-locked
-  for (size_t i = 0; i < d_v.size; ++i)
-    v_pinned[i] = v[i];
+  // Note that d_v.size <= v.size
+  const auto
+    max_len = v.size() - v_offset,
+    len = MIN(d_v.size, max_len),
+    remaining_len = d_v.size - len;
+  assert(v_offset <= v.size());
+  assert(len <= max_len);
+  assert(len + v_offset <= v.size());
+  for (size_t i = 0; i < len; ++i)
+    v_pinned[i] = v[v_offset + i];
+  if (remaining_len)
+    memset(v_pinned + len, 0, remaining_len * sizeof(T));
 
   cu ( cudaMemcpyAsync( d_v.data, v_pinned, d_v.size * sizeof(T),
                         cudaMemcpyHostToDevice, stream ) );
@@ -187,33 +198,32 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   // only in case of second transformation
-  if (p.n.x > p.batch_size.x)
-    if (reorder_v) {
-      // reorder v data s.t. each grid represents a square area in space
-      // neglect boundary cells/pixels
+  if (reorder_v && p.n.x > p.batch_size.x) {
+    // reorder v data s.t. each grid represents a square area in space
+    // neglect boundary cells/pixels
 
-      // assume aspect ratio = 1
-      size_t m_sqrt = (size_t) sqrt(p.n.y);
-      assert(m_sqrt*m_sqrt == p.n.y);
-      size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
-      size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
-      assert(m_sqrt > 0);
+    // assume aspect ratio = 1
+    size_t m_sqrt = (size_t) sqrt(p.n.y);
+    assert(m_sqrt*m_sqrt == p.n.y);
+    size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
+    size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
+    assert(m_sqrt > 0);
 
-      for (size_t i = 0; i < m_sqrt2; ++i) {
-        for (size_t j = 0; j < m_sqrt2; ++j) {
-          dim2
-            i_batch = {i / G, j / G},
-            g = {i % G, j % G};
-          size_t i_transpose = (i_batch.x * m_sqrt2/G + i_batch.y) * G*G + g.x * G + g.y;
-          for (int dim = 0; dim < DIMS; ++dim) {
-            // v[Ix(i_transpose, dim)];
-            v[Ix(i_transpose, dim)] = v2[Ix2D(i,j,dim,m_sqrt)];
-            // v[Ix2D(i_batch.x * G + g.x,
-            //        i_batch.y * G + g.y, dim, m_sqrt2)] = v2[Ix2D(i,j,dim,m_sqrt)];
-          }
+    for (size_t i = 0; i < m_sqrt2; ++i) {
+      for (size_t j = 0; j < m_sqrt2; ++j) {
+        dim2
+          i_batch = {i / G, j / G},
+          g = {i % G, j % G};
+        size_t i_transpose = (i_batch.x * m_sqrt2/G + i_batch.y) * G*G + g.x * G + g.y;
+        for (int dim = 0; dim < DIMS; ++dim) {
+          // v[Ix(i_transpose, dim)];
+          v[Ix(i_transpose, dim)] = v2[Ix2D(i,j,dim,m_sqrt)];
+          // v[Ix2D(i_batch.x * G + g.x,
+          //        i_batch.y * G + g.y, dim, m_sqrt2)] = v2[Ix2D(i,j,dim,m_sqrt)];
         }
       }
     }
+  }
 
 
 
@@ -503,7 +513,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         printf("\tbatch %0.3fk / %0.3fk\n", m * 1e-3, p.n_batches.y * 1e-3);
 
       if (n == 0)
-        cp_batch_data_to_device<double>(&v[m * d_v[i_stream].size],
+        cp_batch_data_to_device<double>(v, m * d_v[i_stream].size,
                                         v_pinned[i_stream], d_v[i_stream],
                                         streams[i_stream]);
       if (n == 0)
@@ -638,6 +648,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           // TODO make transformation_full compatible with this average
           y[j + m * p.batch_size.y].x = y_pinned[i_stream][j].x * div_by_n;
           y[j + m * p.batch_size.y].y = y_pinned[i_stream][j].y * div_by_n;
+          // TODO assert y index is within bounds
         }
 
         n_per_stream[i_stream] = 0;
@@ -679,41 +690,40 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
 
   // only in case of second transformation
-  if (p.n.x > p.batch_size.x)
-    if (reorder_v) {
-      // revert y data (v data)
-      assert(!shuffle_v);
-      // assume aspect ratio = 1
-      size_t m_sqrt = (size_t) sqrt(p.n.y);
-      assert(m_sqrt*m_sqrt == p.n.y);
-      size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
-      size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
-      assert(m_sqrt > 0);
+  if (reorder_v && p.n.x > p.batch_size.x) {
+    // revert y data (v data)
+    assert(!shuffle_v);
+    // assume aspect ratio = 1
+    size_t m_sqrt = (size_t) sqrt(p.n.y);
+    assert(m_sqrt*m_sqrt == p.n.y);
+    size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
+    size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
+    assert(m_sqrt > 0);
 
-      auto y2 = y;
-      for (size_t i = 0; i < m_sqrt2; ++i) {
-        for (size_t j = 0; j < m_sqrt2; ++j) {
-          dim2
-            i_batch = {i / G, j / G},
-            g = {i % G, j % G};
-          size_t i_transpose = (i_batch.x * m_sqrt2/G + i_batch.y) * G*G + g.x * G + g.y;
-          y2[i * m_sqrt + j] = y[i_transpose];
-          if (reorder_v_rm_phase) {
-            if (i_batch.x % 2 == 0)
-              if (i_batch.y % 2 == 0)
-                y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
-              else
-                y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
+    auto y2 = y;
+    for (size_t i = 0; i < m_sqrt2; ++i) {
+      for (size_t j = 0; j < m_sqrt2; ++j) {
+        dim2
+          i_batch = {i / G, j / G},
+          g = {i % G, j % G};
+        size_t i_transpose = (i_batch.x * m_sqrt2/G + i_batch.y) * G*G + g.x * G + g.y;
+        y2[i * m_sqrt + j] = y[i_transpose];
+        if (reorder_v_rm_phase) {
+          if (i_batch.x % 2 == 0)
+            if (i_batch.y % 2 == 0)
+              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
             else
-              if (i_batch.y % 2 == 0)
-                y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 3);
-              else
-                y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 4.5);
-          }
+              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
+          else
+            if (i_batch.y % 2 == 0)
+              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 3);
+            else
+              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 4.5);
         }
       }
-      return y2;
     }
+    return y2;
+  }
 
   if (shuffle_v) {
     auto y2 = y;
@@ -723,8 +733,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
     return y2;
   }
-  else
-    return y;
+  return y;
 }
 
 template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
@@ -844,7 +853,7 @@ inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
           printf("\tbatch %0.3fk / %0.3fk\n", m * 1e-3, p.n_batches.y * 1e-3);
 
         if (n == 0)
-          cp_batch_data_to_device<double>(&v[m * d_v[i_stream].size],
+          cp_batch_data_to_device<double>(v, m * d_v[i_stream].size,
                                           v_pinned[i_stream], d_v[i_stream],
                                           streams[i_stream]);
 
@@ -952,8 +961,8 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   // case 3: y = transform<direction, Algorithm::Alt, true>(x, u, v, p); break;
   // default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
   // }
-  // y = transform<direction, Algorithm::Alt, false>(x, u, v, p);
-  y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
+  y = transform<direction, Algorithm::Alt, false>(x, u, v, p);
+  // y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
 
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);

@@ -31,7 +31,7 @@ Params read_args(int argc, char **argv) {
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
-                    projection: 0}, // number of projection planes per obj plane
+                    projection: 1}, // number of projection planes per obj plane
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
