@@ -257,10 +257,12 @@ __global__ void init_rng(curandState *state, const unsigned int seed, const unsi
          blockIdx.y * blockDim.y + threadIdx.y),
     gridSize (blockDim.x * gridDim.x,
               blockDim.y * gridDim.y);
-  const unsigned int sequence_number = tid.x + tid.y * gridSize.x + i_stream * gridSize.x * gridSize.y;
+  const unsigned int
+    global_tid = tid.x + tid.y * gridSize.x,
+    sequence_number = global_tid + i_stream * gridSize.x * gridSize.y;
   curand_init(seed, sequence_number, 0, &state[sequence_number]);
 
-  // test
+  // test TODO rm
   auto x = curand_uniform(&state[sequence_number]);
   auto y = curand_uniform_double(&state[sequence_number]);
 }

@@ -58,8 +58,9 @@ Params read_args(int argc, char **argv) {
      randomize: false,
      /* randomize: true, */
      n_streams: 16,
-     /* thread_size: {4, 32}, */
-     thread_size: {4, 16},
+     thread_size: {4, 32},
+     /* thread_size: {4, 16}, */
+     /* thread_size: {1, 1}, */
      blockDim: {BLOCKDIMX, BLOCKDIMY, 1},
      gridDim: {GRIDDIMX, GRIDDIMY, 1}
     };
