@@ -75,9 +75,6 @@ __global__ void per_block(
 #ifdef DEBUG
   assert(blockDim.x * blockDim.y * blockDim.z <= 1024); // max number of threads per block
 #endif
-  // const auto
-  //   tid = blockIdx * blockDim + threadIdx,
-  //   gridSize = blockDim * gridDim;
   const dim3
     tid (blockIdx.x * blockDim.x + threadIdx.x,
          blockIdx.y * blockDim.y + threadIdx.y),
@@ -87,25 +84,14 @@ __global__ void per_block(
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
   // // reset state after every launch
   // TODO reset only once per transformation?
-  // const unsigned int i_state = tid.x + tid.y * gridSize.x;
+
   const unsigned int global_tid = tid.x + tid.y * gridSize.x;
   const unsigned int i_state = global_tid + i_stream * gridSize.x * gridSize.y;
-  curandState state_local;
-  if (N > gridSize.x) {
-    // assert(i_state < (i_stream+1) * gridSize.x * gridSize.y);
-    // assert(i_state < 16 * gridSize.x * gridSize.y);
-    // assert(524288 == 16 * gridSize.x * gridSize.y);
-  //   // printf("stream %u\n", i_stream);
-  //   // printf("i_state %u\n", i_state);
-  //   // size    524288
-  //   // error at 81727
-  //   // curand_init(seed, i_state, 0, &state[i_state]);
-  //   // if (i_stream == 0)
-  //   curand_init(seed, i_state, 0, &state[i_state]);
-    state_local = state[i_state];
-  }
-  // auto state_local = state[i_state];
   const size_t stride_x = gridSize.x * bin_size;
+  curandState state_local;
+  if (N > gridSize.x)
+    state_local = state[i_state];
+
 #endif
 
   if (algorithm == Algorithm::Naive) {
@@ -211,36 +197,12 @@ __global__ void per_block(
         // ------------------------------------------------------------
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
         if (N > gridSize.x) {
-
-          // const size_t bin_size, const size_t bins_per_thread,
-          if (stride_x * bins_per_thread != N)
-            printf("not equal N\n");
-          assert(stride_x * bins_per_thread == N);
+          // assert(stride_x * bins_per_thread == N);
           for (size_t i_bin = 0; i_bin < bins_per_thread; ++i_bin) {
             // for (size_t n = global_tid * ; n <  ++n) {
             const size_t n_offset = i_bin * stride_x;
-
             // TODO use curand_uniform4
-            // curand_uniform(&state_local);
-            // auto xx = curand_uniform(&state_local);
-            // curand_uniform_double(&state_local);
-            // auto n3 = curand_uniform_double(&state_local);
-            // const size_t n_offset = gix * local_batch_size,
-            //   n_range = sample_bin_size;
-
-            // Note, N is unused and n may exceed N
             const size_t n = n_offset + bin_size * curand_uniform(&state_local) - 1;
-            // const size_t n = n_offset;
-            // if (tid.x == 0 && tid.y == 0)
-            //   printf("thread n: %zu \n", n);
-
-            // assert(n < N);
-            // printf("n3: %f\n", n3);
-            // printf("n2: %u\n", n3);
-            // const size_t n2 = N * curand_uniform(&state_local) - 1;
-            // const size_t n2 = N-1;
-            // const size_t n2 = 0;
-            // n2 = 0;
             y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
           }
         }
