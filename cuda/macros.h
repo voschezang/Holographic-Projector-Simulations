@@ -20,7 +20,8 @@
 #define LAMBDA 0.65e-6 // 650 nm
 #define TWO_PI (2 * M_PI)
 #define TWO_PI_OVER_LAMBDA (TWO_PI / LAMBDA)
-#define DISTANCE_REFERENCE_WAVE 0.24 // in meters
+/* #define DISTANCE_REFERENCE_WAVE 0.24 // in meters */
+#define DISTANCE_REFERENCE_WAVE 0.25 // in meters
 /* #define PROJECTOR_WIDTH 1.344e-2 // projector width = 1920 x 7e-6 */
 /* #define PROJECTOR_WIDTH (1920 * 7e-6) // fixed width to allow undersampling (fewer pixels) */
 /* /\* #define PROJECTOR_WIDTH (N_sqrt * 7e-6) *\/ */

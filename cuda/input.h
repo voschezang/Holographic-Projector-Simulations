@@ -15,16 +15,16 @@ void show_help(const char *p) {
 namespace input {
 
 Params read_args(int argc, char **argv) {
-  /* const double z_offset = 0.35; */
+  const double z_offset = 0.26;
   /* const double z_offset = 0.01; */
   /* const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset}; */
-  const auto obj_z_offset = Range<double> {min: 0.3, max: 0.3};
+  const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset};
   /* const double projection_width = N_sqrt * 7e-6; */
   /* const double obj_width =  PROJECTOR_WIDTH; */
   /* const double obj_width =  N_sqrt * 7e-6; */
   /* const double obj_width =  0.00003; */
-  /* const double obj_width =  0.0003; */
-  const double obj_width =  0.003;
+  const double obj_width =  0.0003;
+  /* const double obj_width =  0.003; */
   // projector z_offset is always zero
   // TODO use json file (similar to meta data)
   // TODO add rand seed
@@ -58,9 +58,9 @@ Params read_args(int argc, char **argv) {
      randomize: false,
      /* randomize: true, */
      n_streams: 16,
-     thread_size: {4, 32},
+     /* thread_size: {4, 32}, */
      /* thread_size: {4, 16}, */
-     /* thread_size: {1, 1}, */
+     thread_size: {4, 4},
      blockDim: {BLOCKDIMX, BLOCKDIMY, 1},
      gridDim: {GRIDDIMX, GRIDDIMY, 1}
     };

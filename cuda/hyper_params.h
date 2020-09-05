@@ -16,40 +16,43 @@
 /* #define N_sqrt 32 */
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
-/* #define N_sqrt 256 */
-#define N_sqrt 512
+#define N_sqrt 256
+/* #define N_sqrt 512 */
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 
-#if (N_sqrt <= 32)
+/* #if (N_sqrt <= 32) */
+/* #define BLOCKDIMX 4 */
+/* #elif (N_sqrt <= 64) */
+/* #define BLOCKDIMX 8 */
+/* #elif (N_sqrt <= 128) */
+/* #define BLOCKDIMX 16 */
+/* #else */
+/* #define BLOCKDIMX 32 */
+/* #endif */
+
+/* #if (BLOCKDIMX <= 32) */
+/* #define BLOCKDIMY BLOCKDIMX */
+/* #else */
+/* #define BLOCKDIMY CEIL(1024, BLOCKDIMX) */
+/* #endif */
+
+/* #if (N_sqrt <= 64) */
+/* #define GRIDDIMX 4 */
+/* #else */
+/* #define GRIDDIMX 8 */
+/* #endif */
+
+/* #define GRIDDIMY CEIL(GRIDDIMX, 2) */
 #define BLOCKDIMX 4
-#elif (N_sqrt <= 64)
-#define BLOCKDIMX 8
-#elif (N_sqrt <= 128)
-#define BLOCKDIMX 16
-#else
-#define BLOCKDIMX 32
-#endif
-
-#if (BLOCKDIMX <= 32)
-#define BLOCKDIMY BLOCKDIMX
-#else
-#define BLOCKDIMY CEIL(1024, BLOCKDIMX)
-#endif
-
-#if (N_sqrt <= 64)
+#define BLOCKDIMY 4
 #define GRIDDIMX 4
-#else
-#define GRIDDIMX 8
-#endif
-
-#define GRIDDIMY CEIL(GRIDDIMX, 2)
-
+#define GRIDDIMY 4
 
 // uncomment to enable:
 
 /* #define U_SHARED */
 /* #define V_SHARED */
-/* #define RANDOMIZE_SUPERPOSITION_INPUT */
+#define RANDOMIZE_SUPERPOSITION_INPUT
 
 #endif

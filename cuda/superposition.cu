@@ -61,9 +61,10 @@ template<Direction direction, int blockDim_x, int blockDim_y, Algorithm algorith
 __global__ void per_block(
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
                           curandState *state, const unsigned int seed, const unsigned int i_stream,
-                          const size_t bin_size, const size_t bins_per_thread,
+                          const unsigned int bin_size, const unsigned int bins_per_thread,
+                          // const unsigned int N, const unsigned int M, const unsigned int N_stride, // TODO use uint
 #endif
-                          const size_t N, const size_t M, const size_t N_stride,
+                          const size_t N, const size_t M, const size_t N_stride, // TODO use uint
                           const Polar *__restrict__ x,
                           const double *__restrict__ u,
                           const double *__restrict__ v,
@@ -91,9 +92,9 @@ __global__ void per_block(
   const unsigned int i_state = global_tid + i_stream * gridSize.x * gridSize.y;
   curandState state_local;
   if (N > gridSize.x) {
-    assert(i_state < (i_stream+1) * gridSize.x * gridSize.y);
-    assert(i_state < 16 * gridSize.x * gridSize.y);
-    assert(524288 == 16 * gridSize.x * gridSize.y);
+    // assert(i_state < (i_stream+1) * gridSize.x * gridSize.y);
+    // assert(i_state < 16 * gridSize.x * gridSize.y);
+    // assert(524288 == 16 * gridSize.x * gridSize.y);
   //   // printf("stream %u\n", i_stream);
   //   // printf("i_state %u\n", i_state);
   //   // size    524288
@@ -228,8 +229,10 @@ __global__ void per_block(
             //   n_range = sample_bin_size;
 
             // Note, N is unused and n may exceed N
-            // const size_t n = n_offset + bin_size * curand_uniform(&state_local) - 1;
-            const size_t n = n_offset;
+            const size_t n = n_offset + bin_size * curand_uniform(&state_local) - 1;
+            // const size_t n = n_offset;
+            // if (tid.x == 0 && tid.y == 0)
+            //   printf("thread n: %zu \n", n);
 
             // assert(n < N);
             // printf("n3: %f\n", n3);
@@ -242,7 +245,7 @@ __global__ void per_block(
           }
         }
         else
-#else
+#endif
           for (size_t n = tid.x; n < N; n += gridSize.x) {
           // double p[3] = {0,0,0}, w[3] = {1,2,3};
 // #ifdef V_SHARED
@@ -257,7 +260,6 @@ __global__ void per_block(
           // y = cuCadd(y, phasor_displacement<direction>({1,2}, w, p)); // ~3.3 TFLOPS
         }
         // ------------------------------------------------------------
-#endif
 // #ifdef V_SHARED
 //         if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y)
 //           __syncthreads();
