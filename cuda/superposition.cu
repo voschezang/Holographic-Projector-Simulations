@@ -120,80 +120,13 @@ __global__ void per_block(
     __shared__ typename BlockReduce::TempStorage y_shared[shared_memory ? blockDim_y : 1];
     // __shared__ typename BlockReduce::TempStorage y_shared[blockDim_y];
 
-// #ifdef U_SHARED
-//     // TODO extern, depending on N / gridSize.x / thread_size.x
-//     // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared
-//     // extern __shared__ double shared[];
-//     const size_t
-//       thread_size_x = 4,
-//       // shared_len_x = shared_memory ? blockDim_x * thread_size_x : 1;
-//       shared_len_x = blockDim_x * thread_size_x;
-//     __shared__ Polar x_shared[shared_len_x];
-//     __shared__ double u_shared[shared_len_x * DIMS];
-//     // WAVE *x_shared = (WAVE*) shared;
-//     // double *u_shared = (double*) &shared[thread_size.x];
-
-//     // save results to Y[m, x] instead of Y[m, n]
-
-//     // NOTE tid != threadIdx
-//     for (size_t i = threadIdx.y; i < thread_size_x; i += blockDim_y) {
-//       const size_t
-//         n = tid.x + i * gridSize.x,
-//         k = threadIdx.x * thread_size_x + i; // k = threadIdx.x + i * blockDim_x;
-//       if (n < N) {
-//         x_shared[k] = x[n];
-//         for (int j = 0; j < DIMS; ++j)
-//           u_shared[k * DIMS + j] = u[n * DIMS + j];
-//       }
-//     }
-//     __syncthreads(); // 1.95539 TFLOPS
-//     // no sync: 1.96803 TFLOPS
-// #endif
-// #ifdef V_SHARED
-//     double *v_shared = (double *) &y_shared[0];
-// #endif
-
     for (size_t m = tid.y; m < M; m += gridSize.y) {
-
-// #ifdef V_SHARED
-//       if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y) {
-//         // modulo % operation is very slow
-//         // if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y && M % gridSize.y == 0 && N % gridSize.x == 0) {
-//         if (threadIdx.x < DIMS)
-//           v_shared[threadIdx.y * DIMS + threadIdx.x] = v[threadIdx.x];
-//         // v_shared[threadIdx.y * DIMS + threadIdx.x] = v[m * DIMS + threadIdx.x];
-
-//         __syncthreads();
-//       }
-// #endif
 
       // TODO mv condition to start of func
       if (tid.x < N) { // TODO this should cause deadlocks during BlockReduce (for certain geometry)
         // TODO add subfunctions for profiler
         WAVE y {0,0};
 
-// #ifdef U_SHARED
-//         for (size_t i = 0; i < thread_size_x; ++i) {
-//           const size_t
-//             n = tid.x + i * gridSize.x,
-//             k = threadIdx.x * thread_size_x + i; // k = threadIdx.x + i * blockDim_x;
-//           // is this slow due to memory bank conflicts?
-//           // double p[3] = {0,0,0}, w[3] = {1,2,3};
-//           // #ifdef V_SHARED
-//           //             if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y)
-//           //               y = cuCadd(y, phasor_displacement<direction>(x_shared[k], &u_shared[k * DIMS], &v_shared[threadIdx.y * DIMS]));
-//           //             else
-//           // #endif
-//           if (n < N)
-//             y = cuCadd(y, phasor_displacement<direction>(x_shared[k], &u_shared[k * DIMS], &v[m * DIMS]));
-//           // y = cuCadd(y, phasor_displacement<direction>(x_shared[0], &u_shared[0 * DIMS], &v[m * DIMS])); // broadcast -p2 1.59646 tf, -p3 1.97235 tf vs. 1.97293
-//           // y = cuCadd(y, phasor_displacement<direction>(x[k], &u[k * DIMS], &v[m * DIMS]));
-//           // y = cuCadd(y, phasor_displacement<direction>(x_shared[k], p, w)); // 2.88703 TFLOPS
-//           // y = cuCadd(y, phasor_displacement<direction>({1,2}, p, w)); // 3.17016 TFLOPS
-//           // y = cuCadd(y, phasor_displacement<direction>({1,2}, w, &v[m * DIMS]));
-//           // y = cuCadd(y, phasor_displacement<direction>(x[0], &u[0 * DIMS], &v[m * DIMS]));
-//         }
-// #else
         // ------------------------------------------------------------
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
         if (N > gridSize.x) {
@@ -202,7 +135,13 @@ __global__ void per_block(
             // for (size_t n = global_tid * ; n <  ++n) {
             const size_t n_offset = i_bin * stride_x;
             // TODO use curand_uniform4
-            const size_t n = n_offset + bin_size * curand_uniform(&state_local) - 1;
+            const size_t n = bin_size                       \
+              ? n_offset + randint(&state_local, bin_size)
+              : randint(&state_local, N);
+            // ? n_offset + bin_size * (1 - curand_uniform(&state_local))
+            if (bin_size)
+              assert(n - n_offset <= bin_size);
+
             y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
           }
         }
@@ -210,11 +149,6 @@ __global__ void per_block(
 #endif
           for (size_t n = tid.x; n < N; n += gridSize.x) {
           // double p[3] = {0,0,0}, w[3] = {1,2,3};
-// #ifdef V_SHARED
-//           if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y)
-//             y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v_shared[threadIdx.y * DIMS]));
-//           else
-// #endif
             y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS])); // 2.07954 TFLOPS
           // y = cuCadd(y, phasor_displacement<direction>(x[0], &u[0 * DIMS], &v[m * DIMS])); // 2.58397 TFLOPS
           // y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], p)); // 2.07954 TFLOPS
@@ -222,10 +156,6 @@ __global__ void per_block(
           // y = cuCadd(y, phasor_displacement<direction>({1,2}, w, p)); // ~3.3 TFLOPS
         }
         // ------------------------------------------------------------
-// #ifdef V_SHARED
-//         if (shared_memory && blockDim_x >= DIMS && N >= DIMS && M >= gridSize.y)
-//           __syncthreads();
-// #endif
 #ifdef TEST_CONST_PHASE
         for (size_t n = tid.x; n < N; n += gridSize.x)
           y = cuCadd(y, from_polar(1., 0.));

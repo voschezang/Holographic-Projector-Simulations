@@ -80,10 +80,10 @@ int main(int argc, char** argv) {
   // const auto shape = Shape::LogLine;
   // const auto shape = Shape::DottedCircle;
   const auto shape = Shape::Circle;
-  const bool uniform_intensity = 0;
-  printf("x.amp, uniform_intensity: %d\n", uniform_intensity);
+  const bool decrease_intensity = 0;
+  printf("x.amp, decrease_intensity: %d\n", decrease_intensity);
   auto x = std::vector<Polar>(n_per_plane.obj, {amp: 1, phase: 0.});
-  if (!uniform_intensity) {
+  if (decrease_intensity) {
     // descending, s.t. there is always a high-amplitude datapoint
     auto amp = linspace(x.size(), 1, 0);
     for (auto& i : range(x.size()))

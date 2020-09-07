@@ -84,12 +84,6 @@ cublasStatus_t cudaBlasCheck(cublasStatus_t result, const char *file, int line) 
   return result;
 }
 
-inline
-__host__ __device__ double norm3d_host(double a, double b, double c) {
-  // simplified and host & device-compatible version of norm3d from CUDA math,  without overflow protection
-  return pow(a * a + b * b + c * c, 0.5);
-}
-
 __host__ __device__ void cuCheck(cuDoubleComplex  z) {
   double a = cuCreal(z), b = cuCimag(z);
   if (isnan(a)) printf("cu found nan re\n");
@@ -97,6 +91,20 @@ __host__ __device__ void cuCheck(cuDoubleComplex  z) {
   if (isnan(b)) printf("cu found nan I\n");
   if (isinf(b)) printf("cu found inf I\n");
 }
+
+inline
+__host__ __device__ double norm3d_host(double a, double b, double c) {
+  // simplified and host & device-compatible version of norm3d from CUDA math,  without overflow protection
+  return pow(a * a + b * b + c * c, 0.5);
+}
+
+inline
+__device__ size_t randint(curandState *state, size_t max_range) {
+  // excl. max_range
+  // note, curand_uniform returns a value in (0,1], but we need the inverse [1,0), which is multiplied by the range and casted to the "previous" int
+  return max_range * (1 - curand_uniform(state));
+}
+
 
 // template <unsigned int blockSize, typename T>
 // inline __device__ void warp_reduce(volatile T *s, unsigned int i) {

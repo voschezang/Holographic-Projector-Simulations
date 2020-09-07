@@ -15,7 +15,8 @@ void show_help(const char *p) {
 namespace input {
 
 Params read_args(int argc, char **argv) {
-  const double z_offset = 0.26;
+  /* const double z_offset = 0.26; */
+  const double z_offset = 0.35;
   /* const double z_offset = 0.01; */
   /* const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset}; */
   const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset};
@@ -36,8 +37,8 @@ Params read_args(int argc, char **argv) {
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,
-                    /* projector: 1., */
-                    projector: HD,
+                    projector: 1.,
+                    /* projector: HD, */
                     projection: 1.},
 
      /* obj_shape: Shape::DottedCircle, // TODO */
