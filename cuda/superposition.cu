@@ -130,18 +130,20 @@ __global__ void per_block(
         // ------------------------------------------------------------
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
         if (N > gridSize.x) {
-          // assert(stride_x * bins_per_thread == N);
           for (size_t i_bin = 0; i_bin < bins_per_thread; ++i_bin) {
-            // for (size_t n = global_tid * ; n <  ++n) {
             const size_t n_offset = i_bin * stride_x;
             // TODO use curand_uniform4
-            const size_t n = bin_size                       \
+            // const size_t n = randint(&state_local, N);
+            const size_t n = bin_size > 0                   \
               ? n_offset + randint(&state_local, bin_size)
               : randint(&state_local, N);
-            // ? n_offset + bin_size * (1 - curand_uniform(&state_local))
-            if (bin_size)
-              assert(n - n_offset <= bin_size);
+            // if (bin_size)
+            //   assert(n - n_offset <= bin_size);
+            // else
+            //   assert(n <= N);
 
+            // printf("tid: %u, %u \tn: %lu\n", tid.x, tid.y, n);
+            // assert(N == 1 || n < N);
             y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
           }
         }

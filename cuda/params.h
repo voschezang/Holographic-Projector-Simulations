@@ -28,7 +28,7 @@ struct Plane {
   double width;
   Cartesian<double> offset;
   double aspect_ratio; // image width / height
-  bool randomize;
+  bool randomize; // TODO rename => randomize_projector_pixels
 };
 
 /**

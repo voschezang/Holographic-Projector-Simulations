@@ -184,7 +184,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   const bool shuffle_v = 0;
   const bool reorder_v = 0, reorder_v_rm_phase = 1;
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
-  const bool conditional_MC = 0; // TODO not yet compatible with Naive algorithm
+  const bool conditional_MC = 0; // TODO debug conditional_MC = 1
 #endif
   auto map = std::vector<size_t>(p.n.y);
   if (shuffle_v) {
@@ -458,10 +458,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     min_n_datapoints = MAX(8*1024, p.batch_size.x), // before convergence computation
     // min_n_datapoints = p.batch_size.x,
     // min_n_datapoints = p.n.x,
-    batches_between_convergence = CEIL(min_n_datapoints, p.batch_size.x),
     //      - TODO make dependent on batch_size.x?
     i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
   size_t
+    batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
     i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
 
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
@@ -469,26 +469,25 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   // used iff (p.n.x > p.gridSize.x)
   // const
   size_t
-    kernels_per_estimate = CEIL(min_n_datapoints, p.batch_size.x), // TODO rename => batches_per_estimate
-    n_sample_bins = kernels_per_estimate * p.batch_size.x, // per estimate
+    n_sample_bins = batches_per_estimate * p.batch_size.x, // per estimate
     sample_bin_size = CEIL(p.n.x, n_sample_bins),
     // each thread draws 1 sample per bin and covers thread_size.x bins per kernel call
     potential_batch_size = p.batch_size.x * sample_bin_size;
 
   if (p.n.x > p.gridSize.x) {
-    printf("N: %zu, kernels_per_estimate: %zu, batch_size.x: %zu, n_sample_bins: %zu, sample_bin_size: %zu\n",
-           p.n.x, kernels_per_estimate, p.batch_size.x, n_sample_bins, sample_bin_size);
+    printf("N: %zu, batches_per_estimate: %zu, batch_size.x: %zu, n_sample_bins: %zu, sample_bin_size: %zu\n",
+           p.n.x, batches_per_estimate, p.batch_size.x, n_sample_bins, sample_bin_size);
 
-    assert(batches_between_convergence >= 1);
+    assert(batches_per_estimate >= 1);
     assert(p.n.x >= min_n_datapoints); // TODO not implemented
 
     assert(min_n_datapoints >= p.batch_size.x);
-    assert(kernels_per_estimate > 0);
-    assert(kernels_per_estimate * p.batch_size.x == min_n_datapoints);
+    assert(batches_per_estimate > 0);
+    assert(batches_per_estimate * p.batch_size.x == min_n_datapoints);
     assert(n_sample_bins * sample_bin_size == p.n.x);
 
     assert(potential_batch_size <= p.n.x);
-    assert(potential_batch_size * kernels_per_estimate == p.n.x);
+    assert(potential_batch_size * batches_per_estimate == p.n.x);
   }
 #endif
 
@@ -561,7 +560,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
         if (conditional_MC) {
           // TODO use with reorder_v
-          n_offset = potential_batch_size * (n % kernels_per_estimate);
+          n_offset = potential_batch_size * (n % batches_per_estimate);
           assert(n_offset < p.n.x);
           local_batch_size = potential_batch_size; // used n kernel e.g. as if (tid.x < N)
         } else {
@@ -625,12 +624,12 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         cu( cudaPeekAtLastError() );
         // cudaDeviceSynchronize(); print("sum rows post");
 
-        if (!finished[i_stream] && converging[i_stream] && n % batches_between_convergence == 0) {
+        if (!finished[i_stream] && converging[i_stream] && n % batches_per_estimate == 0) {
           // TODO make threshold dependent on max distance?
           // const double threshold = 1e-4;
           const double threshold = 0;
           const double
-            prev_n = (n+1 - batches_between_convergence) * p.batch_size.x,
+            prev_n = (n+1 - batches_per_estimate) * p.batch_size.x,
             scale_a = 1. / (double) n_datapoints,
             scale_b = 1. / prev_n; // to re-normalize the prev result
           // TOOD try this, and don't use pinned memory

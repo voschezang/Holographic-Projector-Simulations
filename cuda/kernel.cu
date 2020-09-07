@@ -102,7 +102,7 @@ inline
 __device__ size_t randint(curandState *state, size_t max_range) {
   // excl. max_range
   // note, curand_uniform returns a value in (0,1], but we need the inverse [1,0), which is multiplied by the range and casted to the "previous" int
-  return max_range * (1 - curand_uniform(state));
+  return (size_t) max_range * (1. - curand_uniform(state));
 }
 
 
