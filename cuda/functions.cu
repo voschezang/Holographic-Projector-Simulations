@@ -181,10 +181,15 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                    const Geometry& p) {
 
   auto v = v2;
-  const bool shuffle_v = 0;
-  const bool reorder_v = 0, reorder_v_rm_phase = 1;
+  const bool
+    randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
+    shuffle_v = 0,
+    reorder_v = 1,
+    reorder_v_rm_phase = 1; // for debugging
+  // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
-  const bool conditional_MC = 0; // TODO debug conditional_MC = 1
+  const bool conditional_MC = 0;
+  assert(!conditional_MC); // TODO debug for min_n_datapoints > 2048
 #endif
   auto map = std::vector<size_t>(p.n.y);
   if (shuffle_v) {
@@ -455,14 +460,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
 
   const size_t
-    min_n_datapoints = MAX(8*1024, p.batch_size.x), // before convergence computation
-    // min_n_datapoints = p.batch_size.x,
-    // min_n_datapoints = p.n.x,
-    //      - TODO make dependent on batch_size.x?
-    i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
-  size_t
-    batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
-    i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
+    min_n_datapoints = MAX(8*1024, p.batch_size.x); // before convergence computation
+  size_t batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x);
 
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
 
@@ -491,18 +490,12 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 #endif
 
-  const bool randomize = 0 && p.n.x > 1 && p.n_batches.x > 1;
 
-  if (randomize && i_shuffle_max * p.batch_size.x >= p.n.x) {
-    printf("TODO?, p.n.x: %zu\n", p.n.x);
-    // i_shuffle_max--;
-    assert(0);
-  }
-
+  bool randomized = 0;
   auto compare_func = [&](auto m){ return m < p.n_batches.y;};
   while (std::any_of(m_per_stream.begin(), m_per_stream.end(), compare_func)) {
 
-    if (randomize && i_shuffle >= i_shuffle_max) {
+    if (randomize && !randomized) {
       // TODO use stages; this can be done in parallel with copying data but not with superposition kernels
       cudaDeviceSynchronize(); // finish all superposition kernels
       cuR( curandGenerateUniform(generator, d_rand_ptr, p.n.x * sizeof(float) / 32) );
@@ -522,8 +515,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       }
       // cudaDeviceSynchronize();
 
-      // reset
-      i_shuffle = 0;
+      randomized = 1;
     }
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
@@ -548,8 +540,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         if (p.n.x != p.n_batches.x * p.batch_size.x && n == p.n_batches.x - 1)
           local_batch_size = p.n.x - n * p.batch_size.x;
 
-      size_t n_offset = (randomize ? i_shuffle : n) * p.batch_size.x;
-      assert(i_shuffle_max * p.batch_size.x < p.n.x);
+      size_t n_offset = n * p.batch_size.x;
       if (randomize)
         assert(n_offset + p.batch_size.x < p.n.x);
 
@@ -590,9 +581,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
          );
       cu( cudaPeekAtLastError() );
       // cudaDeviceSynchronize(); print("post s kernel");
-#ifndef RANDOMIZE_SUPERPOSITION_INPUT
-      i_shuffle++;
-#endif
     }
 
     // cudaDeviceSynchronize(); print("sum rows");
