@@ -181,13 +181,21 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                    const Geometry& p) {
 
   auto v = v2;
-  const double threshold = 1e-4; // TODO make depependent on max distance: 1. / (v[Ix(0, 2)] - u[Ix(0, 2)]);
-  // const double threshold = 0;
+  // const double threshold = 1e-3; // TODO make depependent on max distance: 1. / (v[Ix(0, 2)] - u[Ix(0, 2)]);
+  const double threshold = 0;
+  /* Performance to determine significane of unoptimized data
+   * for 1024x1024 planes, algorithm: 2, 1 trial
+   * - no randomization: 45.0 s
+   * - shuffle_v: 44.0 s
+   * - reorder_v: 42.8 s
+   * - randomize (incl convergence computation): 68.9 s
+   * - randomize (incl convergence computation) + re_shuffle_input (barriers..): 130.5 s
+   */
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
     re_shuffle_input = 0,
     shuffle_v = 0,
-    reorder_v = 0,
+    reorder_v = 0, // TODO this seems broken
     reorder_v_rm_phase = 0; // for debugging
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
@@ -353,88 +361,12 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
   }
 
-  // if (4) {
-  //   // shuffle v
-  //   auto d_rand_v = thrust::device_vector<float>(p.n.y); // sort_by_key() requires device vectors
-  //   auto d_rand_v_ptr = thrust::raw_pointer_cast(d_rand_v.data());
-
-  //   thrust::device_vector<double> d_v2 = v;
-  //   auto d_v_ptr = thrust::raw_pointer_cast(d_v2.data());
-  //   auto d_v_row_ptr = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_v_ptr );
-  //   const thrust::device_vector<Cartesian<double>> d_v_original (d_v_row_ptr, d_v_row_ptr + p.n.x);
-
-  //   thrust::device_vector<size_t> indices_v(p.n.y);
-  //   thrust::copy_n(identity, p.n.y, indices.begin());
-  //   assert(indices.begin()[0] == 0);
-  //   thrust::sort_by_key(d_rand_v.begin(), d_rand_v.end(), indices_v.begin());
-  //   thrust::scatter(d_v_original.begin(), d_v_original.end(), indices_v.begin(), d_v2.begin());
-  // }
-
-
-  // if (0) {
-  //   // this throws [functions.cu:28] CUDA Runtime Error: an illegal memory access was encountered
-  //   thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), (Cartesian<double> *) d_u_ptr); // reorder all dims at once
-  //   cudaDeviceSynchronize();
-  // }
-  // else {
-  //   // TODO this copies data
-  //   // use either of:
-  //   //  1) sort using casting (see above)
-  //   //  2) ArrayOfStruct: use Cartesian<double> everywhere
-  //   //  3) StructOfArray: split u.x,y,z and sort them individually - this requires additional copying of indices
-  //   // d_u_vector = thrust::device_vector<Cartesian<double>>(d_u_ptr2, d_u_ptr2 + p.n.x);
-  //   thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), d_u_row_ptr); // reorder all dims at once
-  //   // thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), d_u_vector.begin()); // reorder all dims at once
-  //   // d_u = thrust::device_vector<double>((double *) d_u_ptr2, 3*p.n.x + (double *) d_u_ptr2); // this does nothing
-  //   d_u_vector_ptr = (double *) thrust::raw_pointer_cast(d_u_vector.data());
-  //   // (optional), update d_u
-  //   d_u = thrust::device_vector<double>(d_u_vector_ptr, 3*p.n.x + d_u_vector_ptr);
-  //   // cudaDeviceSynchronize();
-  //   // // printf("equals: %e == %e ?\n", d_u[0], d_u_vector[0]);
-  //   // if (p.n.x >= 100)
-  //   //   for (int i = p.n.x - 100; i < p.n.x; ++i) {
-  //   //     // for (int i = 0; i < p.n.x; ++i) {
-  //   //     Cartesian<double> w = d_u_vector[i];
-  //   //     double xx = w.x;
-  //   //     thrust::host_vector<Cartesian<double>> yy = d_u_vector;
-  //   //     bool eq = d_u[Ix(i,0)] == yy[0].x;
-  //   //     eq = (bool) eq;
-  //   //     printf("equals[%i]: %e == %e ? -> %d\n", i, d_u[Ix(i,0)], yy[0].x, eq);
-  //   //     printf("equals[%i]: %e == %e ? -> %d\n", i, d_u[Ix(i,0)], yy[0].x, !eq);
-  //   //     eq = d_u[Ix(i,0)] == xx;
-  //   //     eq = (bool) eq;
-  //   //     printf("equals[%i]: %e == %e ? -> %d\n", i, d_u[Ix(i,0)], xx, eq);
-  //   //     printf("equals[%i]: %e == %e ? -> %d\n", i, d_u[Ix(i,0)], xx, !eq);
-  //   //     assert(eq == 0 || eq == 1);
-  //   //     // printf("equals[%i]: %e == %e?\n", i, d_u[Ix(i,0)], w.x);
-  //   //     // printf("equals[%i]: %e == %e?\n", i, d_u[Ix(i,1)], w.y);
-  //   //     // printf("equals[%i]: %e == %e?\n", i, d_u[Ix(i,2)], w.z);
-  //   //     assert(d_u[Ix(i,0)] == w.x);
-  //   //     assert(d_u[Ix(i,1)] == w.y);
-  //   //     assert(d_u[Ix(i,2)] == w.z);
-  //   //   }
-  // }
-  // printf("bool %d, %d\n", 3 == 4, 4 == 4);
-
-  // cudaDeviceSynchronize();
-  // if (p.n.x > 100) {
-  //   print("raw1");
-  //   double raw;
-  //   print("raw2");
-  //   raw = thrust::reduce(d_u.begin(), d_u.end(), (double) 0);
-  //   cudaDeviceSynchronize();
-  //   print("assert2");
-  //   assert(equals(raw, sum(u)));
-  //   cudaDeviceSynchronize();
-
-  //   auto x3 = thrust::device_vector<double>((double *) d_x_ptr, 2*p.n.x + (double *) d_x_ptr);
-  //   raw = thrust::reduce(x3.begin(), x3.end(), (double) 0);
-  //   cudaDeviceSynchronize();
-  //   print("assert1");
-  //   assert(equals(raw, sum((double*) x.data(), 2*x.size())));
-  // }
-  //
-
+  const size_t
+    min_n_datapoints = MAX(8*1024, p.batch_size.x), // before convergence computation
+    i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
+  size_t
+    batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
+    i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
 
 
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
@@ -458,21 +390,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     cudaDeviceSynchronize();
     print("init rng post");
   }
-#endif
 
-
-
-  const size_t
-    min_n_datapoints = MAX(8*1024, p.batch_size.x), // before convergence computation
-    i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
-  size_t
-    batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
-    i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
-
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
-
-  // used iff (p.n.x > p.gridSize.x)
-  // const
   size_t
     n_sample_bins = batches_per_estimate * p.batch_size.x, // per estimate
     sample_bin_size = CEIL(p.n.x, n_sample_bins),
@@ -485,12 +403,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
     assert(batches_per_estimate >= 1);
     assert(p.n.x >= min_n_datapoints); // TODO not implemented
-
     assert(min_n_datapoints >= p.batch_size.x);
     assert(batches_per_estimate > 0);
     assert(batches_per_estimate * p.batch_size.x == min_n_datapoints);
     assert(n_sample_bins * sample_bin_size == p.n.x);
-
     assert(potential_batch_size <= p.n.x);
     assert(potential_batch_size * batches_per_estimate == p.n.x);
   }
@@ -520,7 +436,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
       }
       // cudaDeviceSynchronize();
-
       i_shuffle = 0;
     }
 
@@ -547,11 +462,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           local_batch_size = p.n.x - n * p.batch_size.x;
 
       size_t n_offset = n * p.batch_size.x;
-      assert(n_offset < p.n.x);
-      assert(n < p.n_batches.x);
-      assert(p.n_batches.x * p.batch_size.x == p.n.x);
-      if (randomize && p.n.x == 1)
-        assert(n_offset == 0);
       if (randomize && p.n.x > 1)
         if (p.n_batches.x * p.batch_size.x == p.n.x)
           assert(n_offset + p.batch_size.x <= p.n.x);
@@ -575,8 +485,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       }
 #endif
 
-      // const size_t n_offset = n * p.batch_size.x;
-      // Note, appending result to prev results slows down computation
+      // Note that appending result to prev results slows down computation
       const bool append_result = n > 0 && !converging[i_stream];
       // const bool append_result = n > 0 && n_datapoints < min_n_datapoints;
 
@@ -629,14 +538,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                              (double *) d_y_sum[i_stream].data + d_y_sum[i_stream].size * 2,
                                              (double *) d_y_prev[i_stream].data,
                                              is_smaller(scale_a, scale_b, threshold));
-          // alt, in case thrust stream selection doesn't work
-          // kernel::equal<<< 1, 1, 0, streams[i_stream]>>>((double *) d_y_sum[i_stream].data, (double *) d_y_prev[i_stream].data,
-          //                                                d_y_sum[i_stream].size * 2,
-          //                                                is_smaller(scale_a, scale_b, threshold),
-          //                                                converged + i_stream);
-          // cudaStreamSynchronize(streams[i_stream]);
-          // if (converged[i_stream])
-          //   finished[i_stream] = true;
           if (finished[i_stream] && print_convergence > 0)
             printf("converged/finished at batch.x: %lu/%lu \t (%u)\n", n, p.n_batches.x, print_convergence--);
 
