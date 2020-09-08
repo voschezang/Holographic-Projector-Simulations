@@ -181,11 +181,14 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                    const Geometry& p) {
 
   auto v = v2;
+  const double threshold = 1e-4; // TODO make depependent on max distance: 1. / (v[Ix(0, 2)] - u[Ix(0, 2)]);
+  // const double threshold = 0;
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
+    re_shuffle_input = 0,
     shuffle_v = 0,
-    reorder_v = 1,
-    reorder_v_rm_phase = 1; // for debugging
+    reorder_v = 0,
+    reorder_v_rm_phase = 0; // for debugging
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
   const bool conditional_MC = 0;
@@ -460,8 +463,11 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
 
   const size_t
-    min_n_datapoints = MAX(8*1024, p.batch_size.x); // before convergence computation
-  size_t batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x);
+    min_n_datapoints = MAX(8*1024, p.batch_size.x), // before convergence computation
+    i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
+  size_t
+    batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
+    i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
 
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
 
@@ -491,11 +497,11 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 #endif
 
 
-  bool randomized = 0;
+  unsigned int print_convergence = 10;
   auto compare_func = [&](auto m){ return m < p.n_batches.y;};
   while (std::any_of(m_per_stream.begin(), m_per_stream.end(), compare_func)) {
 
-    if (randomize && !randomized) {
+    if (randomize && i_shuffle >= i_shuffle_max) {
       // TODO use stages; this can be done in parallel with copying data but not with superposition kernels
       cudaDeviceSynchronize(); // finish all superposition kernels
       cuR( curandGenerateUniform(generator, d_rand_ptr, p.n.x * sizeof(float) / 32) );
@@ -515,7 +521,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       }
       // cudaDeviceSynchronize();
 
-      randomized = 1;
+      i_shuffle = 0;
     }
 
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
@@ -541,8 +547,14 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           local_batch_size = p.n.x - n * p.batch_size.x;
 
       size_t n_offset = n * p.batch_size.x;
-      if (randomize)
-        assert(n_offset + p.batch_size.x < p.n.x);
+      assert(n_offset < p.n.x);
+      assert(n < p.n_batches.x);
+      assert(p.n_batches.x * p.batch_size.x == p.n.x);
+      if (randomize && p.n.x == 1)
+        assert(n_offset == 0);
+      if (randomize && p.n.x > 1)
+        if (p.n_batches.x * p.batch_size.x == p.n.x)
+          assert(n_offset + p.batch_size.x <= p.n.x);
 
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
       if (p.n.x > p.gridSize.x) {
@@ -581,6 +593,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
          );
       cu( cudaPeekAtLastError() );
       // cudaDeviceSynchronize(); print("post s kernel");
+      if (randomize && re_shuffle_input) i_shuffle++;
     }
 
     // cudaDeviceSynchronize(); print("sum rows");
@@ -591,15 +604,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         n_datapoints = (n+1) * p.batch_size.x;
       if (m >= p.n_batches.y) continue;
 
-      // if (randomize && n >= (p.n_batches.x - 1) / 2)
-      //   finished[i_stream] = true;
-      // if (!randomize && n >= p.n_batches.x - 1)
-      //   finished[i_stream] = true;
       if (n >= p.n_batches.x - 1)
         finished[i_stream] = true;
-
-      // if (n >= 1)
-      //   finished[i_stream] = true;
 
       if (finished[i_stream] || n_datapoints >= min_n_datapoints) {
         // TODO instead of memset, do
@@ -613,9 +619,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         // cudaDeviceSynchronize(); print("sum rows post");
 
         if (!finished[i_stream] && converging[i_stream] && n % batches_per_estimate == 0) {
-          // TODO make threshold dependent on max distance?
-          // const double threshold = 1e-4;
-          const double threshold = 0;
           const double
             prev_n = (n+1 - batches_per_estimate) * p.batch_size.x,
             scale_a = 1. / (double) n_datapoints,
@@ -634,8 +637,9 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           // cudaStreamSynchronize(streams[i_stream]);
           // if (converged[i_stream])
           //   finished[i_stream] = true;
-          if (finished[i_stream])
-            printf("converged/finished at batch.x: %lu/%lu\n", n, p.n_batches.x);
+          if (finished[i_stream] && print_convergence > 0)
+            printf("converged/finished at batch.x: %lu/%lu \t (%u)\n", n, p.n_batches.x, print_convergence--);
+
         }
         // if still not finished
         if (randomize && !finished[i_stream]) {
@@ -681,7 +685,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         finished[i_stream] = false;
       }
     }
-  } // end while
+  } // end while (m < p.n_batches.y)
 
   cu( cudaPeekAtLastError() );
   cu( cudaDeviceSynchronize() );
@@ -992,11 +996,11 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   // case 3: y = transform<direction, Algorithm::Alt, true>(x, u, v, p); break;
   // default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
   // }
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+// #ifdef RANDOMIZE_SUPERPOSITION_INPUT
   y = transform<direction, Algorithm::Alt, false>(x, u, v, p);
-#else
-  y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
-#endif
+// #else
+//   y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
+// #endif
 
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);

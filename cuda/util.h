@@ -22,6 +22,7 @@
 double flops(double runtime, size_t n, size_t m) {
   // Tera or Giga FLOP/s
   // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache
+  // ? https://ark.intel.com/content/www/us/en/ark/products/92994/intel-xeon-processor-e5-1650-v4-15m-cache-3-60-ghz.html
   // Quadro GV100: peak 7.4 TFLOPS (dp), 14.8 (sp), 59.3 (int)
   // bandwidth 870 GB/s
   //  cores: 5120, tensor cores 640, memory: 32 GB

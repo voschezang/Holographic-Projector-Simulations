@@ -133,7 +133,8 @@ __global__ void per_block(
           for (size_t i_bin = 0; i_bin < bins_per_thread; ++i_bin) {
             const size_t n_offset = i_bin * stride_x;
             // TODO use curand_uniform4
-            // const size_t n = randint(&state_local, N);
+
+            // zero bin_size is used for unconditional MC sampling
             const size_t n = bin_size > 0                   \
               ? n_offset + randint(&state_local, bin_size)
               : randint(&state_local, N);
@@ -150,13 +151,8 @@ __global__ void per_block(
         else
 #endif
           for (size_t n = tid.x; n < N; n += gridSize.x) {
-          // double p[3] = {0,0,0}, w[3] = {1,2,3};
-            y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS])); // 2.07954 TFLOPS
-          // y = cuCadd(y, phasor_displacement<direction>(x[0], &u[0 * DIMS], &v[m * DIMS])); // 2.58397 TFLOPS
-          // y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], p)); // 2.07954 TFLOPS
-          // y = cuCadd(y, phasor_displacement<direction>({1,2}, w, &v[m * DIMS])); 2.98763 TFLOPS
-          // y = cuCadd(y, phasor_displacement<direction>({1,2}, w, p)); // ~3.3 TFLOPS
-        }
+            y = cuCadd(y, phasor_displacement<direction>(x[n], &u[n * DIMS], &v[m * DIMS]));
+          }
         // ------------------------------------------------------------
 #ifdef TEST_CONST_PHASE
         for (size_t n = tid.x; n < N; n += gridSize.x)
