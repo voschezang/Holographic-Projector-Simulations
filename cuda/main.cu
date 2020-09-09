@@ -144,7 +144,9 @@ int main(int argc, char** argv) {
     // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
 
     // dt[0] will be overwritten
-    auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, projector, &t1, &t2, &dt[0], true);
+    auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, projector,
+                                                                        x_plane, y_plane,
+                                                                        &t1, &t2, &dt[0], true);
     check_cvector(y);
 
     if (i == 0) summarize('y', y);
@@ -171,7 +173,9 @@ int main(int argc, char** argv) {
 
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WAVE>(n.z);
-      auto z = time_transform<Direction::Forwards>(y, v, w, projection, &t1, &t2, &dt[j]);
+      auto z = time_transform<Direction::Forwards>(y, v, w, projection,
+                                                   y_plane, z_plane,
+                                                   &t1, &t2, &dt[j]);
       check_cvector(z);
       if (i == 0 && j == 0) summarize('z', z);
 

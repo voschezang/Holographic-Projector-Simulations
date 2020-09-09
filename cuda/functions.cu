@@ -140,6 +140,7 @@ void normalize_amp(std::vector<WAVE> &c, double to = 1., bool log_normalize = fa
   for (size_t i = 0; i < c.size(); ++i)
     max_amp = fmax(max_amp, cuCabs(c[i]));
 
+  printf("\nmax amp: %e\n", max_amp);
   if (max_amp < 1e-6) {
     printf("WARNING, max_amp << 1\n");
     return;
@@ -178,24 +179,28 @@ template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool share
 inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                    const std::vector<double> &u,
                                    const std::vector<double> &v2,
-                                   const Geometry& p) {
+                                   const Geometry& p,
+                                   const Plane& x_plane,
+                                   const Plane& y_plane) {
 
   auto v = v2;
-  // const double threshold = 1e-3; // TODO make depependent on max distance: 1. / (v[Ix(0, 2)] - u[Ix(0, 2)]);
-  const double threshold = 0;
-  /* Performance to determine significane of unoptimized data
-   * for 1024x1024 planes, algorithm: 2, 1 trial
-   * - no randomization: 45.0 s
-   * - shuffle_v: 44.0 s
-   * - reorder_v: 42.8 s
-   * - randomize (incl convergence computation): 68.9 s
+  /* Performance (runtime) for randomize: 1, 1024x1024 data size
+   * re_shuffle_between_kernels: 0 -> 26.112164 s
+   * re_shuffle_between_kernels: 1 -> 20.338126 s // due to faster convergence?
    */
+  // TODO store convergence in array or min/max/sum
+  const double
+    max_diameter = MAX(y_plane.width, x_plane.width),
+    min_distance = y_plane.offset.z - x_plane.offset.z, // assume parallel planes, with constant third dim
+    max_distance = norm3d_host(min_distance, max_diameter, 0),
+    threshold = 1e-4;
+  // threshold = 0;
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
     re_shuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data
     shuffle_v = 0,
     reorder_v = 1, // TODO this seems broken
-    reorder_v_rm_phase = 1; // for debugging
+    reorder_v_rm_phase = 0; // for debugging
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
   const bool conditional_MC = 0;
@@ -363,7 +368,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   const size_t
-    min_n_datapoints = MAX(4*1024, p.batch_size.x), // before convergence computation
+    min_n_datapoints = MAX(8*1024, p.batch_size.x), // before convergence computation
     // min_n_datapoints = 4,
     // i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
     i_shuffle_max = p.n_batches.x; // TODO?
@@ -468,10 +473,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         if (p.n.x != p.n_batches.x * p.batch_size.x && n == p.n_batches.x - 1)
           local_batch_size = p.n.x - n * p.batch_size.x;
 
-      if (101) { // TODO rm
-        finished[i_stream] = 1;
-        // local_batch_size = 1;
-      }
+      // if (101) { // TODO rm
+      //   finished[i_stream] = 1;
+      //   // local_batch_size = 1;
+      // }
 
       // size_t n_offset = n * p.batch_size.x;
       size_t n_offset = (re_shuffle_between_kernels ? i_shuffle : n ) * p.batch_size.x;
@@ -551,8 +556,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         if (!finished[i_stream] && converging[i_stream] && n % batches_per_estimate == 0) {
           const double
             prev_n = (n+1 - batches_per_estimate) * p.batch_size.x,
-            scale_a = 1. / (double) n_datapoints,
-            scale_b = 1. / prev_n; // to re-normalize the prev result
+            scale_a = max_distance / (double) n_datapoints,
+            scale_b = max_distance / prev_n; // to re-normalize the prev result
           // TOOD try this, and don't use pinned memory
           finished[i_stream] = thrust::equal(thrust::cuda::par.on(streams[i_stream]),
                                              (double *) d_y_sum[i_stream].data,
@@ -560,7 +565,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                              (double *) d_y_prev[i_stream].data,
                                              is_smaller(scale_a, scale_b, threshold));
           if (finished[i_stream] && print_convergence > 0)
-            printf("converged/finished at batch.x: %lu/%lu \t (%u)\n", n, p.n_batches.x, print_convergence--);
+            printf("converged/finished at batch.x: %lu/%lu \t (%u, threshold: %e)\n", n, p.n_batches.x, print_convergence--, threshold);
 
         }
         // if still not finished
@@ -946,6 +951,8 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
                                   const std::vector<double> &u,
                                   const std::vector<double> &v,
                                   const Geometry& p,
+                                  const Plane& x_plane,
+                                  const Plane& y_plane,
                                   struct timespec *t1, struct timespec *t2, double *dt,
                                   bool verbose = false) {
   clock_gettime(CLOCK_MONOTONIC, t1);
@@ -968,7 +975,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   // default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
   // }
 // #ifdef RANDOMIZE_SUPERPOSITION_INPUT
-  y = transform<direction, Algorithm::Alt, false>(x, u, v, p);
+  y = transform<direction, Algorithm::Alt, false>(x, u, v, p, x_plane, y_plane);
 // #else
 //   y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
 // #endif

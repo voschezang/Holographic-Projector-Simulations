@@ -94,6 +94,7 @@ __host__ __device__ void cuCheck(cuDoubleComplex  z) {
 
 inline
 __host__ __device__ double norm3d_host(double a, double b, double c) {
+  // 2-norm for 3 dimensions
   // simplified and host & device-compatible version of norm3d from CUDA math,  without overflow protection
   return pow(a * a + b * b + c * c, 0.5);
 }
