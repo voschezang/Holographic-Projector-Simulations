@@ -46,6 +46,15 @@ void derive_secondary_geometry(struct Geometry& p) {
                 1};
   p.batch_size = {MIN(p.n.x, p.thread_size.x * p.gridSize.x),
                   MIN(p.n.y, p.thread_size.y * p.gridSize.y)};
+
+#ifdef SQUARE_TARGET_BATCHES
+  if (p.n.y > p.batch_size.y) {
+    // round down to the nearest square
+    const size_t sq =  sqrt(p.batch_size.y);
+    p.batch_size.y = sq * sq;
+  }
+#endif
+
   p.n_batches = {CEIL(p.n.x, p.batch_size.x),
                  CEIL(p.n.y, p.batch_size.y)};
   check_hyper_params(p);
