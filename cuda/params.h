@@ -23,6 +23,8 @@ struct Cartesian { T x,y,z; }; // 3D space, generic version of dim3
 // similar to CUDA dim3 but fewer dims and larger size
 struct dim2 { size_t x, y; };
 
+struct SumRange {size_t sum, min, max; };
+
 struct Plane {
   // TODO simplify this struct, avoid duplicate data?
   double width;

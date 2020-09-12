@@ -193,13 +193,13 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     max_diameter = MAX(y_plane.width, x_plane.width),
     min_distance = y_plane.offset.z - x_plane.offset.z, // assume parallel planes, with constant third dim
     max_distance = norm3d_host(min_distance, max_diameter, 0),
-    threshold = 1e-4;
+    threshold = 1e-3;
   // threshold = 0;
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
     reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data
-    shuffle_v = 1,
-    reorder_v = 0 && randomize,
+    shuffle_v = 0,
+    reorder_v = 1 && randomize,
     reorder_v_rm_phase = 0; // for debugging
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
@@ -325,6 +325,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   auto n_per_stream = std::vector<size_t>(p.n_streams, 0); // rename => i_iter
   // auto converging   = std::vector<bool>(p.n_streams, false); // not strictly converging but "undergoing convergence checking"
   auto finished     = std::vector<bool>(p.n_streams, false);
+  auto convergence_per_stream = std::vector<SumRange>(p.n_streams);
+  // init with extreme values
+  for (auto& i : range(convergence_per_stream.size()))
+    convergence_per_stream[i] = {sum: 0, min: p.batch_size.x, max: 0};
 
   // const auto shuffle_period = FLOOR(p.n_batches.x, p.n_streams);
 
@@ -377,7 +381,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
 
   if (randomize && p.n.x > p.gridSize.x) {
-    if (p.n_batches.x >= p.n_streams)
+    if (p.n_batches.x < p.n_streams)
       printf("\nWARNING: unused streams\tp.n_batches.x: %zu >= p.n_streams: %u\n--------------\n", p.n_batches.x, p.n_streams);
     assert(batches_per_estimate > 0);
     assert(i_shuffle_max >= 1);
@@ -428,7 +432,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
 
   unsigned int print_convergence = 10;
-  const bool reduce_append_frequency = 0; // default false, optional performance improvement
+  // const bool reduce_append_frequency = 0; // default false, optional performance improvement
   // TODO consider list of struct {stream, n, m}
   // {cudaStream_t stream, size_t n, size_t m, bool finished, bool converging};
 
@@ -633,6 +637,13 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         // converging[i_stream] = false;
         // converged[i_stream] = false;
         finished[i_stream] = false;
+
+        // update statistics summary
+        convergence_per_stream[i_stream].sum += n+1;
+        if (n+1 < convergence_per_stream[i_stream].min)
+          convergence_per_stream[i_stream].min = n+1;
+        if (n+1 > convergence_per_stream[i_stream].max)
+          convergence_per_stream[i_stream].max = n+1;
       }
     }
   } // end while (m < p.n_batches.y)
@@ -663,6 +674,23 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   cu( cudaFreeHost(v_pinned_ptr) );
   cu( cudaFreeHost(y_pinned_ptr) );
 
+
+  {
+    auto
+      min = std::accumulate(convergence_per_stream.begin(), convergence_per_stream.end(), convergence_per_stream[0].min,
+                            [](auto acc, auto next) {return MIN(acc, next.min); }),
+      max = std::accumulate(convergence_per_stream.begin(), convergence_per_stream.end(), convergence_per_stream[0].max,
+                            [](auto acc, auto next) {return MAX(acc, next.max); });
+    auto
+      sum = transform_reduce<SumRange>(convergence_per_stream, [](auto x) {return (double) x.sum; }),
+      mean = sum / (double) p.n_batches.y;
+    printf("convergence staticstis: ratio: %.2f\%, \t%.3f / %lu, range: [%lu, %lu]\n",
+           100 * mean / (double) p.n_batches.x, mean, p.n_batches.x, min, max);
+    if (p.n.x > p.batch_size.x)
+      assert(sum <= p.n_batches.y * p.n_batches.x);
+    if (p.n.x > p.batch_size.x)
+      assert(mean <= p.n_batches.x);
+  }
 
   // only in case of second transformation
   if (reorder_v && p.n.x > p.batch_size.x) {

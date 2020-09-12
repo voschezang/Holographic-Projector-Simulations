@@ -104,10 +104,10 @@ inline T sum(const std::vector<T> &x) {
 }
 
 template<typename T = cuDoubleComplex>
-inline double transform_reduce(const std::vector<T> &x, double (*f)(T)) {
+inline double transform_reduce(const std::vector<T> &x, double (*transform)(T)) {
   // transform input vector with function f and sum the result
   // will be included in c++17
-  auto op = [f](double acc, T next) { return acc + f(next); };
+  auto op = [transform](double acc, T next) { return acc + transform(next); };
   return std::accumulate(x.begin(), x.end(), (double) 0., op);
 }
 
