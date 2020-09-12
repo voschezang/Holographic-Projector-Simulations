@@ -185,8 +185,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
   auto v = v2;
   /* Performance (runtime) for randomize: 1, 1024x1024 data size
-   * re_shuffle_between_kernels: 0 -> 26.112164 s
-   * re_shuffle_between_kernels: 1 -> 20.338126 s // due to faster convergence?
+   * reshuffle_between_kernels: 0 -> 26.112164 s
+   * reshuffle_between_kernels: 1 -> 20.338126 s // due to faster convergence? worst cases are averaged out
    */
   // TODO store convergence in array or min/max/sum
   const double
@@ -197,9 +197,9 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   // threshold = 0;
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
-    re_shuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data
-    shuffle_v = 0,
-    reorder_v = 1, // TODO this seems broken
+    reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data
+    shuffle_v = 1,
+    reorder_v = 0 && randomize,
     reorder_v_rm_phase = 0; // for debugging
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
@@ -323,7 +323,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   // batch/iter indices
   auto m_per_stream = range(p.n_streams); // TODO add range<size_t> template>
   auto n_per_stream = std::vector<size_t>(p.n_streams, 0); // rename => i_iter
-  auto converging   = std::vector<bool>(p.n_streams, false); // not strictly converging but "undergoing convergence checking"
+  // auto converging   = std::vector<bool>(p.n_streams, false); // not strictly converging but "undergoing convergence checking"
   auto finished     = std::vector<bool>(p.n_streams, false);
 
   // const auto shuffle_period = FLOOR(p.n_batches.x, p.n_streams);
@@ -371,7 +371,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     min_n_datapoints = MAX(8*1024, p.batch_size.x), // before convergence computation
     // min_n_datapoints = 4,
     // i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
-    i_shuffle_max = p.n_batches.x; // TODO?
+    i_shuffle_max = p.n_batches.x; // TODO rm
   size_t
     batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
     i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
@@ -379,6 +379,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   if (randomize && p.n.x > p.gridSize.x) {
     if (p.n_batches.x >= p.n_streams)
       printf("\nWARNING: unused streams\tp.n_batches.x: %zu >= p.n_streams: %u\n--------------\n", p.n_batches.x, p.n_streams);
+    assert(batches_per_estimate > 0);
     assert(i_shuffle_max >= 1);
   }
 
@@ -427,6 +428,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
 
   unsigned int print_convergence = 10;
+  const bool reduce_append_frequency = 0; // default false, optional performance improvement
+  // TODO consider list of struct {stream, n, m}
+  // {cudaStream_t stream, size_t n, size_t m, bool finished, bool converging};
+
   auto compare_func = [&](auto m){ return m < p.n_batches.y;};
   while (std::any_of(m_per_stream.begin(), m_per_stream.end(), compare_func)) {
 
@@ -446,8 +451,19 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           // d_u = thrust::device_vector<double>(d_u_vector_ptr, 3*p.n.x + d_u_vector_ptr);
         } else {
           thrust::sort_by_key(d_rand.begin(), d_rand.end(), indices.begin());
-          thrust::scatter(d_x_original.begin(), d_x_original.end(), indices.begin(), d_x.begin());
-          thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
+            thrust::scatter(d_x_original.begin(), d_x_original.end(), indices.begin(), d_x.begin());
+            thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
+          //   // conditional shuffling for conditional MC
+          //   // TODO this requires reordering of x/u, -> make new reordering (transpose) function
+          //   const size_t n_sqrt = sqrt(p.n.x);
+          //   assert(n_sqrt * n_sqrt == p.n.x);
+          //   for (size_t i = 0; i < n_sqrt; ++i) {
+          //     const auto di = i * n_sqrt;
+          //     thrust::scatter(d_x_original.begin() + di, d_x_original.begin() + (i+1) * n_sqrt, indices.begin() + di, d_x.begin() + di);
+          //     thrust::scatter(d_u_original.begin() + di, d_u_original.begin() + (i+1) * n_sqrt, indices.begin() + di, d_u_row_ptr + di);
+          //   }
+          // }
+
         }
         i_shuffle = 0;
       }
@@ -464,8 +480,6 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         cp_batch_data_to_device<double>(v, m * d_v[i_stream].size,
                                         v_pinned[i_stream], d_v[i_stream],
                                         streams[i_stream]);
-      if (n == 0)
-        assert(!converging[i_stream]);
 
       // Derive current batch size in case of underutilized x-batches
       size_t local_batch_size = p.batch_size.x;
@@ -479,7 +493,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       // }
 
       // size_t n_offset = n * p.batch_size.x;
-      size_t n_offset = (re_shuffle_between_kernels ? i_shuffle : n ) * p.batch_size.x;
+      size_t n_offset = (reshuffle_between_kernels ? i_shuffle : n ) * p.batch_size.x;
       if (randomize && p.n.x > 1) {
         assert(i_shuffle <= p.n_batches.x);
         assert(i_shuffle < i_shuffle_max);
@@ -512,8 +526,13 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 #endif
 
       // Note that appending result to prev results slows down computation
-      const bool append_result = n > 0 && !converging[i_stream];
-      // const bool append_result = n > 0 && n_datapoints < min_n_datapoints;
+      // // const bool append_result = n > 0 && n_datapoints < min_n_datapoints;
+      // const bool append_result = n > 0 && !converging[i_stream];
+      // const bool append_result = (n > 0 && !converging[i_stream]) ||
+      //   (converging[i_stream] && n % min_n_datapoints != 0);
+      bool append_result = n > 0;
+      // if (reduce_append_frequency && n+1 >= batches_per_estimate && (n+1) % batches_per_estimate != 0)
+      //   append_result = 0;
 
       // cudaDeviceSynchronize(); print("pre s kernel");
       superposition_per_block<direction, algorithm, shared_memory>  \
@@ -528,7 +547,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
          );
       cu( cudaPeekAtLastError() );
       // cudaDeviceSynchronize(); print("post s kernel");
-      if (re_shuffle_between_kernels) i_shuffle++;
+      if (reshuffle_between_kernels) i_shuffle++;
     }
 
     // cudaDeviceSynchronize(); print("sum rows");
@@ -537,15 +556,20 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         n = n_per_stream[i_stream],
         m = m_per_stream[i_stream],
         n_datapoints = (n+1) * p.batch_size.x;
+      const bool converging = n+1 > batches_per_estimate; // strict comparison; true after the first aggregation
       if (m >= p.n_batches.y) continue;
 
       if (n >= p.n_batches.x - 1)
         finished[i_stream] = true;
 
-      if (finished[i_stream] || n_datapoints >= min_n_datapoints) {
+      // if (finished[i_stream] || n >= batches_per_estimate) {
+      if (finished[i_stream] || (n+1 >= batches_per_estimate && (n+1) % batches_per_estimate == 0)) {
         // TODO instead of memset, do
         // after the first sum_rows call, the following results should be added the that first result
-        const auto beta = converging[i_stream] ? WAVE {1,0} : WAVE {0,0};
+        // const auto beta = converging[i_stream] ? WAVE {1,0} : WAVE {0,0};
+        // const auto beta = reduce_append_frequency && converging \
+        //   ? WAVE {1,0} : WAVE {0,0};
+        const auto beta = WAVE {0,0};
         kernel::sum_rows<false>(d_y_tmp[i_stream].size / p.batch_size.y, p.batch_size.y,
                                 handles[i_stream], d_y_tmp[i_stream].data, d_unit,
                                 d_y_sum[i_stream].data, beta);
@@ -553,7 +577,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         cu( cudaPeekAtLastError() );
         // cudaDeviceSynchronize(); print("sum rows post");
 
-        if (!finished[i_stream] && converging[i_stream] && n % batches_per_estimate == 0) {
+        if (!finished[i_stream] && converging && (n+1) % batches_per_estimate == 0) {
           const double
             prev_n = (n+1 - batches_per_estimate) * p.batch_size.x,
             scale_a = max_distance / (double) n_datapoints,
@@ -565,7 +589,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
                                              (double *) d_y_prev[i_stream].data,
                                              is_smaller(scale_a, scale_b, threshold));
           if (finished[i_stream] && print_convergence > 0)
-            printf("converged/finished at batch.x: %lu/%lu \t (%u, threshold: %e)\n", n, p.n_batches.x, print_convergence--, threshold);
+            printf("converged/finished at batch.x: %lu/%lu \t (%3u, threshold: %.2e)\n", n, p.n_batches.x, print_convergence--, threshold);
 
         }
         // if still not finished
@@ -574,15 +598,15 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           cu( cudaMemcpyAsync(d_y_prev[i_stream].data, d_y_sum[i_stream].data,
                               d_y_sum[i_stream].size * sizeof(WAVE),
                               cudaMemcpyDeviceToDevice, streams[i_stream]) );
-          converging[i_stream] = true;
+          // converging[i_stream] = true;
         }
       }
 
-      if (!finished[i_stream])
-        n_per_stream[i_stream]++;
-      else
+      if (finished[i_stream])
         cp_batch_data_to_host<WAVE>(d_y_sum[i_stream].data, y_pinned[i_stream],
                                     p.batch_size.y, streams[i_stream]);
+      else
+        n_per_stream[i_stream]++;
     }
 
     // cudaDeviceSynchronize(); print("final");
@@ -590,24 +614,23 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       if (finished[i_stream]) {
         const size_t
           n = n_per_stream[i_stream],
-          m = m_per_stream[i_stream],
-          n_datapoints = (n+1) * p.batch_size.x;
+          m = m_per_stream[i_stream];
         assert(m < p.n_batches.y);
-        const double div_by_n = 1. / (double) n_datapoints;
+        const double div_by_n_datapoints = 1. / (double) ((n+1) * p.batch_size.x);
         // TODO add dedicated loop for better work distribution (similar to in func transform_full)
         // TODO stage copy-phase of next batch before copy/sync?
         cudaStreamSynchronize(streams[i_stream]);
         for (size_t j = 0; j < p.batch_size.y; ++j) {
           // save average w.r.t the number of samples used per y-batch
           // TODO make transformation_full compatible with this average
-          y[j + m * p.batch_size.y].x = y_pinned[i_stream][j].x * div_by_n;
-          y[j + m * p.batch_size.y].y = y_pinned[i_stream][j].y * div_by_n;
+          y[j + m * p.batch_size.y].x = y_pinned[i_stream][j].x * div_by_n_datapoints;
+          y[j + m * p.batch_size.y].y = y_pinned[i_stream][j].y * div_by_n_datapoints;
           // TODO assert y index is within bounds
         }
 
         n_per_stream[i_stream] = 0;
         m_per_stream[i_stream] = *std::max_element(m_per_stream.begin(), m_per_stream.end()) + 1;
-        converging[i_stream] = false;
+        // converging[i_stream] = false;
         // converged[i_stream] = false;
         finished[i_stream] = false;
       }
@@ -977,7 +1000,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
 // #ifdef RANDOMIZE_SUPERPOSITION_INPUT
   y = transform<direction, Algorithm::Alt, false>(x, u, v, p, x_plane, y_plane);
 // #else
-//   y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
+  // y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
 // #endif
 
   // average of transformation and constant if any
