@@ -33,7 +33,7 @@ Params read_args(int argc, char **argv) {
     {n_planes:     {obj: 1,
                     projector: 1, // unused
                     projection: 1}, // number of projection planes per obj plane
-     n_per_plane:  {obj: 1,
+     n_per_plane:  {obj: 5,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,

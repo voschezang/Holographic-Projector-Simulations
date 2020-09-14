@@ -17,8 +17,8 @@
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
 /* #define N_sqrt 256 */
-#define N_sqrt 512
-/* #define N_sqrt 1024 */
+/* #define N_sqrt 512 */
+#define N_sqrt 1024
 /* #define N_sqrt 1440 */
 /* #define N_sqrt 2048 */
 

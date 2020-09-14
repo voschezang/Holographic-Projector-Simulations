@@ -193,7 +193,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     max_diameter = MAX(y_plane.width, x_plane.width),
     min_distance = y_plane.offset.z - x_plane.offset.z, // assume parallel planes, with constant third dim
     max_distance = norm3d_host(min_distance, max_diameter, 0),
-    threshold = 1e-3;
+    threshold = 1e-4;
   // threshold = 0;
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
@@ -372,7 +372,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   const size_t
-    min_n_datapoints = MAX(8*1024, p.batch_size.x), // before convergence computation
+    min_n_datapoints = MAX(4*1024, p.batch_size.x), // before convergence computation
     // min_n_datapoints = 4,
     // i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
     i_shuffle_max = p.n_batches.x; // TODO rm
@@ -583,15 +583,18 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
         if (!finished[i_stream] && converging && (n+1) % batches_per_estimate == 0) {
           const double
-            prev_n = (n+1 - batches_per_estimate) * p.batch_size.x,
-            scale_a = max_distance / (double) n_datapoints,
-            scale_b = max_distance / prev_n; // to re-normalize the prev result
+            prev_n = (n+1 - batches_per_estimate) * p.batch_size.x;
+            // scale_a = max_distance / (double) n_datapoints,
+            // scale_b = max_distance / prev_n; // to re-normalize the prev result
+            // scale_a = max_distance / (double) sqrt(n_datapoints),
+            // scale_b = max_distance / (double) sqrt(prev_n); // to re-normalize the prev result
           // TOOD try this, and don't use pinned memory
           finished[i_stream] = thrust::equal(thrust::cuda::par.on(streams[i_stream]),
                                              (double *) d_y_sum[i_stream].data,
                                              (double *) d_y_sum[i_stream].data + d_y_sum[i_stream].size * 2,
                                              (double *) d_y_prev[i_stream].data,
-                                             is_smaller(scale_a, scale_b, threshold));
+                                             is_smaller_phasor(n_datapoints, prev_n, max_distance, threshold));
+          // is_smaller(scale_a, scale_b, threshold));
           if (finished[i_stream] && print_convergence > 0)
             printf("converged/finished at batch.x: %lu/%lu \t (%3u, threshold: %.2e)\n", n, p.n_batches.x, print_convergence--, threshold);
 
@@ -676,16 +679,16 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
 
   {
-    auto
+    size_t
       min = std::accumulate(convergence_per_stream.begin(), convergence_per_stream.end(), convergence_per_stream[0].min,
                             [](auto acc, auto next) {return MIN(acc, next.min); }),
       max = std::accumulate(convergence_per_stream.begin(), convergence_per_stream.end(), convergence_per_stream[0].max,
                             [](auto acc, auto next) {return MAX(acc, next.max); });
-    auto
+    double
       sum = transform_reduce<SumRange>(convergence_per_stream, [](auto x) {return (double) x.sum; }),
       mean = sum / (double) p.n_batches.y;
-    printf("convergence staticstis: ratio: %.2f\%, \t%.3f / %lu, range: [%lu, %lu]\n",
-           100 * mean / (double) p.n_batches.x, mean, p.n_batches.x, min, max);
+    printf("Convergence ratio: %.4f%%, \t%.3f / %lu, range: [%lu, %lu] \t(min_n_datapoints/batch_size.x: %.3f)\n",
+           100 * mean / (double) p.n_batches.x, mean, p.n_batches.x, min, max, min_n_datapoints / (double) p.batch_size.x);
     if (p.n.x > p.batch_size.x)
       assert(sum <= p.n_batches.y * p.n_batches.x);
     if (p.n.x > p.batch_size.x)

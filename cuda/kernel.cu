@@ -174,18 +174,30 @@ struct is_smaller
   : public thrust::binary_function<double, double, bool>
 {
   double scale_a, scale_b, threshold;
-  // constructor
-  is_smaller(const double scale_a, const double scale_b, const double threshold) : scale_a(scale_a), scale_b(scale_b), threshold(threshold) {}
+  is_smaller(const double scale_a, const double scale_b, const double threshold) :
+    scale_a(scale_a), scale_b(scale_b), threshold(threshold) {}
 
   __host__ __device__
-  bool operator()(const double a, const double b)
-  {
-    // const double A = a * scale_a, B = b * scale_b;
-    // const int n = ilogb(MAX(1, MIN(A,B)));
-    // const double diff = abs(A - B);
-    // // printf("diff mag: %u, %e\n", n, pow(10,n));
-    // return diff / (double) pow(10, n) < threshold;
+  bool operator()(const double a, const double b) {
     return abs(a * scale_a - b * scale_b) < threshold;
+  }
+};
+
+
+struct is_smaller_phasor
+  : public thrust::binary_function<double, double, bool>
+{
+  double scale_a1, scale_a2, scale_b1, scale_b2, threshold;
+  is_smaller_phasor(const size_t N, const size_t M, const double distance, const double threshold) :
+    scale_a1(distance / (double) N), scale_a2(distance / (double) sqrt(N)),
+    scale_b1(distance / (double) M), scale_b2(distance / (double) sqrt(M)),
+    threshold(threshold) {}
+
+  __host__ __device__
+  bool operator()(const double a, const double b) {
+    // TODO adding sqrt comparison does not alter convergence (tested for various params)
+    return (abs(a * scale_a1 - b * scale_b1) < threshold);
+    // return (abs(a * scale_a1 - b * scale_b1) < threshold) || (abs(a * scale_a2 - b * scale_b2) < threshold);
   }
 };
 
