@@ -373,7 +373,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   const size_t
-    min_n_datapoints = MAX(1*1024, p.batch_size.x), // before convergence computation
+    min_n_datapoints = MAX(4*1024, p.batch_size.x), // before convergence computation
     min_n_datapoints0 = MAX(8*1024, p.batch_size.x),
     // min_n_datapoints = 4,
     // i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
