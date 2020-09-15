@@ -151,6 +151,50 @@ void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
   }
 }
 
+double distance(const std::vector<double> &u, const std::vector<double> &v, size_t i, size_t j) {
+  return norm3d_host(u[Ix(i,0)] - v[Ix(j,0)],
+                     u[Ix(i,1)] - v[Ix(j,1)],
+                     u[Ix(i,2)] - v[Ix(j,2)]);
+}
+
+double max_distance_between_planes(const Plane& u_plane, const std::vector<double> &u,
+                                   const Plane& v_plane, const std::vector<double> &v) {
+  const size_t N = u.size() / DIMS, M = v.size() / DIMS;
+  auto
+    x1 = (size_t) sqrt(N * u_plane.aspect_ratio),
+    x2 = (size_t) sqrt(M * v_plane.aspect_ratio),
+    y1 = N / x1,
+    y2 = N / x2;
+  if (u_plane.aspect_ratio == N)
+    printf("u_plane.aspect_ratio: %f, N: %lu\n", u_plane.aspect_ratio, N);
+  if (v_plane.aspect_ratio == M)
+    printf("v_plane.aspect_ratio: %f, M: %lu\n", v_plane.aspect_ratio, M);
+  assert(u_plane.aspect_ratio != N || N < 128); // not implemented
+  assert(v_plane.aspect_ratio != M || M < 128); // not implemented
+  // assume planes are rectangular; limit search to the (possible) corner indices
+  std::vector<size_t>
+    u_indices {0, x1 - 1, y1 - 1, N - x1, N - y1, N - 1},
+    v_indices {0, x2 - 1, y2 - 1, M - x2, M - y2, M - 1};
+
+  if (N < 128) {
+    u_indices = std::vector<size_t> (N);
+    std::iota(u_indices.begin(), u_indices.end(), 0);
+  }
+  if (M < 128) {
+    v_indices = std::vector<size_t> (M);
+    std::iota(v_indices.begin(), v_indices.end(), 0);
+  }
+
+  double max_distance = 0;
+  for (auto& i : u_indices)
+    for (auto& j : v_indices) {
+      const auto d = distance(u, v, i, j);
+      if (d > max_distance) max_distance = d;
+    }
+  assert(max_distance != 0);
+  return max_distance;
+}
+
 bool abs_of_is_positive(WAVE x) {
   return cuCabs(x) > 0;
 }

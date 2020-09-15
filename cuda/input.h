@@ -33,7 +33,7 @@ Params read_args(int argc, char **argv) {
     {n_planes:     {obj: 1,
                     projector: 1, // unused
                     projection: 1}, // number of projection planes per obj plane
-     n_per_plane:  {obj: 5,
+     n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
      aspect_ratio: {obj: 1.,
@@ -59,9 +59,9 @@ Params read_args(int argc, char **argv) {
      randomize: false,
      /* randomize: true, */
      n_streams: 16,
-     thread_size: {4, 32},
+     /* thread_size: {4, 32}, */
      /* thread_size: {1, 32}, */
-     /* thread_size: {4, 4}, */
+     thread_size: {4, 8},
      blockDim: {BLOCKDIMX, BLOCKDIMY, 1},
      gridDim: {GRIDDIMX, GRIDDIMY, 1}
     };

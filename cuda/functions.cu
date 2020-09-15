@@ -188,19 +188,20 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
    * reshuffle_between_kernels: 0 -> 26.112164 s
    * reshuffle_between_kernels: 1 -> 20.338126 s // due to faster convergence? worst cases are averaged out
    */
-  // TODO store convergence in array or min/max/sum
   const double
-    max_diameter = MAX(y_plane.width, x_plane.width),
-    min_distance = y_plane.offset.z - x_plane.offset.z, // assume parallel planes, with constant third dim
-    max_distance = norm3d_host(min_distance, max_diameter, 0),
+    // max_width = x_plane.width > y_plane.width ? x_plane.width : y_plane.width,
+    // max_height = x_plane.width > y_plane.width ? x_plane.width / x_plane.aspect_ratio : y_plane.width / y_plane.aspect_ratio,
+    // min_distance = y_plane.offset.z - x_plane.offset.z, // assume parallel planes, with constant third dim
+    // max_distance = norm3d_host(min_distance, max_width, max_height),
+    max_distance = max_distance_between_planes(x_plane, u, y_plane, v),
     threshold = 1e-4;
-  // threshold = 0;
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
     reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data
     shuffle_v = 0,
     reorder_v = 1 && randomize,
-    reorder_v_rm_phase = 0; // for debugging
+    reorder_v_rm_phase = 0, // for debugging
+    amp_convergence = 1;
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
   const bool conditional_MC = 0;
@@ -372,12 +373,14 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   const size_t
-    min_n_datapoints = MAX(4*1024, p.batch_size.x), // before convergence computation
+    min_n_datapoints = MAX(1*1024, p.batch_size.x), // before convergence computation
+    min_n_datapoints0 = MAX(8*1024, p.batch_size.x),
     // min_n_datapoints = 4,
     // i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
     i_shuffle_max = p.n_batches.x; // TODO rm
   size_t
     batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
+    batches_for_first_estimate = CEIL(min_n_datapoints0, p.batch_size.x),
     i_shuffle = i_shuffle_max; // init high s.t. shuffling will be triggered
 
   if (randomize && p.n.x > p.gridSize.x) {
@@ -385,6 +388,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       printf("\nWARNING: unused streams\tp.n_batches.x: %zu >= p.n_streams: %u\n--------------\n", p.n_batches.x, p.n_streams);
     assert(batches_per_estimate > 0);
     assert(i_shuffle_max >= 1);
+    if (min_n_datapoints > p.n.x)
+      printf("Warning not enough datapoints: n: %lu, n_min: %lu\n", p.n.x, min_n_datapoints);
+    if (min_n_datapoints0 > p.n.x)
+      printf("Warning not enough datapoints0: n: %lu, n_min: %lu\n", p.n.x, min_n_datapoints0);
   }
 
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
@@ -560,14 +567,16 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         n = n_per_stream[i_stream],
         m = m_per_stream[i_stream],
         n_datapoints = (n+1) * p.batch_size.x;
-      const bool converging = n+1 > batches_per_estimate; // strict comparison; true after the first aggregation
+      // const bool converging = n+1 > batches_per_estimate; // strict comparison; true after the first aggregation
+      const bool converging = n+1 > batches_for_first_estimate; // strict comparison; true after the first aggregation
       if (m >= p.n_batches.y) continue;
 
       if (n >= p.n_batches.x - 1)
         finished[i_stream] = true;
 
       // if (finished[i_stream] || n >= batches_per_estimate) {
-      if (finished[i_stream] || (n+1 >= batches_per_estimate && (n+1) % batches_per_estimate == 0)) {
+      // if (finished[i_stream] || (n+1 >= batches_per_estimate && (n+1) % batches_per_estimate == 0)) {
+      if (finished[i_stream] || (n+1 >= batches_for_first_estimate && (n+1) % batches_per_estimate == 0)) {
         // TODO instead of memset, do
         // after the first sum_rows call, the following results should be added the that first result
         // const auto beta = converging[i_stream] ? WAVE {1,0} : WAVE {0,0};
@@ -584,17 +593,21 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         if (!finished[i_stream] && converging && (n+1) % batches_per_estimate == 0) {
           const double
             prev_n = (n+1 - batches_per_estimate) * p.batch_size.x;
-            // scale_a = max_distance / (double) n_datapoints,
-            // scale_b = max_distance / prev_n; // to re-normalize the prev result
-            // scale_a = max_distance / (double) sqrt(n_datapoints),
-            // scale_b = max_distance / (double) sqrt(prev_n); // to re-normalize the prev result
-          // TOOD try this, and don't use pinned memory
-          finished[i_stream] = thrust::equal(thrust::cuda::par.on(streams[i_stream]),
-                                             (double *) d_y_sum[i_stream].data,
-                                             (double *) d_y_sum[i_stream].data + d_y_sum[i_stream].size * 2,
-                                             (double *) d_y_prev[i_stream].data,
-                                             is_smaller_phasor(n_datapoints, prev_n, max_distance, threshold));
-          // is_smaller(scale_a, scale_b, threshold));
+
+          // check either amp or both the re,im parts (implicit phase)
+          if (amp_convergence)
+            finished[i_stream] = thrust::equal(thrust::cuda::par.on(streams[i_stream]),
+                                               d_y_sum[i_stream].data,
+                                               d_y_sum[i_stream].data + d_y_sum[i_stream].size,
+                                               d_y_prev[i_stream].data,
+                                               is_smaller_phasor(n_datapoints, prev_n, max_distance, threshold));
+          else
+            finished[i_stream] = thrust::equal(thrust::cuda::par.on(streams[i_stream]),
+                                               (double *) d_y_sum[i_stream].data,
+                                               (double *) d_y_sum[i_stream].data + d_y_sum[i_stream].size * 2,
+                                               (double *) d_y_prev[i_stream].data,
+                                               is_smaller(n_datapoints, prev_n, max_distance, threshold));
+
           if (finished[i_stream] && print_convergence > 0)
             printf("converged/finished at batch.x: %lu/%lu \t (%3u, threshold: %.2e)\n", n, p.n_batches.x, print_convergence--, threshold);
 

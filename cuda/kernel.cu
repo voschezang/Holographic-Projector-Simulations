@@ -174,18 +174,19 @@ struct is_smaller
   : public thrust::binary_function<double, double, bool>
 {
   double scale_a, scale_b, threshold;
-  is_smaller(const double scale_a, const double scale_b, const double threshold) :
-    scale_a(scale_a), scale_b(scale_b), threshold(threshold) {}
+  is_smaller(const size_t N, const size_t M, const double distance, const double threshold) :
+    scale_a(distance / (double) N),
+    scale_b(distance / (double) M),
+    threshold(threshold) {}
 
   __host__ __device__
   bool operator()(const double a, const double b) {
-    return abs(a * scale_a - b * scale_b) < threshold;
+    return (abs(a * scale_a - b * scale_b) < threshold);
   }
 };
 
-
 struct is_smaller_phasor
-  : public thrust::binary_function<double, double, bool>
+  : public thrust::binary_function<WAVE, WAVE, bool>
 {
   double scale_a1, scale_a2, scale_b1, scale_b2, threshold;
   is_smaller_phasor(const size_t N, const size_t M, const double distance, const double threshold) :
@@ -194,10 +195,11 @@ struct is_smaller_phasor
     threshold(threshold) {}
 
   __host__ __device__
-  bool operator()(const double a, const double b) {
-    // TODO adding sqrt comparison does not alter convergence (tested for various params)
-    return (abs(a * scale_a1 - b * scale_b1) < threshold);
-    // return (abs(a * scale_a1 - b * scale_b1) < threshold) || (abs(a * scale_a2 - b * scale_b2) < threshold);
+  bool operator()(const WAVE a, const WAVE b) {
+    double a_amp = cuCabs(a), b_amp = cuCabs(b);
+    return (abs(a_amp * scale_a1 - b_amp * scale_b1) < threshold);
+    // return (abs(a.x * scale_a1 - b.x * scale_b1) < threshold)
+    //   && (abs(a.y * scale_a1 - b.y * scale_b1) < threshold);
   }
 };
 
