@@ -595,6 +595,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
             prev_n = (n+1 - batches_per_estimate) * p.batch_size.x;
 
           // check either amp or both the re,im parts (implicit phase)
+          // TODO (optional) save amplitude as separate array (only half n), to prevent the scaling and abs value at each comparison
           if (amp_convergence)
             finished[i_stream] = thrust::equal(thrust::cuda::par.on(streams[i_stream]),
                                                d_y_sum[i_stream].data,

@@ -197,7 +197,8 @@ struct is_smaller_phasor
   __host__ __device__
   bool operator()(const WAVE a, const WAVE b) {
     double a_amp = cuCabs(a), b_amp = cuCabs(b);
-    // convergence speed depends on params. with threshold 1e-4, 1024x1024 datapoints, projection width 0.0003, min_n_datapoints = min_n_datapoints0 = 4*1024:
+    // convergence speed depends on params.
+    // with threshold 1e-4, 1024x1024 sample points, 1 datapoint at 35cm, projection width 0.0003, min_n_datapoints = min_n_datapoints0 = 4*1024:
     // scale_1   Convergence ratio: 32.7782%, 	335.648 / 1024, range: [96, 524] 	(min_n_datapoints/batch_size.x: 4.000)
     // both &&   Convergence ratio: 39.6160%, 	405.668 / 1024, range: [208, 596] 	(min_n_datapoints/batch_size.x: 4.000)
     // either || Convergence ratio: 20.6661%, 	211.621 / 1024, range: [84, 356] 	(min_n_datapoints/batch_size.x: 4.000)

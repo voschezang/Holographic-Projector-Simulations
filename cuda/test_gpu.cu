@@ -142,7 +142,7 @@ void test_superposition() {
           if (N <= p.batch_size.x) assert(p.n_batches.x == 1);
           if (M <= p.batch_size.y) assert(p.n_batches.y == 1);
           const std::vector<Polar> X (x.begin(), x.begin() + N);
-          auto z = transform<Direction::Forwards, Algorithm::Naive, false>(X, u, v, p);
+          auto z = transform_full<Direction::Forwards, Algorithm::Naive, false>(X, u, v, p);
           printf("\n\tparams: thread_size: %lu, %lu \t n_streams: %i, batch size: %lu, %lu\n",
                  thread_size_x, thread_size_y, n_streams, p.batch_size.x, p.batch_size.y);
           for (size_t i = 0; i < M; ++i) {
@@ -151,13 +151,13 @@ void test_superposition() {
             if (!allow_random)
               assert(equals(cuCabs(z[i]), N));
           }
-          z = transform<Direction::Forwards, Algorithm::Alt, false>(X, u, v, p);
+          z = transform_full<Direction::Forwards, Algorithm::Alt, false>(X, u, v, p);
           for (size_t i = 0; i < M; ++i) {
             assert(equals(angle(z[i]), phi));
             if (!allow_random)
               assert(equals(cuCabs(z[i]), N));
           }
-          z = transform<Direction::Forwards, Algorithm::Alt, true>(X, u, v, p);
+          z = transform_full<Direction::Forwards, Algorithm::Alt, true>(X, u, v, p);
           for (size_t i = 0; i < M; ++i) {
             assert(equals(angle(z[i]), phi));
             if (!allow_random)
