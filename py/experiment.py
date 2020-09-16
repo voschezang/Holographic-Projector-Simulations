@@ -536,5 +536,5 @@ if __name__ == '__main__':
     # distribution_vary_projector(prefix + '-dist-proj', n, v)
     # print('fit gaussian')
     # fit_gaussian(prefix + '-gaus')
-    print('predict gaussian')
-    pred_gaussian(prefix + '-gaus-pred')
+    # print('predict gaussian')
+    # pred_gaussian(prefix + '-gaus-pred')
