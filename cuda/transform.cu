@@ -237,7 +237,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     threshold = 1e-4;
   const bool
     randomize = 0 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
-    reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data
+    reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data (in parallel batches)
     shuffle_v = 0,
     reorder_v = 0 && randomize,
     reorder_v_rm_phase = 0, // for debugging
@@ -537,8 +537,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
       // Derive current batch size in case of underutilized x-batches
       size_t local_batch_size = p.batch_size.x;
-      if (!randomize)
-        if (p.n.x != p.n_batches.x * p.batch_size.x && n == p.n_batches.x - 1)
+
+      // in case of final batch
+      if (!randomize && p.n.x != p.n_batches.x * p.batch_size.x)
+        if (n == p.n_batches.x - 1)
           local_batch_size = p.n.x - n * p.batch_size.x;
 
       // if (101) { // TODO rm
