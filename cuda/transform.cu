@@ -134,6 +134,46 @@ inline void superposition_per_block(
   }
 }
 
+
+void reorder_plane(const std::vector<double> u0, std::vector<double> u, size_t square_size, double aspect_ratio = 1) {
+  /*
+   * Reorder spatial data s.t. each batch covers square area in space.
+   * neglect boundary cells
+   * N = input size, M = M.x * M.y = output size, where M <= N
+   * s^2 = square size
+   */
+  const auto
+    N = u.size() / DIMS,
+    Nx = (size_t) sqrt(N * aspect_ratio),
+    Ny = N / Nx,
+    s = (size_t) sqrt(square_size); // sqrt batch_size
+
+  const dim2 M {FLOOR(Nx, s) * s, FLOOR(Ny, s) * s};
+
+  // size_t N_sqrt = FLOOR(, G) * G; // minus boundaries
+
+  for (size_t i = 0; i < M.x; ++i)
+    for (size_t j = 0; j < M.y; ++j) {
+      // define spatial 2D indices (both for target dataset y)
+      dim2
+        i_batch_major = {i / s, j / s},
+        i_batch_minor = {i % s, j % s};
+      size_t i_transpose = (i_batch_major.x * M.y + i_batch_major.y * s) * s + i_batch_minor.x * s + i_batch_minor.y;
+      // size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
+      for (int dim = 0; dim < DIMS; ++dim) {
+        // v[Ix(i_transpose, dim)];
+        u[Ix(i_transpose, dim)] = u0[Ix2D(i, j, dim, Ny)];
+      }
+    }
+}
+
+void reorder_plane(const std::vector<WAVE> x0, std::vector<WAVE> x,
+                   const std::vector<double> u0, std::vector<double> u,
+                   size_t output_shape, double aspect_ratio) {
+  // reorder_plane(u0, u, output_shape, aspect_ratio);
+  // TODO x
+}
+
 template<bool add_constant = false>
 void normalize_amp(std::vector<WAVE> &c, double to = 1., bool log_normalize = false) {
   double max_amp = 0;
@@ -196,10 +236,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     max_distance = max_distance_between_planes(x_plane, u, y_plane, v),
     threshold = 1e-4;
   const bool
-    randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
+    randomize = 0 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
     reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data
     shuffle_v = 0,
-    reorder_v = 1 && randomize,
+    reorder_v = 0 && randomize,
     reorder_v_rm_phase = 0, // for debugging
     amp_convergence = 1;
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
@@ -228,7 +268,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   // only in case of second transformation
-  if (reorder_v && p.n.x > p.batch_size.x) {
+  // if (reorder_v && p.n.x > p.batch_size.x)
+  //   reorder_plane(v2, v, p.batch_size.y);
+
+  if (1 && reorder_v && p.n.x > p.batch_size.x) {
     // reorder v data s.t. each batch covers square area in space
     // neglect boundary cells
 
