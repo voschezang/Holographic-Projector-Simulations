@@ -109,6 +109,7 @@ Params read_args(int argc, char **argv) {
       }
     }
 
+  assert(0 < p.algorithm && p.algorithm <= 3);
   assert(p.n_planes.obj >= 1);
   assert(p.n_planes.projector == 1);
   assert(p.n_planes.projection <= 10000);
