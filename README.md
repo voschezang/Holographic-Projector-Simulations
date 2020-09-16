@@ -14,7 +14,7 @@ High performance simulations of holographic projectors for GPU's.
 The main kernel to compute superpositions is `superposition::per_kernel`, 
 which repeatedly calls `superposition::phasor_displacement`.
 
-The main files are `cuda/main.h,.cu`, in which functions in `cuda/transform.cu` are called to compute superposition transformations:
+The main files are `cuda/main.h,.cu`, in which functions declared in `cuda/transform.cu` are called to compute superposition transformations:
 
 - a brute force transformation `transform_full()`
 - a Monte Carlo version `transform()` which is less accurate but potentially faster
