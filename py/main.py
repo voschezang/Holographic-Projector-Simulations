@@ -84,6 +84,8 @@ if __name__ == '__main__':
     args = (m,) if m <= 4 else (0, m, np.ceil(m / 4).astype(int))
     for i in range(*args):
         subtitle = f"(distance: {round(params['x'][i]['z_offset'], 2)} m)"
+        if data['u'][i].shape[0] < 5:
+            print(f'u[{i}]:\n', data['u'][i])
         plot.scatter_multiple(data['x'][i][:n], data['u'][i][:n],
                               f'Object ({i})', subtitle, filename=f'x-scatter-sub-{i}')
 

@@ -243,10 +243,13 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
     irradiance /= irradiance.max()
     # add lower bound to allow plotting with log scale
     lower_bound = 1e-9
+    if 1:
+        lower_bound = 1e-4
     np.clip(irradiance, lower_bound, None, out=irradiance)
     range = irradiance.max() - irradiance.min()
     log_cmap = range > 0.1
     mini = irradiance.min()
+    print('irradiance', irradiance.min(), irradiance.max())
     log_irradiance = np.log10(irradiance)
 
     # use custom colormap to highlight different order of magnitude in log axis
@@ -263,15 +266,16 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
     plot_func(x, y, log_irradiance, **kwargs)
     if log_cmap:
         n_ticks = int(-round(np.log10(mini))) + 1
-        assert n_ticks > 1, range
+        if n_ticks > 1:
+            print('Warning, not enough ticks for log plot')
         ticks = np.linspace(round(np.log10(mini)), 0, n_ticks, endpoint=True) \
             .round().astype(int)
         labels = [f'$10^{{{v}}}$' for v in ticks]
-        print(n_ticks, ticks)
-        print(labels)
+        # print(n_ticks, ticks)
+        # print(labels)
         cb = plt.colorbar(fraction=0.052, pad=0.05)
-        min2 = round(log_irradiance.min())
-        print('real min', min2, log_irradiance.min())
+        # min2 = round(log_irradiance.min())
+        # print('real min', min2, log_irradiance.min())
         cb.set_ticks(np.linspace(log_irradiance.min(),
                                  log_irradiance.max(), n_ticks, endpoint=True))
         cb.set_ticklabels(labels)
@@ -280,7 +284,7 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
         del kwargs['density']
 
     markup(ax, unit='m', colorbar=not log_cmap)
-    plt.title('Log Irradiance', fontsize=16)
+    plt.title('Irradiance', fontsize=16)
     if horizontal:
         ax = plt.subplot(132)
     else:

@@ -958,6 +958,7 @@ def parse_file(dir='../tmp', zipfilename='out.zip', prefix='out',
 
                 data[k1].append(np.array([amp, phase]).T)
                 data[k2].append(pos.reshape(-1, DIMS))
+                print('Amp range', amp.min(), amp.max())
                 for x in (amp, phase, pos):
                     assert(not np.isnan(x.sum()))
                     assert(not np.isnan(x.min()))

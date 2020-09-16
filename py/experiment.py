@@ -410,6 +410,7 @@ def pred_gaussian(fn: str):
         'projector_width': np.linspace(1920 * 1e-6, 1920 * 1e-5, 5),
         'projection_width': 0.000102,
         'aspect_ratio_projection': n_sqrt**2,
+        # 'randomize_pixels': True,
     }
     build_params = util.param_table(build_param_values)
     run_params = util.param_table(run_param_values)
