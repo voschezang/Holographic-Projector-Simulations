@@ -21,5 +21,7 @@ Specifically a brute force transformation `transform_full()` and a Monte Carlo v
 The are a number of variants of `SuperpositionPerBlockHelper` macros which are used in combination with `superposition_per_block_helper()` functions.
 They allow the GPU geometry to be included as templates, which is required for CUB library functions.
 
+Various tests are included in `cuda/test.cu` and `cuda/test_gpu.cu`. 
+There are no tests written for the MC estimators (`transform()`).
 
 

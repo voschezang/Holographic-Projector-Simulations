@@ -20,6 +20,7 @@ build:
 	# -g debug
 	# -D$(HyperParams)
 	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
+	mkdir -p $(DIR)
 
 debug:
 	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS) -g -G
