@@ -17,7 +17,9 @@
  * These functions are not (necessarily) optimized for performance.
  */
 
-void init_random(curandGenerator_t *gen, unsigned int seed) {
+void init_random(curandGenerator_t *gen) {
+  static unsigned int seed = 1234; // TODO manage externally from this function
+  seed++;
   // TODO do this on CPU to avoid data copying
   curandCreateGenerator(gen, CURAND_RNG_PSEUDO_XORWOW);
   /* curandCreateGenerator(gen, CURAND_RNG_PSEUDO_MT19937); */
@@ -27,6 +29,7 @@ void init_random(curandGenerator_t *gen, unsigned int seed) {
 void randomize(float *x, float *d_x, size_t len, curandGenerator_t gen) {
   // TODO do this on cpu or at runtime (per batch)
   curandGenerateUniform(gen, d_x, len);
+  cuR( curandGenerateUniform(gen, d_x, len * sizeof(float) / 32) );
   cudaMemcpy(x, d_x, len * sizeof(float), cudaMemcpyDeviceToHost);
   cudaDeviceSynchronize();
 }
@@ -43,6 +46,15 @@ void derive_secondary_geometry(struct Geometry& p) {
                 1};
   p.batch_size = {MIN(p.n.x, p.thread_size.x * p.gridSize.x),
                   MIN(p.n.y, p.thread_size.y * p.gridSize.y)};
+
+#ifdef SQUARE_TARGET_BATCHES
+  if (p.n.y > p.batch_size.y) {
+    // round down to the nearest square
+    const size_t sq =  sqrt(p.batch_size.y);
+    p.batch_size.y = sq * sq;
+  }
+#endif
+
   p.n_batches = {CEIL(p.n.x, p.batch_size.x),
                  CEIL(p.n.y, p.batch_size.y)};
   check_hyper_params(p);
@@ -77,7 +89,6 @@ Geometry geometry(struct Params& params, const size_t x, const size_t y) {
  */
 void plane(std::vector<SPACE> &v, const Plane p) {
   // TODO return ptr to device memory, copy pos data to CPU during batches
-  static unsigned int seed = 1234; // TODO manage externally from this function
   const size_t n = v.size() / DIMS;
   printf("offset: %f\n", p.offset.z);
   for (unsigned int i = 0; i < n; ++i)
@@ -117,7 +128,7 @@ void plane(std::vector<SPACE> &v, const Plane p) {
   float *d_random, random[n_random];
 
   if (p.randomize) {
-    init_random(&generator, seed++);
+    init_random(&generator);
     cu( cudaMalloc( (void **) &d_random, n_random * sizeof(float) ) );
   }
 
@@ -126,13 +137,13 @@ void plane(std::vector<SPACE> &v, const Plane p) {
       randomize(random, d_random, n_random, generator);
 
     for (unsigned int j = 0; j < y; ++j) {
-      v[Ix(i,j,0,y)] = i * dx - x_half + p.offset.x;
-      v[Ix(i,j,1,y)] = j * dy - y_half + p.offset.y;
-      v[Ix(i,j,2,y)] = p.offset.z;
+      v[Ix2D(i,j,0,y)] = i * dx - x_half + p.offset.x;
+      v[Ix2D(i,j,1,y)] = j * dy - y_half + p.offset.y;
+      v[Ix2D(i,j,2,y)] = p.offset.z;
 
       if (p.randomize) {
-        v[Ix(i,j,0,y)] += x_random_range * (random[j*2] - 0.5);
-        v[Ix(i,j,1,y)] += y_random_range * (random[j*2+1] - 0.5);
+        v[Ix2D(i,j,0,y)] += x_random_range * (random[j*2] - 0.5);
+        v[Ix2D(i,j,1,y)] += y_random_range * (random[j*2+1] - 0.5);
       }
     }
   }
@@ -144,19 +155,19 @@ void plane(std::vector<SPACE> &v, const Plane p) {
   // fill rest of array with semi-realistic values to minimize incompatibility issues
   for (unsigned int i = x * y; i < n; ++i)
     for (unsigned int j = 0; j < DIMS; ++j)
-      v[i * DIMS + j] = v[j];
+      v[Ix(i, j)] = v[Ix(0,j)];
 }
 
 std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width,
                                 const Cartesian<double> &offset, double modulate = 0.) {
   const size_t n = u.size() / DIMS;
   for (unsigned int i = 0; i < n; ++i)
-    u[i*DIMS + 2] = offset.z;
+    u[Ix(i, 2)] = offset.z;
 
   assert(n != 0);
   if (n == 1) {
-    u[0] = offset.x;
-    u[1] = offset.y;
+    u[Ix(0,0)] = offset.x;
+    u[Ix(0,1)] = offset.y;
     return u;
   }
 
@@ -169,14 +180,14 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
       half_width = width / 2.0;
 
     for (unsigned int i = 0; i < n; ++i)
-      u[i*DIMS] = i * du - half_width;
+      u[Ix(i,0)] = i * du - half_width;
 
     break;
   }
   case Shape::LogLine: {
     const auto x = geomspace(n, 1, 1 + width);
     for (auto& i : range(n))
-      u[i*DIMS] = x[i] - 1 + width / 2.;
+      u[Ix(i,0)] = x[i] - 1 + width / 2.;
     break;
   }
   case Shape::Cross: {
@@ -187,8 +198,8 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
 
     // if n is even, skip the center
     for (unsigned int i = 0; i < n / 2; ++i) {
-      u[i * DIMS] = i * du - half_width;
-      u[(i + half_n/2) * DIMS] = i * du - half_width;
+      u[Ix(i, 0)] = i * du - half_width;
+      u[Ix(i + half_n/2, 0)] = i * du - half_width;
     }
     break;
   }
@@ -202,8 +213,8 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
       arbitrary_offset = 0.1125 + modulate * TWO_PI;
 
     for (unsigned int i = 0; i < n; ++i) {
-      u[i * DIMS] = sin(i * d_phase + arbitrary_offset) * radius;
-      u[i * DIMS + 1] = cos(i * d_phase + arbitrary_offset) * radius;
+      u[Ix(i,0)] = sin(i * d_phase + arbitrary_offset) * radius;
+      u[Ix(i,1)] = cos(i * d_phase + arbitrary_offset) * radius;
     }
     break;
   }
@@ -218,8 +229,8 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
 
     // TODO randomize slightly?
     for (unsigned int i = 1; i < n; ++i) {
-      u[i * DIMS] = sin(i * d_phase + arbitrary_offset) * radius;
-      u[i * DIMS + 1] = cos(i * d_phase + arbitrary_offset) * radius;
+      u[Ix(i,0)] = sin(i * d_phase + arbitrary_offset) * radius;
+      u[Ix(i,1)] = cos(i * d_phase + arbitrary_offset) * radius;
     }
 
     break;
@@ -228,8 +239,8 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
 
   if (offset.x != 0 || offset.y != 0) {
     for (unsigned int i = 0; i < n; ++i) {
-      u[i * DIMS + 0] += offset.x;
-      u[i * DIMS + 1] += offset.y;
+      u[Ix(i,0)] += offset.x;
+      u[Ix(i,1)] += offset.y;
     }
   }
 
@@ -238,28 +249,29 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
 
 template<typename T>
 std::vector<T*> malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {
-   // Return a host vector of device pointers
-   assert(dim1 >= 1); assert(dim2 >= 1);
-   cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
-   auto vec = std::vector<T*>(dim1);
-   for (size_t i = 0; i < dim1; ++i)
-     vec[i] = *d_ptr + i * dim2;
-   return vec;
+  // TODO rename => malloc_arrays
+  // Return a host vector of device pointers
+  assert(dim1 >= 1); assert(dim2 >= 1);
+  cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
+  auto vec = std::vector<T*>(dim1);
+  for (size_t i = 0; i < dim1; ++i)
+    vec[i] = *d_ptr + i * dim2;
+  return vec;
  }
 
- template<typename T>
- std::vector<CUDAVector<T>> malloc_matrix(T **d_ptr, size_t dim1, size_t dim2) {
-   // Return a host vector of CUDAVector elements
-   assert(dim1 >= 1); assert(dim2 >= 1);
-   cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
-   auto matrix = std::vector<CUDAVector<T>>(dim1);
-   // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
-   // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read by host if it's located on device
-   for (size_t i = 0; i < dim1; ++i)
-     matrix[i] = CUDAVector<T>{data: *d_ptr + i * dim2,
-                               size: dim2};
-   return matrix;
- }
+template<typename T>
+std::vector<CUDAVector<T>> malloc_matrix(T **d_ptr, size_t dim1, size_t dim2) {
+  // Return a host vector of CUDAVector elements
+  assert(dim1 >= 1); assert(dim2 >= 1);
+  cu( cudaMalloc( d_ptr, dim1 * dim2 * sizeof(T) ) );
+  auto matrix = std::vector<CUDAVector<T>>(dim1);
+  // std::vector<T>(*d_ptr + a, *d_ptr + b); has weird side effects
+  // note that *ptr+i == &ptr[i], but that ptr[i] cannot be read by host if it's located on device
+  for (size_t i = 0; i < dim1; ++i)
+    matrix[i] = CUDAVector<T>{data: *d_ptr + i * dim2,
+                              size: dim2};
+  return matrix;
+}
 
 template<typename T>
 std::vector<T*> pinned_malloc_vectors(T **d_ptr, size_t dim1, size_t dim2) {

@@ -22,8 +22,10 @@ build:
 	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
 
 debug:
-	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
-	make run
+	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS) -g -G
+	# make run
+	echo $(EXE)
+	cuda-gdb
 
 build-run:
 	make build && make run

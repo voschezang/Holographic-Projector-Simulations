@@ -9,26 +9,28 @@ enum class Algorithm {Naive, Alt};
 enum class Shape {Line, LogLine, Cross, Circle, DottedCircle};
 enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
 
-template<typename T>
-struct Setup { T obj, projector, projection; };
-
-template<typename T>
-struct Cartesian { T x,y,z; }; // 3D space
-
-struct Polar { double amp, phase; };
-
 template<typename T = double>
 struct Range { T min, max; };
 
+template<typename T>
+struct Setup { T obj, projector, projection; };
+
+struct Polar { double amp, phase; };
+
+template<typename T>
+struct Cartesian { T x,y,z; }; // 3D space, generic version of dim3
+
 // similar to CUDA dim3 but fewer dims and larger size
 struct dim2 { size_t x, y; };
+
+struct SumRange {size_t sum, min, max; };
 
 struct Plane {
   // TODO simplify this struct, avoid duplicate data?
   double width;
   Cartesian<double> offset;
   double aspect_ratio; // image width / height
-  bool randomize;
+  bool randomize; // TODO rename => randomize_projector_pixels
 };
 
 /**
@@ -55,7 +57,7 @@ struct Params {
     quadrant_projection,
     randomize; // TODO add option to compute local average
 
-  size_t n_streams;
+  unsigned int n_streams;
   dim2 thread_size;
   dim3 blockDim, gridDim;
   /* std::string input_filename; // input filename or empty string, positions will be scaled to `obj_width` */
@@ -89,6 +91,12 @@ template<typename T>
 struct CUDAVector {
   T *data;
   size_t size;
+};
+
+template<typename T>
+struct ConstCUDAVector {
+  const T *data;
+  const size_t size;
 };
 
 #endif

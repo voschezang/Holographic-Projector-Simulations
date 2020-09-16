@@ -17,9 +17,10 @@
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
 /* #define N_sqrt 256 */
-#define N_sqrt 512
-/* #define N_sqrt 1024 */
+/* #define N_sqrt 512 */
+#define N_sqrt 1024
 /* #define N_sqrt 1440 */
+/* #define N_sqrt 2048 */
 
 #if (N_sqrt <= 32)
 #define BLOCKDIMX 4
@@ -45,7 +46,13 @@
 
 #define GRIDDIMY CEIL(GRIDDIMX, 2)
 
-/* #define U_SHARED */
-/* #define V_SHARED */
+/* #define BLOCKDIMX 8 */
+/* #define BLOCKDIMY 8 */
+/* #define GRIDDIMX 4 */
+/* #define GRIDDIMY 4 */
+
+/* #define RANDOMIZE_SUPERPOSITION_INPUT // true MC, TODO rename & refactor */
+
+#define SQUARE_TARGET_BATCHES
 
 #endif

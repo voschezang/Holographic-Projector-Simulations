@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <cuComplex.h>
 #include <curand.h>
+#include <curand_kernel.h>
 #include <stdlib.h>
 #include <cuda_profiler_api.h>
 #include <thrust/host_vector.h> // unused in this file but causes error if omitted
@@ -75,10 +76,19 @@ int main(int argc, char** argv) {
   }
 #else
   // TODO use cmd arg for x length
+  // const auto shape = Shape::Line;
   // const auto shape = Shape::LogLine;
-  const auto shape = Shape::DottedCircle;
-  // const auto shape = Shape::Circle;
+  // const auto shape = Shape::DottedCircle;
+  const auto shape = Shape::Circle;
+  const bool decrease_intensity = 0;
+  printf("x.amp, decrease_intensity: %d\n", decrease_intensity);
   auto x = std::vector<Polar>(n_per_plane.obj, {amp: 1, phase: 0.});
+  if (decrease_intensity) {
+    // descending, s.t. there is always a high-amplitude datapoint
+    auto amp = linspace(x.size(), 1, 0);
+    for (auto& i : range(x.size()))
+      x[i].amp = amp[i];
+  }
 #endif
 
   if (params.randomize) print("Randomize positions");
@@ -134,7 +144,9 @@ int main(int argc, char** argv) {
     // TODO if x does not fit on GPU then do y += transform(x') for each subset x' in x
 
     // dt[0] will be overwritten
-    auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, projector, &t1, &t2, &dt[0], true);
+    auto y = time_transform<Direction::Backwards, false, add_reference>(x, u, v, projector,
+                                                                        x_plane, y_plane,
+                                                                        &t1, &t2, &dt[0], true);
     check_cvector(y);
 
     if (i == 0) summarize('y', y);
@@ -150,7 +162,7 @@ int main(int argc, char** argv) {
       const Cartesian<double> projection_offset = {x: params.quadrant_projection ? width / 2. : 0.,
                                                    y: params.quadrant_projection ? height / 2. : 0.,
                                                    z: lerp(params.projection_z_offset, ratio)};
-      assert(!params.quadrant_projection);
+      // assert(!params.quadrant_projection); // TODO rm?
       const auto z_plane = Plane {width: width,
                                   offset: {x: obj_offset.x + projection_offset.x,
                                            y: obj_offset.y + projection_offset.y,
@@ -158,12 +170,12 @@ int main(int argc, char** argv) {
                                   aspect_ratio: params.aspect_ratio.projection,
                                   randomize: params.randomize};
       init::plane(w, z_plane);
-      printf("x offsets obj: %f, projector: %f\n", obj_offset.x, z_plane.offset.x);
-      printf("z offsets obj: %f, projector: %f\n", obj_offset.z, z_plane.offset.z);
 
       // TODO mv z outside loop to avoid unnecessary mallocs
       // auto z = std::vector<WAVE>(n.z);
-      auto z = time_transform<Direction::Forwards>(y, v, w, projection, &t1, &t2, &dt[j]);
+      auto z = time_transform<Direction::Forwards>(y, v, w, projection,
+                                                   y_plane, z_plane,
+                                                   &t1, &t2, &dt[j]);
       check_cvector(z);
       if (i == 0 && j == 0) summarize('z', z);
 
