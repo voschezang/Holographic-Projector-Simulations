@@ -16,7 +16,7 @@
 #include "kernel.cu"
 #include "superposition.cu"
 
-// host superposition functions
+// host superposition transformation functions
 
 template<typename T = double>
 inline void cp_batch_data_to_device(const std::vector<T> v, const size_t v_offset,

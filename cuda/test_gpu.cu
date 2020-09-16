@@ -17,7 +17,7 @@
 #include "kernel.cu"
 #include "init.h"
 #include "superposition.cu"
-#include "functions.cu"
+#include "transform.cu"
 
 void test_sum_rows() {
   // `y = alpha * op(A)x + beta y`

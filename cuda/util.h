@@ -13,7 +13,6 @@
 /* #include <type_traits> */
 
 #include "macros.h"
-#include "params.h"
 #include "algebra.h"
 #include "kernel.cu"
 

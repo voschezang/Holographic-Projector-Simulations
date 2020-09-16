@@ -11,12 +11,12 @@
 
 #include "macros.h"
 #include "hyper_params.h"
-#include "params.h"
+#include "main.h"
 #include "kernel.cu"
 #include "util.h"
 #include "init.h"
 #include "input.h"
-#include "functions.cu"
+#include "transform.cu"
 
 /**
  * Input x,u is splitted over GPU cores/threads
