@@ -135,7 +135,7 @@ inline void superposition_per_block(
 }
 
 
-void reorder_plane(const std::vector<double> u0, std::vector<double> u, size_t square_size, double aspect_ratio = 1) {
+void reorder_plane(const std::vector<double>& u0, std::vector<double>& u, size_t batch_size, double aspect_ratio = 1) {
   /*
    * Reorder spatial data s.t. each batch covers square area in space.
    * neglect boundary cells
@@ -144,31 +144,39 @@ void reorder_plane(const std::vector<double> u0, std::vector<double> u, size_t s
    */
   const auto
     N = u.size() / DIMS,
-    Nx = (size_t) sqrt(N * aspect_ratio),
+    Nx = (size_t) sqrt(N * aspect_ratio), // m_sqrt
     Ny = N / Nx,
-    s = (size_t) sqrt(square_size); // sqrt batch_size
+    s = (size_t) sqrt(batch_size);
 
   const dim2 M {FLOOR(Nx, s) * s, FLOOR(Ny, s) * s};
+  assert(aspect_ratio == 1.);
+  assert(Nx == Ny);
+  assert(M.x == M.y);
+  // size_t m_sqrt = Nx, m_sqrt2 = M.x, G = s;
 
   // size_t N_sqrt = FLOOR(, G) * G; // minus boundaries
 
   for (size_t i = 0; i < M.x; ++i)
     for (size_t j = 0; j < M.y; ++j) {
-      // define spatial 2D indices (both for target dataset y)
+      // define spatial 2D indices (both for target dataset u)
       dim2
         i_batch_major = {i / s, j / s},
         i_batch_minor = {i % s, j % s};
       size_t i_transpose = (i_batch_major.x * M.y + i_batch_major.y * s) * s + i_batch_minor.x * s + i_batch_minor.y;
+      // size_t i_transpose2 = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
+      // assert(i_transpose == i_transpose2);
       // size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
       for (int dim = 0; dim < DIMS; ++dim) {
-        // v[Ix(i_transpose, dim)];
         u[Ix(i_transpose, dim)] = u0[Ix2D(i, j, dim, Ny)];
+        // u[Ix(i_transpose, dim)] = u0[Ix2D(i,j,dim,m_sqrt)];
       }
     }
 }
+// void reorder_plane_inverse(const std::vector<double>& u0, std::vector<double>& u, size_t square_size, double aspect_ratio = 1) {
+// }
 
-void reorder_plane(const std::vector<WAVE> x0, std::vector<WAVE> x,
-                   const std::vector<double> u0, std::vector<double> u,
+void reorder_plane(const std::vector<WAVE>& x0, std::vector<WAVE>& x,
+                   const std::vector<double>& u0, std::vector<double>& u,
                    size_t output_shape, double aspect_ratio) {
   // reorder_plane(u0, u, output_shape, aspect_ratio);
   // TODO x
@@ -239,8 +247,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     randomize = 0 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
     reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data (in parallel batches)
     shuffle_v = 0,
-    reorder_v = 0 && randomize,
-    reorder_v_rm_phase = 0, // for debugging
+    reorder_v = 1,
+    reorder_v_rm_phase = 1, // for debugging
     amp_convergence = 1;
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
@@ -268,10 +276,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   // only in case of second transformation
-  // if (reorder_v && p.n.x > p.batch_size.x)
-  //   reorder_plane(v2, v, p.batch_size.y);
+  if (1 && reorder_v && p.n.x > p.batch_size.x)
+    reorder_plane(v2, v, p.batch_size.y, y_plane.aspect_ratio);
 
-  if (1 && reorder_v && p.n.x > p.batch_size.x) {
+  if (0 && reorder_v && p.n.x > p.batch_size.x) {
     // reorder v data s.t. each batch covers square area in space
     // neglect boundary cells
 
@@ -291,7 +299,10 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         // size_t i_transpose = (i_batch_major.x * m_sqrt2/G + i_batch_major.y) * G*G + i_batch_minor.x * G + i_batch_minor.y;
         size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
         for (int dim = 0; dim < DIMS; ++dim) {
-          // v[Ix(i_transpose, dim)];
+          // if (v2[Ix2D(i,j,dim,m_sqrt)] != v[Ix(i_transpose, dim)])
+          //   printf("err: [%lu, %lu], %lu, -> %lu\n", i,j,G, i_transpose);
+          // assert(v[Ix(i_transpose, dim)] == 32);
+          // assert(v2[Ix2D(i,j,dim,m_sqrt)] == v[Ix(i_transpose, dim)]);
           v[Ix(i_transpose, dim)] = v2[Ix2D(i,j,dim,m_sqrt)];
           // v[Ix2D(i_batch.x * G + g.x,
           //        i_batch.y * G + g.y, dim, m_sqrt2)] = v2[Ix2D(i,j,dim,m_sqrt)];
@@ -308,7 +319,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
   // derive size of matrix y_tmp
   size_t tmp_out_size = p.batch_size.x * p.batch_size.y;
-  if (algorithm == Algorithm::Alt)
+  if (algorithm == Algorithm::Reduced)
     if (shared_memory)
       tmp_out_size = MIN(p.batch_size.x, p.gridDim.x) * p.batch_size.y;
     else
@@ -635,7 +646,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         cu( cudaPeekAtLastError() );
         // cudaDeviceSynchronize(); print("sum rows post");
 
-        if (!finished[i_stream] && converging && (n+1) % batches_per_estimate == 0) {
+        if (randomize && !finished[i_stream] && converging && (n+1) % batches_per_estimate == 0) {
           const double
             prev_n = (n+1 - batches_per_estimate) * p.batch_size.x;
 
@@ -756,6 +767,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
   // only in case of second transformation
   if (reorder_v && p.n.x > p.batch_size.x) {
+    print("phase \n\n");
     // revert y data (v data)
     assert(!shuffle_v);
     // assume aspect ratio = 1
@@ -800,42 +812,20 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         //                                 1 + (i_batch_major.x * G*m_sqrt2 + i_batch_major.y * G) / (double) p.n.y);
         // y2[i * m_sqrt + j] = from_polar(1, rand());
 
-            if (reorder_v_rm_phase) {
-              if (i_batch_major.x % 2 == 0)
-                if (i_batch_major.y % 2 == 0)
-                  y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
-                else
-                  y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0.5);
-              else
-                if (i_batch_major.y % 2 == 0)
-                  y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1);
-                else
-                  y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
-            }
+        if (reorder_v_rm_phase) {
+          if (i_batch_major.x % 2 == 0)
+            if (i_batch_major.y % 2 == 0)
+              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
+            else
+              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0.5);
+          else
+            if (i_batch_major.y % 2 == 0)
+              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1);
+            else
+              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
+        }
 
       } }
-
-    // for (size_t i = 0; i < m_sqrt2; ++i) {
-    //   for (size_t j = 0; j < m_sqrt2; ++j) {
-    //     dim2
-    //       i_batch = {i / G, j / G},
-    //       g = {i % G, j % G};
-    //     size_t i_transpose = (i_batch.x * m_sqrt2/G + i_batch.y) * G*G + g.x * G + g.y;
-    //     y2[i * m_sqrt + j] = y[i_transpose];
-    //     if (reorder_v_rm_phase) {
-    //       if (i_batch.x % 2 == 0)
-    //         if (i_batch.y % 2 == 0)
-    //           y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
-    //         else
-    //           y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
-    //       else
-    //         if (i_batch.y % 2 == 0)
-    //           y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 3);
-    //         else
-    //           y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 4.5);
-    //     }
-    //   }
-    // }
     return y2;
   }
 
@@ -891,7 +881,7 @@ inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
 
   // derive size of matrix y_tmp
   size_t tmp_out_size = p.batch_size.x * p.batch_size.y;
-  if (algorithm == Algorithm::Alt)
+  if (algorithm == Algorithm::Reduced)
     if (shared_memory)
       tmp_out_size = MIN(p.batch_size.x, p.gridDim.x) * p.batch_size.y;
     else
@@ -1083,14 +1073,14 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   std::vector<WAVE> y;
   // switch (p.algorithm) {
   // case 1: y = transform<direction, Algorithm::Naive, false>(x, u, v, p); break;
-  // case 2: y = transform<direction, Algorithm::Alt, false>(x, u, v, p); break;
-  // case 3: y = transform<direction, Algorithm::Alt, true>(x, u, v, p); break;
+  // case 2: y = transform<direction, Algorithm::Reduced, false>(x, u, v, p); break;
+  // case 3: y = transform<direction, Algorithm::Reduced, true>(x, u, v, p); break;
   // default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
   // }
 // #ifdef RANDOMIZE_SUPERPOSITION_INPUT
-  y = transform<direction, Algorithm::Alt, false>(x, u, v, p, x_plane, y_plane);
+  y = transform<direction, Algorithm::Reduced, false>(x, u, v, p, x_plane, y_plane);
 // #else
-  // y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
+  // y = transform_full<direction, Algorithm::Reduced, false>(x, u, v, p);
 // #endif
 
   // average of transformation and constant if any
@@ -1106,7 +1096,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
     // TODO do this on CPU?
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     const bool shared_memory = false;
-    auto y_reference = transform_full<Direction::Forwards, Algorithm::Alt, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
+    auto y_reference = transform_full<Direction::Forwards, Algorithm::Reduced, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
     // let full reference wave (amp+phase) interfere with original wave
     add_complex(y, y_reference);
