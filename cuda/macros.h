@@ -46,16 +46,21 @@
 
 #define SPACE_MEMORY_LAYOUT 1
 #if (SPACE_MEMORY_LAYOUT)
-#define Ix(i, dim) ((i) * DIMS + (dim))
+/* #define Ix(i, dim) ((i) * DIMS + (dim)) */
+#define Ix_(i, dim, dims) ((i) * dims + (dim))
 /* #define Ix2D(i,j,dim,n) ((k) + DIMS * ((j) + (i) * (n))) */
 #else
 #error "TODO this requires changes in superposition kernel"
-#define Ix(i, dim) ((dim) * DIMS + (i))
+/* #define Ix(i, dim) ((dim) * DIMS + (i)) */
+#define Ix_(i, dim, dims) ((dim) * dims + (i))
 /* #define Ix2D(i,j,dim,n) ((k) * DIMS + ((j) + (i) * (n))) */
 #endif
 
-// flattened indices of 2D matrix (i,j, width stride n), dimension (dim)
+#define Ix(i, dim) Ix_(i, dim, DIMS)
+
+// flattened indices of 2D matrix
 #define Ix2D(i,j,dim,n) Ix( (j) + (i) * (n), dim)
+#define Ix2D_(i,j,dim, n,dims) Ix_( (j) + (i) * (n), dim, dims)
 
 
 // phasor source (n, N) and target (m, M) data. Independent from spatial data

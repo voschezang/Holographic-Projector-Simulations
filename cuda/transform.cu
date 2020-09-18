@@ -15,6 +15,7 @@
 #include "init.h"
 #include "kernel.cu"
 #include "superposition.cu"
+#include "reorder.cu"
 
 // host superposition transformation functions
 
@@ -134,54 +135,6 @@ inline void superposition_per_block(
   }
 }
 
-
-void reorder_plane(const std::vector<double>& u0, std::vector<double>& u, size_t batch_size, double aspect_ratio = 1) {
-  /*
-   * Reorder spatial data s.t. each batch covers square area in space.
-   * neglect boundary cells
-   * N = input size, M = M.x * M.y = output size, where M <= N
-   * s^2 = square size
-   */
-  const auto
-    N = u.size() / DIMS,
-    Nx = (size_t) sqrt(N * aspect_ratio), // m_sqrt
-    Ny = N / Nx,
-    s = (size_t) sqrt(batch_size);
-
-  const dim2 M {FLOOR(Nx, s) * s, FLOOR(Ny, s) * s};
-  assert(aspect_ratio == 1.);
-  assert(Nx == Ny);
-  assert(M.x == M.y);
-  // size_t m_sqrt = Nx, m_sqrt2 = M.x, G = s;
-
-  // size_t N_sqrt = FLOOR(, G) * G; // minus boundaries
-
-  for (size_t i = 0; i < M.x; ++i)
-    for (size_t j = 0; j < M.y; ++j) {
-      // define spatial 2D indices (both for target dataset u)
-      dim2
-        i_batch_major = {i / s, j / s},
-        i_batch_minor = {i % s, j % s};
-      size_t i_transpose = (i_batch_major.x * M.y + i_batch_major.y * s) * s + i_batch_minor.x * s + i_batch_minor.y;
-      // size_t i_transpose2 = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
-      // assert(i_transpose == i_transpose2);
-      // size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
-      for (int dim = 0; dim < DIMS; ++dim) {
-        u[Ix(i_transpose, dim)] = u0[Ix2D(i, j, dim, Ny)];
-        // u[Ix(i_transpose, dim)] = u0[Ix2D(i,j,dim,m_sqrt)];
-      }
-    }
-}
-// void reorder_plane_inverse(const std::vector<double>& u0, std::vector<double>& u, size_t square_size, double aspect_ratio = 1) {
-// }
-
-void reorder_plane(const std::vector<WAVE>& x0, std::vector<WAVE>& x,
-                   const std::vector<double>& u0, std::vector<double>& u,
-                   size_t output_shape, double aspect_ratio) {
-  // reorder_plane(u0, u, output_shape, aspect_ratio);
-  // TODO x
-}
-
 template<bool add_constant = false>
 void normalize_amp(std::vector<WAVE> &c, double to = 1., bool log_normalize = false) {
   double max_amp = 0;
@@ -224,14 +177,16 @@ void rm_phase(std::vector<WAVE> &c) {
 }
 
 template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
-inline std::vector<WAVE> transform(const std::vector<Polar> &x,
-                                   const std::vector<double> &u,
+inline std::vector<WAVE> transform(const std::vector<Polar> &x2,
+                                   const std::vector<double> &u2,
                                    const std::vector<double> &v2,
                                    const Geometry& p,
                                    const Plane& x_plane,
                                    const Plane& y_plane) {
 
   auto v = v2;
+  auto u = u2;
+  auto x = x2;
   /* Performance (runtime) for randomize: 1, 1024x1024 data size
    * reshuffle_between_kernels: 0 -> 26.112164 s
    * reshuffle_between_kernels: 1 -> 20.338126 s // due to faster convergence? worst cases are averaged out
@@ -248,7 +203,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data (in parallel batches)
     shuffle_v = 0,
     reorder_v = 1,
-    reorder_v_rm_phase = 1, // for debugging
+    reorder_u = 1,
+    // reorder_v_rm_phase = 1, // for debugging
     amp_convergence = 1;
   // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
 #ifdef RANDOMIZE_SUPERPOSITION_INPUT
@@ -277,39 +233,45 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
   // only in case of second transformation
   if (1 && reorder_v && p.n.x > p.batch_size.x)
-    reorder_plane(v2, v, p.batch_size.y, y_plane.aspect_ratio);
+    reorder::plane(v2, v, p.batch_size.y, y_plane.aspect_ratio);
 
-  if (0 && reorder_v && p.n.x > p.batch_size.x) {
-    // reorder v data s.t. each batch covers square area in space
-    // neglect boundary cells
-
-    // assume aspect ratio = 1
-    size_t m_sqrt = (size_t) sqrt(p.n.y);
-    assert(m_sqrt*m_sqrt == p.n.y);
-    size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
-    size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
-    assert(m_sqrt > 0);
-
-    for (size_t i = 0; i < m_sqrt2; ++i) {
-      for (size_t j = 0; j < m_sqrt2; ++j) {
-        // define spatial 2D indices (both for target dataset y)
-        dim2
-          i_batch_major = {i / G, j / G},
-          i_batch_minor = {i % G, j % G};
-        // size_t i_transpose = (i_batch_major.x * m_sqrt2/G + i_batch_major.y) * G*G + i_batch_minor.x * G + i_batch_minor.y;
-        size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
-        for (int dim = 0; dim < DIMS; ++dim) {
-          // if (v2[Ix2D(i,j,dim,m_sqrt)] != v[Ix(i_transpose, dim)])
-          //   printf("err: [%lu, %lu], %lu, -> %lu\n", i,j,G, i_transpose);
-          // assert(v[Ix(i_transpose, dim)] == 32);
-          // assert(v2[Ix2D(i,j,dim,m_sqrt)] == v[Ix(i_transpose, dim)]);
-          v[Ix(i_transpose, dim)] = v2[Ix2D(i,j,dim,m_sqrt)];
-          // v[Ix2D(i_batch.x * G + g.x,
-          //        i_batch.y * G + g.y, dim, m_sqrt2)] = v2[Ix2D(i,j,dim,m_sqrt)];
-        }
-      }
-    }
+  if (reorder_u && p.n.x > p.batch_size.x) {
+    // TODO add if randomize
+    reorder::plane(u2, u, p.batch_size.y, x_plane.aspect_ratio);
+    reorder::plane<Polar, 1>(x2, x, p.batch_size.y, x_plane.aspect_ratio);
   }
+
+  // if (0 && reorder_v && p.n.x > p.batch_size.x) {
+  //   // reorder v data s.t. each batch covers square area in space
+  //   // neglect boundary cells
+
+  //   // assume aspect ratio = 1
+  //   size_t m_sqrt = (size_t) sqrt(p.n.y);
+  //   assert(m_sqrt*m_sqrt == p.n.y);
+  //   size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
+  //   size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
+  //   assert(m_sqrt > 0);
+
+  //   for (size_t i = 0; i < m_sqrt2; ++i) {
+  //     for (size_t j = 0; j < m_sqrt2; ++j) {
+  //       // define spatial 2D indices (both for target dataset y)
+  //       dim2
+  //         i_batch_major = {i / G, j / G},
+  //         i_batch_minor = {i % G, j % G};
+  //       // size_t i_transpose = (i_batch_major.x * m_sqrt2/G + i_batch_major.y) * G*G + i_batch_minor.x * G + i_batch_minor.y;
+  //       size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
+  //       for (int dim = 0; dim < DIMS; ++dim) {
+  //         // if (v2[Ix2D(i,j,dim,m_sqrt)] != v[Ix(i_transpose, dim)])
+  //         //   printf("err: [%lu, %lu], %lu, -> %lu\n", i,j,G, i_transpose);
+  //         // assert(v[Ix(i_transpose, dim)] == 32);
+  //         // assert(v2[Ix2D(i,j,dim,m_sqrt)] == v[Ix(i_transpose, dim)]);
+  //         v[Ix(i_transpose, dim)] = v2[Ix2D(i,j,dim,m_sqrt)];
+  //         // v[Ix2D(i_batch.x * G + g.x,
+  //         //        i_batch.y * G + g.y, dim, m_sqrt2)] = v2[Ix2D(i,j,dim,m_sqrt)];
+  //       }
+  //     }
+  //   }
+  // }
 
 
 
@@ -766,68 +728,71 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   // only in case of second transformation
-  if (reorder_v && p.n.x > p.batch_size.x) {
-    print("phase \n\n");
-    // revert y data (v data)
-    assert(!shuffle_v);
-    // assume aspect ratio = 1
-    auto y2 = y;
-    size_t m_sqrt = (size_t) sqrt(p.n.y);
-    assert(m_sqrt*m_sqrt == p.n.y);
-    size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
-    size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
-    assert(m_sqrt > 0);
+  if (reorder_v && p.n.x > p.batch_size.x)
+    return reorder::inverse(y, p.batch_size.y, y_plane.aspect_ratio);
 
-    for (size_t i = 0; i < m_sqrt; ++i) {
-      for (size_t j = 0; j < m_sqrt; ++j) {
-        y2[i * m_sqrt + j] = {0,0};
-      } }
-    for (size_t i = 0; i < m_sqrt; ++i) {
-      for (size_t j = 0; j < m_sqrt; ++j) {
-        if (i >= m_sqrt2 || j >= m_sqrt2) {
-          // clear unused boundary indices
-          y2[i * m_sqrt + j] = from_polar(1, 0.111);
-          continue;
-        }
-        // define spatial 2D indices (both for target dataset y)
-        dim2
-          i_batch_major = {i / G, j / G},
-          i_batch_minor = {i % G, j % G};
-        // size_t i_transpose = (i_batch_major.x * m_sqrt2/G + i_batch_major.y) * G*G + i_batch_minor.x * G + i_batch_minor.y;
-        size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
-        assert(i_transpose < p.n.y);
-        // if (i_transpose >= m_sqrt2*m_sqrt2)
-        // if (i_batch_major.x == 0 && i_batch_major.y < 2 && i_batch_minor.y == 0)
-        //   printf("i_t: %zu / %zu \t[%zu,%zu] (/ %zu)\t[%zu,%5u]\t(%zu^2 = %zu)\n", i_transpose, m_sqrt2*m_sqrt2,
-        //          i_batch_major.x, i_batch_major.y, m_sqrt2 / G,
-        //          i_batch_minor.x, i_batch_minor.y,
-        //          G, p.batch_size.y);
-        assert(i_transpose < m_sqrt2*m_sqrt2);
-        y2[i * m_sqrt + j] = y[i_transpose];
-        // y2[j * m_sqrt + i] = y[i_transpose];
-        // y2[i * m_sqrt + j] = from_polar(i_batch_minor.x / (double) G, i_batch_minor.y / (double) G);
+  // if (reorder_v && p.n.x > p.batch_size.x) {
+  //   print("phase \n\n");
+  //   // revert y data (v data)
+  //   assert(!shuffle_v);
+  //   // assume aspect ratio = 1
+  //   auto y2 = y;
+  //   size_t m_sqrt = (size_t) sqrt(p.n.y);
+  //   assert(m_sqrt*m_sqrt == p.n.y);
+  //   size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
+  //   size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
+  //   assert(m_sqrt > 0);
 
-        // // add offset to avoid zero amp, which can influence phase
-        // y2[i * m_sqrt + j] = from_polar(1 + (i_batch_minor.x * G + i_batch_minor.y) / (double) G,
-        //                                 1 + (i_batch_major.x * G*m_sqrt2 + i_batch_major.y * G) / (double) p.n.y);
-        // y2[i * m_sqrt + j] = from_polar(1, rand());
+  //   for (size_t i = 0; i < m_sqrt; ++i) {
+  //     for (size_t j = 0; j < m_sqrt; ++j) {
+  //       y2[i * m_sqrt + j] = {0,0};
+  //     } }
+  //   for (size_t i = 0; i < m_sqrt; ++i) {
+  //     for (size_t j = 0; j < m_sqrt; ++j) {
+  //       if (i >= m_sqrt2 || j >= m_sqrt2) {
+  //         // clear unused boundary indices
+  //         y2[i * m_sqrt + j] = from_polar(1, 0.111);
+  //         continue;
+  //       }
+  //       // define spatial 2D indices (both for target dataset y)
+  //       dim2
+  //         i_batch_major = {i / G, j / G},
+  //         i_batch_minor = {i % G, j % G};
+  //       // size_t i_transpose = (i_batch_major.x * m_sqrt2/G + i_batch_major.y) * G*G + i_batch_minor.x * G + i_batch_minor.y;
+  //       size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
+  //       assert(i_transpose < p.n.y);
+  //       // if (i_transpose >= m_sqrt2*m_sqrt2)
+  //       // if (i_batch_major.x == 0 && i_batch_major.y < 2 && i_batch_minor.y == 0)
+  //       //   printf("i_t: %zu / %zu \t[%zu,%zu] (/ %zu)\t[%zu,%5u]\t(%zu^2 = %zu)\n", i_transpose, m_sqrt2*m_sqrt2,
+  //       //          i_batch_major.x, i_batch_major.y, m_sqrt2 / G,
+  //       //          i_batch_minor.x, i_batch_minor.y,
+  //       //          G, p.batch_size.y);
+  //       assert(i_transpose < m_sqrt2*m_sqrt2);
+  //       y2[i * m_sqrt + j] = y[i_transpose];
+  //       // y2[j * m_sqrt + i] = y[i_transpose];
+  //       // y2[i * m_sqrt + j] = from_polar(i_batch_minor.x / (double) G, i_batch_minor.y / (double) G);
 
-        if (reorder_v_rm_phase) {
-          if (i_batch_major.x % 2 == 0)
-            if (i_batch_major.y % 2 == 0)
-              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
-            else
-              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0.5);
-          else
-            if (i_batch_major.y % 2 == 0)
-              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1);
-            else
-              y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
-        }
+  //       // // add offset to avoid zero amp, which can influence phase
+  //       // y2[i * m_sqrt + j] = from_polar(1 + (i_batch_minor.x * G + i_batch_minor.y) / (double) G,
+  //       //                                 1 + (i_batch_major.x * G*m_sqrt2 + i_batch_major.y * G) / (double) p.n.y);
+  //       // y2[i * m_sqrt + j] = from_polar(1, rand());
 
-      } }
-    return y2;
-  }
+  //       if (reorder_v_rm_phase) {
+  //         if (i_batch_major.x % 2 == 0)
+  //           if (i_batch_major.y % 2 == 0)
+  //             y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
+  //           else
+  //             y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0.5);
+  //         else
+  //           if (i_batch_major.y % 2 == 0)
+  //             y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1);
+  //           else
+  //             y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
+  //       }
+
+  //     } }
+  //   return y2;
+  // }
 
   if (shuffle_v) {
     auto y2 = y;
