@@ -58,6 +58,11 @@ Params read_args(int argc, char **argv) {
      /* quadrant_projection: true, */
      randomize: false,
      /* randomize: true, */
+
+     // convergence_threshold = 0 disables MC, -1 enables MC but disables stopping after convergence
+     convergence_threshold: 0,
+     /* convergence_threshold: 1e-4, */
+     /* convergence_threshold: 1e-16, // select MC but don't converge */
      n_streams: 16,
      /* thread_size: {4, 32}, */
      /* thread_size: {1, 32}, */
@@ -71,7 +76,7 @@ Params read_args(int argc, char **argv) {
   // For all ranged params the max is set to min by default.
   int ch;
   /* while ((ch = getopt(argc, argv, "c:e:hH:i:k:L:m:M:n:N:p:t:r:")) != -1) */
-  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:l:L:n:N:m:M:p:q:rs:t:T:b:B:g:G:h")) != -1)
+  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:l:L:n:N:m:M:p:qrs:t:T:b:B:g:G:ce:h")) != -1)
     {
       switch(ch) {
       case 'X': p.n_planes.obj            = strtol(optarg, 0, 10); break;
@@ -111,6 +116,7 @@ Params read_args(int argc, char **argv) {
       case 'B': p.blockDim.y =    strtol(optarg, 0, 10); break;
       case 'g': p.gridDim.x =     strtol(optarg, 0, 10); break;
       case 'G': p.gridDim.y =     strtol(optarg, 0, 10); break;
+      case 'e': p.convergence_threshold = strtol(optarg, 0, 10); break;
       case 'h': default: show_help(argv[0]);
       }
     }

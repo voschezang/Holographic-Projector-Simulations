@@ -48,7 +48,7 @@ inline void cp_batch_data_to_host(const T *d_y, T *y_pinned, const size_t len, c
                         cudaMemcpyDeviceToHost, stream ) );
 }
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
 #define SuperpositionPerBlock(blockDim_y) {                             \
     assert(blockDim_x * blockDim_y <= 1024);                            \
     superposition::per_block<direction, blockDim_x, blockDim_y, algorithm, shared_memory> \
@@ -68,7 +68,7 @@ inline void cp_batch_data_to_host(const T *d_y, T *y_pinned, const size_t len, c
   }
 #endif
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
 #define SuperpositionPerBlockHelper(blockDim_x) {                       \
     superposition_per_block_helper<direction, blockDim_x, algorithm, shared_memory> \
       (state, seed, i_stream,                                           \
@@ -86,7 +86,7 @@ inline void cp_batch_data_to_host(const T *d_y, T *y_pinned, const size_t len, c
 
 template<Direction direction, unsigned int blockDim_x, Algorithm algorithm, bool shared_memory>
 inline void superposition_per_block_helper(
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
                                            curandState *state, const unsigned int seed, const unsigned int i_stream,
                                            const unsigned int bin_size, const unsigned int bins_per_thread,
 #endif
@@ -112,7 +112,7 @@ inline void superposition_per_block_helper(
 
 template<Direction direction, Algorithm algorithm, bool shared_memory>
 inline void superposition_per_block(
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
                                     curandState *state, const unsigned int seed, const unsigned int i_stream,
                                     const unsigned int bin_size, const unsigned int bins_per_thread,
 #endif
@@ -178,41 +178,43 @@ void rm_phase(std::vector<WAVE> &c) {
 }
 
 template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
-inline std::vector<WAVE> transform(const std::vector<Polar> &x2,
-                                   const std::vector<double> &u2,
-                                   const std::vector<double> &v2,
-                                   const Geometry& p,
-                                   const Plane& x_plane,
-                                   const Plane& y_plane) {
+inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
+                                      const std::vector<double> &u2,
+                                      const std::vector<double> &v2,
+                                      const Geometry& p,
+                                      const Plane& x_plane,
+                                      const Plane& y_plane,
+                                      const double threshold) {
 
   printf("transform1\n");
   auto v = v2;
   auto u = u2;
   auto x = x2;
-  /* Performance (runtime) for randomize: 1, 1024x1024 data size
-   * reshuffle_between_kernels: 0 -> 26.112164 s
-   * reshuffle_between_kernels: 1 -> 20.338126 s // due to faster convergence? worst cases are averaged out
+  /**
+   * Performance tests, for threshold 0 (no convergence)
+   * transform()
+   *  True MC: 0.16988 TFLOPS
+   *  Cond MC: 0.18005 TFLOPS
+   *  no randomize: 1.41062 TFLOPS
+   * transform_full: 1.49169 TFLOPS
    */
   const double
     // max_width = x_plane.width > y_plane.width ? x_plane.width : y_plane.width,
     // max_height = x_plane.width > y_plane.width ? x_plane.width / x_plane.aspect_ratio : y_plane.width / y_plane.aspect_ratio,
     // min_distance = y_plane.offset.z - x_plane.offset.z, // assume parallel planes, with constant third dim
     // max_distance = norm3d_host(min_distance, max_width, max_height),
-    max_distance = max_distance_between_planes(x_plane, u, y_plane, v),
-    threshold = 1e-4;
-    // threshold = 0;
+    max_distance = max_distance_between_planes(x_plane, u, y_plane, v);
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
     reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data (in parallel batches)
-    conditional_MC2 = 1 && randomize,
+    conditional_MC2 = 0 && randomize,
     shuffle_v = 0,
     reorder_v = 1,
     reorder_u = 0 || conditional_MC2,
-    amp_convergence = 1;
+    amp_convergence = 1; // TODO rm
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
   const bool conditional_MC = 0;
-  assert(!conditional_MC); // TODO debug for min_n_datapoints > 2048
 #endif
   auto map = std::vector<size_t>(p.n.y);
   if (shuffle_v) {
@@ -404,7 +406,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x2,
       assert(p.n.x % p.batch_size.x == 0.);
   }
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
   static unsigned int seed = 12345;
   seed++; // TODO handle properly
   curandState *rng_state;
@@ -473,10 +475,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x2,
             const auto di = i * bin_size;
             // Note that only the start of d_rand is used (TODO shrink array)
             thrust::sort_by_key(d_rand.begin(), d_rand.begin() + bin_size, indices.begin());
-            if (1) {
-              thrust::scatter(d_x_original.begin() + di, d_x_original.begin() + di + bin_size, indices.begin(), d_x.begin() + di);
-              thrust::scatter(d_u_original.begin() + di, d_u_original.begin() + di + bin_size, indices.begin(), d_u_row_ptr + di);
-            }
+            thrust::scatter(d_x_original.begin() + di, d_x_original.begin() + di + bin_size, indices.begin(), d_x.begin() + di);
+            thrust::scatter(d_u_original.begin() + di, d_u_original.begin() + di + bin_size, indices.begin(), d_u_row_ptr + di);
           }
           if (1) cudaDeviceSynchronize();
           // each column now corresponds to a representative set
@@ -534,12 +534,13 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x2,
           assert(n_offset + p.batch_size.x <= p.n.x);
         } }
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
       if (p.n.x > p.gridSize.x) {
         assert(p.n.x == p.n_batches.x * p.batch_size.x); // underutilized x-batches would invalidate the estimate (E[Y|Z])
         assert(local_batch_size == p.batch_size.x);
 
         if (conditional_MC) {
+          assert(0); // This implementation is broken. The bins created by reorder_v don't correspond to those used here. (Per batch vs per thread)
           // TODO use with reorder_v
           n_offset = potential_batch_size * (n % batches_per_estimate);
           assert(n_offset < p.n.x);
@@ -565,7 +566,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x2,
       // cudaDeviceSynchronize(); print("pre s kernel");
       superposition_per_block<direction, algorithm, shared_memory>  \
         (
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
          rng_state, seed, i_stream, sample_bin_size, p.thread_size.x,
 #endif
          p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
@@ -696,7 +697,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x2,
   for (auto& handle : handles)
     cuB( cublasDestroy(handle) );
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
   if (p.n.x > p.gridSize.x)
     cu( cudaFree(rng_state) );
 #endif
@@ -866,13 +867,13 @@ inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
         const bool append_result = n > 0;
         const size_t n_offset = n * p.batch_size.x;
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
         assert(0); // not implemented (TODO)
         curandState rng_placeholder;
 #endif
         superposition_per_block<direction, algorithm, shared_memory> \
           (
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
            &rng_placeholder, 0,0,0,0,
 #endif
            p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
@@ -958,7 +959,9 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
                                   const Plane& x_plane,
                                   const Plane& y_plane,
                                   struct timespec *t1, struct timespec *t2, double *dt,
-                                  bool verbose = false) {
+                                  const bool verbose = false,
+                                  const double convergence_threshold = 0) {
+  printf(">> MC Convergence Threshold: %.2e\n", convergence_threshold);
   clock_gettime(CLOCK_MONOTONIC, t1);
   auto weights = std::vector<double> {1,
                                       add_constant_wave ? 1 : 0,
@@ -971,18 +974,30 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   // (2.7 speedup)
   // for one-to-many input: speedup was at least ~10
 
+#if RANDOMIZE_SUPERPOSITION_INPUT
+  assert(p.algorithm == 2);
+#endif
+
   std::vector<WAVE> y;
-  // switch (p.algorithm) {
-  // case 1: y = transform<direction, Algorithm::Naive, false>(x, u, v, p); break;
-  // case 2: y = transform<direction, Algorithm::Reduced, false>(x, u, v, p); break;
-  // case 3: y = transform<direction, Algorithm::Reduced, true>(x, u, v, p); break;
-  // default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
-  // }
-// #ifdef RANDOMIZE_SUPERPOSITION_INPUT
-  y = transform<direction, Algorithm::Reduced, false>(x, u, v, p, x_plane, y_plane);
-// #else
-  // y = transform_full<direction, Algorithm::Reduced, false>(x, u, v, p);
-// #endif
+#if RANDOMIZE_SUPERPOSITION_INPUT
+  y = transform_MC<direction, Algorithm::Reduced, false>(x, u, v, p, x_plane, y_plane, convergence_threshold);
+#else
+  // Note, convergence_threshold = -1 can be used to disable stopping after convergence
+  if (convergence_threshold == 0)
+    switch (p.algorithm) {
+    case 1: y = transform_full<direction, Algorithm::Naive,   false>(x, u, v, p); break;
+    case 2: y = transform_full<direction, Algorithm::Reduced, false>(x, u, v, p); break;
+    case 3: y = transform_full<direction, Algorithm::Reduced, true> (x, u, v, p); break;
+    default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
+    }
+  else
+    switch (p.algorithm) {
+    case 1: y = transform_MC<direction, Algorithm::Naive,   false>(x, u, v, p, x_plane, y_plane, convergence_threshold); break;
+    case 2: y = transform_MC<direction, Algorithm::Reduced, false>(x, u, v, p, x_plane, y_plane, convergence_threshold); break;
+    case 3: y = transform_MC<direction, Algorithm::Reduced, true> (x, u, v, p, x_plane, y_plane, convergence_threshold); break;
+    default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
+    }
+#endif
 
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);

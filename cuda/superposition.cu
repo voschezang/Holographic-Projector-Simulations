@@ -59,7 +59,7 @@ __global__ void phasor_displacement(const Polar x, const double *u, const double
 
 template<Direction direction, int blockDim_x, int blockDim_y, Algorithm algorithm, bool shared_memory = false>
 __global__ void per_block(
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
                           curandState *state, const unsigned int seed, const unsigned int i_stream,
                           const unsigned int bin_size, const unsigned int bins_per_thread,
                           // const unsigned int N, const unsigned int M, const unsigned int N_stride, // TODO use uint
@@ -81,7 +81,7 @@ __global__ void per_block(
     gridSize (blockDim.x * gridDim.x,
               blockDim.y * gridDim.y);
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
   // // reset state after every launch
   // TODO reset only once per transformation?
 
@@ -128,7 +128,7 @@ __global__ void per_block(
         WAVE y {0,0};
 
         // ------------------------------------------------------------
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
         if (N > gridSize.x) {
           for (size_t i_bin = 0; i_bin < bins_per_thread; ++i_bin) {
             const size_t n_offset = i_bin * stride_x;
@@ -195,7 +195,7 @@ __global__ void per_block(
       }
     }
   }
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
   // update global state
   // TODO only when NOT resetting the state in between kernels
   if (N > gridSize.x)
