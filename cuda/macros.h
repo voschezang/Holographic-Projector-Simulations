@@ -10,6 +10,7 @@
 
 /* #define DEBUG */
 /* #define TEST_CONST_PHASE */
+/* #define TEST_CONST_PHASE2 */
 #define STREAM_DATA
 
 #define ZERO make_cuDoubleComplex(0,0)
@@ -80,16 +81,16 @@
 
 // TODO check # operations for abs/angle etc
 // see https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
-#define WEIGHT_SQRT 4
+#define WEIGHT_SQRT 8
 #define WEIGHT 8 // complex operations
 #define FLOP_PER_POINT (                                                \
                         3     /* (u - v) with u,v \in R^3 */ +          \
-                        3+2+WEIGHT_SQRT /* power2, sum3, sqrt */ +      \
-                        2*WEIGHT    /* abs(x_i), angle(x_i) */ +        \
+                        3     /* power2 x3 */ +                         \
+                        2+WEIGHT_SQRT /* sum3, sqrt */ +                \
                         1     /* amp / distance */ +                    \
-                        3     /* phase - direction * distance * 2pi/lambda */ + \
+                        2     /* phase - direction * distance * 2pi/lambda */ + \
                         WEIGHT    /* exp(I phase) == sincos */ +        \
-                        2    /* a * {re, im} */                         \
+                        3    /* a/distance * {re, im} */                \
                         )
 
 #endif

@@ -186,31 +186,25 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
                                       const Plane& y_plane,
                                       const double threshold) {
 
-  printf("transform1\n");
+  // TODO rm duplicate unused vars
   auto v = v2;
   auto u = u2;
   auto x = x2;
-  /**
-   * Performance tests, for threshold 0 (no convergence)
-   * transform()
-   *  True MC: 0.16988 TFLOPS
-   *  Cond MC: 0.18005 TFLOPS
-   *  no randomize: 1.41062 TFLOPS
-   * transform_full: 1.49169 TFLOPS
-   */
   const double
     // max_width = x_plane.width > y_plane.width ? x_plane.width : y_plane.width,
     // max_height = x_plane.width > y_plane.width ? x_plane.width / x_plane.aspect_ratio : y_plane.width / y_plane.aspect_ratio,
     // min_distance = y_plane.offset.z - x_plane.offset.z, // assume parallel planes, with constant third dim
     // max_distance = norm3d_host(min_distance, max_width, max_height),
     max_distance = max_distance_between_planes(x_plane, u, y_plane, v);
+  // combination conditional_MC2 is broken, for zoomed out data and small kernels
+  // reorder_u without conditional_MC2 works fine
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
     reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data (in parallel batches)
-    conditional_MC2 = 0 && randomize,
+    conditional_MC2 = 1 && randomize,
     shuffle_v = 0,
     reorder_v = 1,
-    reorder_u = 0 || conditional_MC2,
+    reorder_u = 0 || conditional_MC2, // TODO find greatest common divisor in case nonsquare batch size.x
     amp_convergence = 1; // TODO rm
 
 #if RANDOMIZE_SUPERPOSITION_INPUT
@@ -247,8 +241,12 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
     bin_size = FLOOR(p.n.x, p.batch_size.x), // <= p.n_batches.x
     n_bins = p.batch_size.x;
 
-  if (randomize && conditional_MC2 && p.batch_size.x)
+  if (randomize && conditional_MC2 && reorder_u && p.n.x > p.batch_size.x) {
+    if (sqrt(bin_size) != (size_t) sqrt(bin_size))
+      printf("Error for, bin size: %lu = %f^2, batch size: %lu, N: %lu = %0.2e\n",
+             bin_size, sqrt(bin_size), p.batch_size.x, p.n.x, (double) p.n.x);
     assert(sqrt(bin_size) == (size_t) sqrt(bin_size));
+  }
 
   if (reorder_u && p.n.x > p.batch_size.x) {
     // TODO add if randomize
@@ -257,10 +255,7 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
 
     {
       // test transpose
-      print("test transpose");
       thrust::device_vector<Polar> d_x1 = x, d_x2 = d_x1, d_x3 = d_x1;
-      print("post");
-      assert(bin_size < n_bins);
       transpose::transpose<Polar>(bin_size, n_bins, d_x1, d_x2.begin());
       transpose::transpose<Polar>(n_bins, bin_size, d_x2, d_x3.begin());
       for (auto& i : range(100)) {
@@ -350,11 +345,11 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
 
   cudaDeviceSynchronize();
   // curandGenerateUniform(generator, d_rand_ptr, p.n.x);
-  cuR( curandGenerateUniform(generator, d_rand_ptr, p.n.x * sizeof(float) / 32) );
-  cudaDeviceSynchronize();
+  // cuR( curandGenerateUniform(generator, d_rand_ptr, d_rand.size() ) );
+  // cudaDeviceSynchronize();
 
-  // Copy indices because both keys and values will be sorted
-  auto d_rand2 = d_rand;
+  // // Copy indices because both keys and values will be sorted
+  // auto d_rand2 = d_rand;
 
   // auto d_u_row_ptr = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_u_ptr );
   thrust::device_ptr<Cartesian<double>> d_u_row_ptr = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_u_ptr );
@@ -461,8 +456,10 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       if (randomize && i_shuffle >= i_shuffle_max) {
         // TODO use stages; this can be done in parallel with copying data but not with superposition kernels
-        cuR( curandGenerateUniform(generator, d_rand_ptr, p.n.x * sizeof(float) / 32) );
+        // use floats to define a random ordering
+        cuR( curandGenerateUniform(generator, d_rand_ptr, d_rand.size() ) );
         cudaDeviceSynchronize(); // finish rand & finish all superposition kernels
+
         if (conditional_MC2) {
           // conditional shuffling for conditional MC
           // TODO this requires reordering of x/u, -> make new reordering (transpose) function
@@ -471,9 +468,9 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
           // shuffle samples per bin (i.e. each row)
           assert(bin_size * n_bins <= p.n.x);
           assert(bin_size * n_bins == p.n.x);
+
           for (size_t i = 0; i < n_bins; ++i) {
             const auto di = i * bin_size;
-            // Note that only the start of d_rand is used (TODO shrink array)
             thrust::sort_by_key(d_rand.begin(), d_rand.begin() + bin_size, indices.begin());
             thrust::scatter(d_x_original.begin() + di, d_x_original.begin() + di + bin_size, indices.begin(), d_x.begin() + di);
             thrust::scatter(d_u_original.begin() + di, d_u_original.begin() + di + bin_size, indices.begin(), d_u_row_ptr + di);
@@ -514,11 +511,6 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
       if (!randomize && p.n.x != p.n_batches.x * p.batch_size.x)
         if (n == p.n_batches.x - 1)
           local_batch_size = p.n.x - n * p.batch_size.x;
-
-      // if (101) { // TODO rm
-      //   finished[i_stream] = 1;
-      //   // local_batch_size = 1;
-      // }
 
       // size_t n_offset = n * p.batch_size.x;
       size_t n_offset = (reshuffle_between_kernels ? i_shuffle : n ) * p.batch_size.x;
@@ -940,7 +932,7 @@ inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
   for (auto& handle : handles)
     cuB( cublasDestroy(handle) );
 
-  cu( cudaFree(d_y_tmp_ptr ) );
+  cu( cudaFree(d_y_tmp_ptr   ) );
   cu( cudaFree(d_v_ptr       ) );
   cu( cudaFreeHost(v_pinned_ptr ) );
   cu( cudaFreeHost(y_pinned_ptr ) );
@@ -983,7 +975,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   y = transform_MC<direction, Algorithm::Reduced, false>(x, u, v, p, x_plane, y_plane, convergence_threshold);
 #else
   // Note, convergence_threshold = -1 can be used to disable stopping after convergence
-  if (convergence_threshold == 0)
+  if (convergence_threshold == 0.)
     switch (p.algorithm) {
     case 1: y = transform_full<direction, Algorithm::Naive,   false>(x, u, v, p); break;
     case 2: y = transform_full<direction, Algorithm::Reduced, false>(x, u, v, p); break;

@@ -57,7 +57,8 @@ std::vector<WAVE> inverse(const std::vector<WAVE>& y0, size_t batch_size, double
       y[Ix2D_(i,j,0, Ny,1)] = y0[i_transpose];
       assert(i * Ny + j == Ix2D_(i,j,0, Ny,1));
 
-      if (1) {
+#ifdef TEST_CONST_PHASE2
+      {
         double a = 1e-3;
         if (i_batch_major.x % 2 == 0 && i_batch_major.y % 2 == 0)
           y[Ix2D_(i,j,0, Ny,1)] = from_polar(cuCabs(y[Ix2D_(i,j,0, Ny,1)] )+a, 0.);
@@ -76,6 +77,7 @@ std::vector<WAVE> inverse(const std::vector<WAVE>& y0, size_t batch_size, double
         // if (i_batch_minor.x % 2 == 1 && i_batch_minor.y % 2 == 1)
         //   y[Ix2D_(i,j,0, Ny,1)] = from_polar(cuCabs(y[Ix2D_(i,j,0, Ny,1)] ), 4);
       }
+#endif
     }
   return y;
 }

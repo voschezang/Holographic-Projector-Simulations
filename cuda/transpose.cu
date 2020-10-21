@@ -1,5 +1,5 @@
 /* Matrix transpose for arbitrary datatypes (e.g. Cartesian<double>)
- * Note that cuBLAS geam outperforms this function for most datatypes
+ * Note that cuBLAS `geam` outperforms this function for most datatypes
  * Cloned from http://www.orangeowlsolutions.com/archives/790
  */
 
