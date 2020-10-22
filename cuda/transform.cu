@@ -253,15 +253,15 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
     reorder::plane(u2, u, bin_size, x_plane.aspect_ratio);
     reorder::plane<Polar, 1>(x2, x, bin_size, x_plane.aspect_ratio);
 
-    {
-      // test transpose
-      thrust::device_vector<Polar> d_x1 = x, d_x2 = d_x1, d_x3 = d_x1;
-      transpose::transpose<Polar>(bin_size, n_bins, d_x1, d_x2.begin());
-      transpose::transpose<Polar>(n_bins, bin_size, d_x2, d_x3.begin());
-      for (auto& i : range(100)) {
-        Polar a = d_x1[i], b = d_x3[i];
-        assert(equals(a.amp, b.amp));
-      } }
+    // if (1) {
+    //   // test transpose
+    //   thrust::device_vector<Polar> d_x1 = x, d_x2 = d_x1, d_x3 = d_x1;
+    //   transpose::transpose<Polar>(bin_size, n_bins, d_x1, d_x2.begin());
+    //   transpose::transpose<Polar>(n_bins, bin_size, d_x2, d_x3.begin());
+    //   for (auto& i : range(100)) {
+    //     Polar a = d_x1[i], b = d_x3[i];
+    //     assert(equals(a.amp, b.amp));
+    //   } }
   }
 
   // x = input or source data, y = output or target data
@@ -292,9 +292,19 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   thrust::device_vector<Polar> d_x = x;
   thrust::device_vector<double> d_u = u;
+
   // cast to pointers to allow usage in non-thrust kernels
   Polar *d_x_ptr = thrust::raw_pointer_cast(d_x.data());
   auto *d_u_ptr = thrust::raw_pointer_cast(d_u.data());
+
+
+  // tmp copies to simplify matrix shuffling and transposing
+  // TODO don't copy twice
+  thrust::device_vector<Polar> d_x2 = x;
+  thrust::device_vector<double> d_u2 = u;
+  auto *d_u_ptr2 = thrust::raw_pointer_cast(d_u2.data());
+  thrust::device_ptr<Cartesian<double>> d_u_row_ptr2 = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_u_ptr2 );
+
 
   // d_y_tmp contains block results of (partial) superposition kernel (TODO rename => d_y_block?)
   // d_y_sum contains the full superpositions, i.e. the summed rows of d_y_tmp
@@ -338,7 +348,8 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
   // const auto shuffle_period = FLOOR(p.n_batches.x, p.n_streams);
 
   // cu( cudaMalloc( &d_rand, p.n.x * sizeof(float) ) );
-  auto d_rand = thrust::device_vector<float>(conditional_MC2 ? bin_size : p.n.x); // sort_by_key() requires device vectors
+  // auto d_rand = thrust::device_vector<float>(conditional_MC2 ? bin_size : p.n.x); // sort_by_key() requires device vectors
+  auto d_rand = thrust::device_vector<float>(p.n.x); // sort_by_key() requires device vectors
   auto d_rand_ptr = thrust::raw_pointer_cast(d_rand.data());
   curandGenerator_t generator;
   init_random(&generator);
@@ -462,26 +473,25 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
 
         if (conditional_MC2) {
           // conditional shuffling for conditional MC
-          // TODO this requires reordering of x/u, -> make new reordering (transpose) function
           const size_t n_sqrt = sqrt(p.n.x);
           assert(n_sqrt * n_sqrt == p.n.x);
           // shuffle samples per bin (i.e. each row)
           assert(bin_size * n_bins <= p.n.x);
           assert(bin_size * n_bins == p.n.x);
 
+          // TODO consider generating a random matrix instead of re-generating each row (d_rand)
           for (size_t i = 0; i < n_bins; ++i) {
             const auto di = i * bin_size;
             thrust::sort_by_key(d_rand.begin(), d_rand.begin() + bin_size, indices.begin());
-            thrust::scatter(d_x_original.begin() + di, d_x_original.begin() + di + bin_size, indices.begin(), d_x.begin() + di);
-            thrust::scatter(d_u_original.begin() + di, d_u_original.begin() + di + bin_size, indices.begin(), d_u_row_ptr + di);
+            // thrust::scatter :: ( iter1.first, iter1.last, map, result.first )
+            thrust::scatter(d_x_original.begin() + di, d_x_original.begin() + di + bin_size, indices.begin(), d_x2.begin() + di);
+            thrust::scatter(d_u_original.begin() + di, d_u_original.begin() + di + bin_size, indices.begin(), d_u_row_ptr2 + di);
           }
           if (1) cudaDeviceSynchronize();
           // each column now corresponds to a representative set
           // transpose data s.t. each batch uses 1 sample from each bin
-          transpose::transpose<Polar>(bin_size, n_bins, d_x_original, d_x.begin());
-          transpose::transpose<Cartesian<double>>(bin_size, n_bins, d_u_original, d_u_row_ptr);
-          // transpose::transpose<Polar>(n_bins, bin_size, d_x_original, d_x.begin());
-          // transpose::transpose<Cartesian<double>>(n_bins, bin_size, d_u_original, d_u_row_ptr);
+          transpose::transpose<Polar>(n_bins, bin_size, d_x2.begin(), d_x.begin());
+          transpose::transpose<Cartesian<double>>(n_bins, bin_size, d_u_row_ptr2, d_u_row_ptr);
 
         } else {
           thrust::sort_by_key(d_rand.begin(), d_rand.end(), indices.begin());

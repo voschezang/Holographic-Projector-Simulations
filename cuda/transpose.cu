@@ -34,14 +34,14 @@ struct index : public thrust::unary_function<size_t,size_t>
 };
 
 template <typename T = double, typename Iterator>
-void transpose(size_t m, size_t n, const thrust::device_vector<T>& src, Iterator dst)
+void transpose(size_t m, size_t n, const Iterator src, Iterator dst)
 {
+  // assume n*m == src.size
   thrust::counting_iterator<size_t> indices(0);
   thrust::gather
     (thrust::make_transform_iterator(indices, transpose::index(n, m)),
-     thrust::make_transform_iterator(indices, transpose::index(n, m)) + src.size(),
-     src.begin(),
-     dst);
+     thrust::make_transform_iterator(indices, transpose::index(n, m)) + n*m,
+     src, dst);
 }
 
 

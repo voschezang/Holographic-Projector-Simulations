@@ -65,8 +65,8 @@ Params read_args(int argc, char **argv) {
 
      // convergence_threshold = 0 disables MC, -1 enables MC but disables stopping after convergence
      /* convergence_threshold: 0, */
-     /* convergence_threshold: 1e-4, */
-     convergence_threshold: 1e-16, // select MC but don't converge
+     convergence_threshold: 1e-4,
+     /* convergence_threshold: 1e-16, // select MC but don't converge */
      /* n_streams: 32, */
      n_streams: 16,
      /* thread_size: {4, 8}, */
