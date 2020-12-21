@@ -26,11 +26,10 @@ struct dim2 { size_t x, y; };
 struct SumRange {size_t sum, min, max; };
 
 struct Plane {
-  // TODO simplify this struct, avoid duplicate data?
   double width;
   Cartesian<double> offset;
   double aspect_ratio; // image width / height
-  bool randomize; // TODO rename => randomize_projector_pixels
+  bool randomize; // randomize_projector_pixels
 };
 
 /**

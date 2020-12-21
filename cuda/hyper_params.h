@@ -36,6 +36,7 @@
 #define BLOCKDIMY BLOCKDIMX
 #else
 #define BLOCKDIMY CEIL(1024, BLOCKDIMX)
+/* #define BLOCKDIMY CEIL(512, BLOCKDIMX) */
 #endif
 
 #if (N_sqrt <= 64)
@@ -46,15 +47,10 @@
 
 #define GRIDDIMY CEIL(GRIDDIMX, 2)
 
-/* #define BLOCKDIMX 8 */
-/* #define BLOCKDIMY 8 */
-/* #define GRIDDIMX 4 */
-/* #define GRIDDIMY 4 */
-
 #ifndef RANDOMIZE_SUPERPOSITION_INPUT
 #define RANDOMIZE_SUPERPOSITION_INPUT 0 // true MC, requires monte_carlo=1, TODO rm
 #endif
 
-#define SQUARE_TARGET_BATCHES
+// #define SQUARE_TARGET_BATCHES // TODO check for side-effect in kernel
 
 #endif

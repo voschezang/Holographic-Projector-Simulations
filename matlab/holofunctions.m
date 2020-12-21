@@ -21,15 +21,7 @@ Labda=0.65e-6;     %wavelength
 % % screen properties
 % NscreenXpoints=300;        % number of screen pixels in x
 % NscreenXpoints=256;        % number of screen pixels in x
-% NscreenYpoints=NscreenXpoints;        % number of screen pixels in y
-%NscreenXpoints = 1024;
-% NscreenYpoints = 1024;
-% NscreenXpoints = 1920
-% NscreenYpoints = 1080
 NscreenXpoints = 512;
-% NscreenXpoints = 128;
-% NscreenXpoints = 960;
-% NscreenYpoints = 540;
 NscreenYpoints = NscreenXpoints;
 
 screenvectlen=NscreenXpoints*NscreenYpoints;
@@ -55,40 +47,18 @@ end
 % define center of screen and an object distance Zc
 
 Zholo = 0.35     % distance to holo points
-Zholo = 100     % distance to holo points
-% Zholo = 0.01     % distance to holo points
-% Zholo = 1e3 * Labda
 
 PROJECTOR_WIDTH = NscreenXpoints*screenXstep % print
 Xc0 = 0.5 * NscreenXpoints*screenXstep;
 Yc0 = 0.5 * NscreenYpoints*screenYstep;
-% Xc1 = 0.004;
-% Xc1 = 0.006;
 Zc=Zholo;       % scar tissue code. Zholo was Zc first...
 
 % define some holographic points
-% n_objects = 256 * 256;
-% n_objects = 1920 * 1080;
-% n_objects = 1024 * 1024;
 n_objects = 1;
-%width = Labda * 100 * sqrt(2) * n_objects
 width = 1e-2;
 % Xc = linspace(Xc0 - width/2, Xc0 + width/2, n_objects);
 Xc(1) = Xc0 + Labda;
 Yc(1:n_objects) = Yc0;
-%Yc = linspace(0,Yc0,n_objects);
-%Xc(1) = Xc0;      % holo point at center of the screen
-%Yc(1) = Yc0;
-%Xc(2) = Xc0 + 0.0001
-%Yc(2) = Yc0
-%Xc(3) = Xc0;      % holo point at center of the screen
-%Yc(3) = Yc0 + 0.0003
-% Xc(1) = Xc0 + 0.004;      % holo point at center of the screen
-% Yc(1) = Yc0 + 0.006;
-% Yc(2)=Yc1-200e-6;
-% Xc(2)=Xc1;
-% Yc(3)=Yc1;
-% Xc(3)=Xc1+120e-6;
 
 nHoloPoints = length(Xc)
 % nHoloPoints = n_objects;
@@ -271,8 +241,6 @@ screenYGPU=gpuArray(single(Yvectscreen));
 
 screenvectlen=uint32(length(Xvectscreen));
 simvectlen=uint32(length(ObserveXvect));
-% Gz(1:simvectlen)=gpuArray(single(Zobserve));
-% Glabda(1:simvectlen)=gpuArray(single(Labda));
 
 GholXvect=gpuArray(single(ObserveXvect));
 GholYvect=gpuArray(single(ObserveYvect));
@@ -281,25 +249,12 @@ parfor k=1:screenvectlen
 
         % Gdistances=sqrt((GholXvect-screenXGPU(k)).^2+(GholYvect-screenYGPU(k)).^2+Gz.^2);
   Gdistances=sqrt((GholXvect-screenXGPU(k)).^2+(GholYvect-screenYGPU(k)).^2+ Zobserve^2);
-        % cosfact=Gz./Gdistances; % this function assumes that the samples have the same Z position and the inclination with the XY plane is taken into account
-        % Gsamplevect=Gsamplevect+cosfact.*(HolofieldGPU(k)./Gdistances).*exp(1i*((-2*pi*Gdistances./Glabda)+HoloangGPU(k))); % minus for the angle. light starts to 'lag' when moving away from the source
-        % Gsamplevect=Gsamplevect + (HolofieldGPU(k)./Gdistances).*exp(1i*((-2*pi*Gdistances./Glabda)+HoloangGPU(k))); % minus for the angle. light starts to 'lag' when moving away from the source
         Gsamplevect=Gsamplevect + (HolofieldGPU(k)./Gdistances).*exp(1i*((-2*pi/Labda*Gdistances)+HoloangGPU(k))); % minus for the angle. light starts to 'lag' when moving away from the source
 
 
 end
 lightfield=gather(Gsamplevect);
 end
-
-%
-% function [amplitudes, phases]=lightfields(ObserveX, ObserveY, Holoangles, Holofield, Xvectscreen, Yvectscreen, Zobserve, Labda)
-%
-% distances=sqrt((ObserveX-Xvectscreen).^2+(ObserveY-Yvectscreen).^2+Zobserve.^2);
-% cosfact=Zobserve./distances; % this function assumes that the samples have the same Z position and the inclination with the XY plane is taken into account
-% lightfieldarray=cosfact.*(Holofield./distances).*exp(1i*((-2*pi*distances./Labda)+Holoangles)); % minus for the angle. light starts to 'lag' when moving away from the source
-% amplitudes=abs(lightfieldarray);
-% phases=angle(lightfieldarray);
-% end
 
 function matout=matrixmaker(Xpoints, Ypoints, inputvect)
 matout(1:Ypoints,1:Xpoints)=0;
@@ -310,23 +265,3 @@ matout(1:Ypoints,1:Xpoints)=0;
     end
 end
 
-% function [histarray, bincentersarray]=scatter2hist(binningdimensionarray, valuestobinarray, numberofbins)
-% minbin=min(binningdimensionarray);
-% maxbin=max(binningdimensionarray);
-% binspan=maxbin-minbin;
-% binwidth=binspan/numberofbins;
-% histarray(1:numberofbins)=0;
-% bincentersarray(1:numberofbins)=0;
-% for k=1:numberofbins
-%     leftbinedge=minbin+(k-1)*binwidth;
-%     rightbinedge=minbin+k*binwidth;
-%     indarr=find(binningdimensionarray>=leftbinedge & binningdimensionarray<rightbinedge);
-%     bincentersarray(k)=leftbinedge+0.5*binwidth;
-%
-%     if isempty(indarr)==0
-%         histarray(k)=sum(valuestobinarray(indarr(:)));
-%         indarr=[];
-%     end
-%
-% end
-% end
