@@ -46,8 +46,6 @@ Params read_args(int argc, char **argv) {
      quadrant_projection: false,
      randomize: false,
 
-     // convergence_threshold = 0 disables MC, -1 enables MC but disables stopping after convergence
-     convergence_threshold: 0,
      n_streams: 8,
      thread_size: {256, 128},
      // thread_size: {64, 32}, // for algorithm = 1
@@ -98,7 +96,6 @@ Params read_args(int argc, char **argv) {
       case 'B': p.blockDim.y =    strtol(optarg, 0, 10); break;
       case 'g': p.gridDim.x =     strtol(optarg, 0, 10); break;
       case 'G': p.gridDim.y =     strtol(optarg, 0, 10); break;
-      case 'e': p.convergence_threshold = strtod(optarg, 0); break;
       case 'h': default: show_help(argv[0]);
       }
     }

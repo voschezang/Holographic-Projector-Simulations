@@ -1,13 +1,5 @@
 # full abs path is required for ssh # TODO not if sourcing .profile?
-# C := /usr/local/cuda-11.0/bin/nvcc
-# GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/8.3.0.1/x86_64-centos7/bin
-# GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/9.2.0/x86_64-centos7/bin
-#-ccbin=$(GCC)
 FLAGS := -l curand -l cublas -std=c++14
-# -lineinfo # compile with asm/ptx line numbers
-# -Xptxas -dlcm=ca
-# opt-in to caching of global memory accesses in L1
-# -Xptxas -dlcm=ca
 ARCH_FLAGS := -arch=compute_70 -code=sm_70
 EXE := run
 DIR := ../tmp
@@ -17,16 +9,11 @@ REL_OUTPUT_FILES := *.dat
 .PHONY: $(EXE) test
 
 build:
-	# -ftz=true // flush dernormal to zero
-	#  -ftz=true -prec-div=false -prec-sqrt=false
-	# -g debug
-	# -D$(HyperParams)
 	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
 	mkdir -p $(DIR)
 
 debug:
 	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS) -g -G
-	# make run
 	echo $(EXE)
 	cuda-gdb
 
@@ -51,55 +38,10 @@ init-path:
 	# export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}
 	# export PATH=$(GCC)${PATH:+:${PATH}}
 
-test:
-	make test-cpu test-gpu
-
-test-cpu:
-	nvcc -o test test.cu $(FLAGS) $(ARCH_FLAGS) -DNORM_3D='norm3d_host' && ./test
-	rm test;
-
-test-gpu:
-	nvcc -o test test_gpu.cu $(FLAGS) $(ARCH_FLAGS) && ./test
-	rm test;
-
-test-phase-projector:
-	# params should be: 1440 hd nonrand screen, no PROJECT_PHASE=0, 1pt, offset 4mm 6mm 10mm, non
-	make build-run
-	diff ../tmp/x0_amp.dat   ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/x0_amp.dat
-	diff ../tmp/x0_phase.dat ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/x0_phase.dat
-	diff ../tmp/y0_amp.dat   ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/y0_amp.dat
-	diff ../tmp/y0_phase.dat ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/y0_phase.dat
-
-test-phase-projector-reset:
-	cp ../tmp/x0_amp.dat   ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/
-	cp ../tmp/x0_phase.dat ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/
-	cp ../tmp/y0_amp.dat   ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/
-	cp ../tmp/y0_phase.dat ../tmp/test/phase_1440_hd_nonrand_1pt-4-6-10mm/
-
-test-nonphase-projector:
-	# params should be: 1440 hd nonrand screen, no PROJECT_PHASE=0, 1pt, offset 4mm 6mm 10mm, non
-	make build-run
-	diff ../tmp/x0_amp.dat   ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/x0_amp.dat
-	diff ../tmp/x0_phase.dat ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/x0_phase.dat
-	diff ../tmp/y0_amp.dat   ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/y0_amp.dat
-	diff ../tmp/y0_phase.dat ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/y0_phase.dat
-
-test-nonphase-projector-reset:
-	cp ../tmp/x0_amp.dat   ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/
-	cp ../tmp/x0_phase.dat ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/
-	cp ../tmp/y0_amp.dat   ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/
-	cp ../tmp/y0_phase.dat ../tmp/test/nonphase_1440_hd_nonrand_1pt-4-6-10mm/
 
 profile:
 	make build
-	# nvprof ./$(EXE)
 	nvprof --print-gpu-trace ./$(EXE)
-	# -m dram_write_throughput -m dram_read_throughput
-
-profile2:
-	make build
-	# --kernels should be before --analysis-metrics
-	nvprof --kernels per_block --analysis-metrics -o  out.nvprof -f ./$(EXE)
 
 vprofile:
 	make build
@@ -107,6 +49,3 @@ vprofile:
 
 setup-profiler:
 	modprobe nvidia NVreg_RestrictProfilingToAdminUsers=0
-
-add-to-path:
-	echo 'export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}'
