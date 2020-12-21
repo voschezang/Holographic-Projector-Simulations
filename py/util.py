@@ -34,6 +34,7 @@ DIMS = 3
 N = 80**(DIMS - 1)
 PROJECTOR_DISTANCE = -4
 PROJECTOR_DISTANCE = -1e3 * LAMBDA
+FLOP = 29  # per point
 
 PROGRESS_BAR_FILL = '█'
 
@@ -755,6 +756,7 @@ def param_table(params: dict) -> pd.DataFrame:
     params = {str: list of values}
     """
     for k, v in params.items():
+        print(k, v)
         if isinstance(v, int) or isinstance(v, float):
             v = [v]
             params[k] = v
@@ -774,7 +776,7 @@ def param_row(param_keys, param_values):
 
 
 def get_results(build_func, run_func,
-                build_params: pd.DataFrame, run_params: pd.DataFrame,
+                build_params: pd.DataFrame = None, run_params: pd.DataFrame = None,
                 filename='results', tmp_dir='tmp_pkl',
                 n_trials=20, copy_data=False, v=0, **kwargs):
     """
@@ -784,10 +786,15 @@ def get_results(build_func, run_func,
     """
     if copy_data:
         assert n_trials == 1, 'use multiple planes instead of multiple trials'
+    if build_params is None:
+        build_params = param_table({})
+    if run_params is None:
+        run_params = param_table({})
     rerun = file.get_arg("-r", default_value=False, flag=True)
     # Load or generate simulation results
-    encoded = str.encode(str(build_params) + str(run_params), 'utf-8')
-    hash = int(int(hashlib.sha256(encoded).hexdigest(), 16) % 1e9)
+    encoded = str.encode(str(build_params) + str(run_params) + str(n_trials),
+                         'utf-8')
+    hash = int(int(hashlib.sha256(encoded).hexdigest(), 16) % 1e12)
     filename += str(hash)
     zip_fn = f'{tmp_dir}/{filename}.zip'
 
@@ -801,6 +808,7 @@ def get_results(build_func, run_func,
             print('Generate new results')
         results = grid_search(build_func, run_func, build_params, run_params,
                               n_trials=n_trials, verbose=v, **kwargs)
+        print('\n')
         assert any([row['Runtime mean'] != 0 for _, row in results.iterrows()])
         with open(f'{tmp_dir}/{filename}.pkl', 'wb') as f:
             pickle.dump(results, f)
@@ -833,7 +841,8 @@ def grid_search(build_func, run_func,
             #     print(f'\ni: {i}\t params: ', ', '.join(
             #         f'{k}: {v}' for k, v in run_row.items()))
 
-            runtime, flops, amp, phase, peak_widths = np.zeros((5, n_trials))
+            runtime, runtime_std, flops, amp, phase, peak_widths = \
+                np.zeros((6, n_trials))
             params = build_row.combine_first(run_row).to_dict()
             for t in range(n_trials):
                 if not success:
@@ -842,8 +851,8 @@ def grid_search(build_func, run_func,
                 print_progress(idx, n_rows, t, n_trials,
                                suffix=str(params))
                 try:
-                    runtime[t], flops[t], amp[t], phase[t] = run_trial(
-                        run_func, run_row)
+                    runtime[t], runtime_std[t], flops[t], amp[t], phase[t] = \
+                        run_trial(run_func, run_row)
 
                     if find_peak_width:
                         dir = 'tmp_local'
@@ -854,21 +863,38 @@ def grid_search(build_func, run_func,
                         peak_widths[t] = find_peak_widths(
                             data['z'][0][:, 0] ** 2, data['w'][0][:, 0])
 
-                except subprocess.CalledProcessError:
+                except (subprocess.CalledProcessError, RuntimeError) as e:
                     success = False
-                    print('\n - Error for params:',
+                    print('\n - Error for run params:',
                           build_row.combine_first(run_row).to_dict())
+                    print(e)
+
+                    # TODO rm
+                except subprocess.CalledProcessError as e:
+                    success = False
+                    print('\n - Error for run params:',
+                          build_row.combine_first(run_row).to_dict())
+                    print(e)
+                except RuntimeError as e:
+                    success = False
+                    print('\n - Error for run params:',
+                          build_row.combine_first(run_row).to_dict())
+                    print(e)
+
             if not success:
                 # invalidate all results in case of a single error for this parameter set
-                runtime[:] = flops[:] = amp[:] = phase[:] = 0
+                runtime[:] = runtime_std[:] = flops[:] = amp[:] = phase[:] = 0
                 if find_peak_width:
                     peak_widths[:] = 0
                 if n_rows == 1:
                     raise RuntimeError('Single param-set experiment failed')
 
+            # Runtime std is replaced by inter-std, but FLOPS is unchanged
+            std = np.std(runtime) if n_trials > 1 else runtime_std[0]
+
             # Append valid and invalid results for consistency with input params
             params.update({'Runtime mean': np.mean(runtime),
-                           'Runtime std': np.std(runtime),
+                           'Runtime std': std,
                            # 'Runtime rel std': np.std(time) / np.mean(runtime),
                            'FLOPS mean': np.mean(flops),
                            'FLOPS std': np.std(flops),
@@ -888,34 +914,129 @@ def grid_search(build_func, run_func,
     return pd.DataFrame(results)
 
 
-def run_trial(run_func, run_kwargs, std_key='y'):
+def run_trial(run_func, run_kwargs):
     """
     Return a tuple (runtime, flops).
     An `subprocess.CalledProcessError` is raised in case of incorrect params
     """
     out: subprocess.CompletedProcess = run_func(**run_kwargs)
-    assert out.stderr == b'', f"\nstderr = {out.stderr.decode('utf-8')}"
+    if out.stderr != b'':
+        print(f"\nstdout = {out.stdout.decode('utf-8')} ",
+              f"\n\nstderr = {out.stderr.decode('utf-8')}\n")
+        raise RuntimeError('nonempty subprocess.CompletedProcess.stderr')
     out.check_returncode()
     # TODO manually cp file, don't use mounted dir
     result = parse_json(remote.read_file())
-    runtimes = [r['runtime']
-                for r in concat(result.values())
-                if r['runtime'] > 0.]
+    if 'z' in result.keys():
+        if not result['z']:
+            del result['z']
+
+    if 'z' in result.keys():
+        runtimes = [r['runtime']
+                    for r in result['z']]
+    else:
+        runtimes = [r['runtime']
+                    for r in concat(result.values())
+                    if r['runtime'] > 0.]
     if sum(runtimes) == 0:
-        print('\n err, sum:', sum(runtimes))
+        print('\n\n err, sum:', sum(runtimes), 'for',
+              result.keys(), result, '\n\n')
         print('\n stderr: ', out.stderr.decode('utf-8'))
 
-    runtime = sum((r['runtime']
-                   for r in concat(result.values())
-                   if r['runtime'] > 0.))
-    flops = np.mean([r['flops']
-                     for r in concat(result.values())
-                     if r['flops'] > 0.])
+    k = 'z' if 'z' in result.keys() else 'y'
+    runtimes = np.array([r['runtime'] for r in result[k]])
+    runtime = runtimes.mean()
+    std = runtimes.std()
+    flops = np.mean([r['flops'] for r in result[k]])
     amp = np.mean([r['amp_sum']
-                   for r in result['y']])
+                   for r in result[k]])
     phase = np.mean([r['phase_sum']
-                     for r in result['y']])
-    return runtime, flops, amp, phase
+                     for r in result[k]])
+    # runtime = sum((r['runtime']
+    #                for r in concat(result.values())
+    #                if r['runtime'] > 0.))
+    # flops = np.mean([r['flops']
+    #                  for r in concat(result.values())
+    #                  if r['flops'] > 0.])
+    # amp = np.mean([r['amp_sum']
+    #                for r in result['y']])
+    # phase = np.mean([r['phase_sum']
+    #                  for r in result['y']])
+    return runtime, std, flops, amp, phase
+
+
+def bandwidth(alg, n, m, t, n_streams, thread_sizes=(1, 1), blockDim_x=1,
+              gridDim_x=1, cache_threads=0, cache_blocks=0, cache_const_mem=0):
+    # Effective Bandwidth
+    # n,m are global source-target sizes, N,M are local sizes (batch-level)
+    # non-default args must be arrays of the same shape
+    # write1, read2 are skipped for algorithm 0
+    tx = np.array([tup[0] for tup in thread_sizes.values])
+    ty = np.array([tup[1] for tup in thread_sizes.values])
+    gridDim_y = gridDim_x
+    blockDim_y = blockDim_x
+    GSx = blockDim_x * gridDim_x
+    GSy = blockDim_y * gridDim_y
+    batch_sizes = tx * GSx, ty * GSy
+    n_strides_x, n_strides_y = tx / GSx, ty / GSy
+
+    n_batches = n / batch_sizes[0] * m / batch_sizes[1]
+    if cache_const_mem:
+        n_batches = n / batch_sizes[0]
+        # n_batches = m / ty
+
+    if cache_blocks and cache_threads:
+        print('cc', tx, ty)
+        print('cc', GSx, GSy)
+
+    N, M = batch_sizes
+    # txy = tx * ty
+    # txy = blockDim_x * gridDim_x
+    # L2 = 6291456 / 8  # in doubles, not bytes
+    # print('tx', tx)
+    # print('ty', ty)
+    bx, by = blockDim_x, blockDim_y  # threads per block
+    gx, gy = gridDim_x, gridDim_y  # blocks per grid
+    if cache_threads:
+        bx = by = 1
+    if cache_blocks:
+        gx = gy = 1
+
+    # if cache_const_mem:
+        # n_strides_y = 1
+
+    # note:
+    # each y-thread reads the same x-values
+    # each x-thread reads the same y-values
+    # if the outer loop covers the source datapoints and the inner loop the
+    # target datapoints, then the target datapoints are re-read an additional
+    # M/GSy times
+    read1 = [(alg == 0).astype(int) * (8 * N * M) * 4 / n_batches,
+             # (alg == 1).astype(int) * (3 * N * M / c1 + 5 * N) * 8,
+             # (alg > 1).astype(int) * (5 * M * N / c2 + 3 * M) * 8]
+             (alg == 1).astype(int) * (gy * by * N * 5 + \
+                                       gx * bx * M * 3 * n_strides_x) * 8,
+             (alg > 1).astype(int) * (gy * by * N * 5 * n_strides_y +
+                                      gx * bx * M * 3) * 8]
+    write1 = [  # (alg == 0).astype(int) * 0,
+        (alg == 1).astype(int) * (2 * N * M) * 8,
+        (alg == 2).astype(int) * (2 * M * N / tx) * 8,
+        (alg == 3).astype(int) * (2 * M * N / tx / blockDim_x) * 8]
+    # / threadSize_x / threadSize_y
+    read2 = write1
+    write2 = [(alg == 0).astype(int) * (2 * M) * 4 / n_batches,
+              (alg == 1).astype(int) * (2 * M) * 8,
+              (alg > 1).astype(int) * (2 * M) * 8]
+
+    per_batch = np.array(read1).sum(axis=0) + np.array(write1).sum(axis=0) + \
+        np.array(read2).sum(axis=0) + np.array(write2).sum(axis=0)
+
+    # per_batch = np.array(read1).sum(axis=0)
+
+    # Note, GPU is only copyig data 1/5 of the time
+    result = n_batches * per_batch / t
+    assert result.shape == alg.shape
+    return result
 
 
 def print_progress(major_iter=0, n_major=100, minor_iter=0, n_minor=None,
@@ -932,3 +1053,20 @@ def print_progress(major_iter=0, n_major=100, minor_iter=0, n_minor=None,
 
     print(f'\r > {round(major_iter/n_major*100,2):<4}%{minor } |{bar}|{suffix}',
           end=end)
+
+
+def make_map(values=[], alpha_values=[0.5, 1, 0.8, 0.6]):
+    print(alpha_values)
+    return {k: v for k, v in zip(values, alpha_values)}
+    # alpha_map = {values[0]: keys[0]}
+    # if len(values) > 1:
+    #     alpha_map[values[1]] = keys[1]
+    # if len(values) > 2:
+    #     alpha_map[values[2]] = keys[2]
+    # if len(values) > 3:
+    #     alpha_map[values[3]] = keys[3]
+    # return alpha_map
+
+
+def is_square(x: float):
+    return float(int(x**.5)) == x ** .5

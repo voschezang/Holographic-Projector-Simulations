@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import os
+import math
+import itertools
 import scipy.stats
 import scipy.signal
 import matplotlib.pyplot as plt
@@ -10,6 +12,10 @@ from _img_dir import IMG_DIR
 import util
 from util import *  # N, N_sqrt
 plt.rcParams['font.family'] = 'serif'
+# print('monospace fonts', plt.rcParams['font.monospace'])
+# plt.rcParams['font.monospace'] = ['Andale Mono']
+# plt.rcParams['font.monospace'] = ['Courier New'] +\
+#     plt.rcParams['font.monospace']
 
 # cmap = 'rainbow'
 cmap = 'inferno'
@@ -22,7 +28,10 @@ dot1, dot2, dot3 = (1, 1), (1, 2), (1, 3)
 dash1, dash2, dash3 = (2, 1), (3, 1), (4, 1)
 LINESTYLES = ['-', '--', '-.', ':',
               (0,  dot1 + dot1 + dash3), (0, dash3 + dash2 + dash1 + dot1),
-              (0, dot1 + dot3)]
+              (0, dot1 + dot3),
+              (0, dot1 + dot3),
+              '-', '--', '-.', ':']
+MARKERS = '.'
 
 
 def hist_2d_hd(phasor, pos, title='', filename=None,  ybins=10, ratio=1,
@@ -40,6 +49,8 @@ def hist_2d_hd(phasor, pos, title='', filename=None,  ybins=10, ratio=1,
         # ax = plt.subplot()
         color = phasor if len(phasor.shape) == 1 else phasor[:, i]
         # TODO use imshow for nonrand?
+        if k == 'amp':
+            color = color ** 2
 
         # soft round required because hist2d is lossy
         # e.g. a constant input can become noisy
@@ -175,7 +186,7 @@ def _imshow_wrapper(x, y, color, ratio=1., **kwargs):
 
 
 def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filename=None,
-                         ratio=1., density3=None, large=True,
+                         ratio=1., density3=None, large=True, phase=True,
                          max_ratio=4, min_ratio=0.5, **kwargs):
     """ Triple plot of amplitude, phase, irradiance
 
@@ -193,7 +204,7 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
         global cmap
         kwargs['cmap'] = cmap
 
-    n_subplots = 3
+    n_subplots = 2 + int(phase)
     horizontal = ratio < 1.1  # distribute subplots horizontally
     # h = 15, w = 4
     if horizontal:
@@ -206,6 +217,11 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
             # h = 6 * min(1. / ratio, max_ratio)
             w *= 7. / 5.
             h *= 6. / 4.
+        # else:
+            # h *= 2
+            # w *= 0.8
+            # w * 1.1
+            # h *= 3
         # else:
         #     w = n_subplots * max(ratio, min_ratio) * 5
         #     h = 4
@@ -220,9 +236,9 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
     plt.suptitle(title, y=title_y_offset, fontsize=16, fontweight='bold')
 
     if horizontal:
-        ax = plt.subplot(131)
+        ax = plt.subplot(1, n_subplots, 1)
     else:
-        ax = plt.subplot(311)
+        ax = plt.subplot(n_subplots, 1, 1)
 
     plot_func(x, y, a, **kwargs)
     markup(ax, unit='m')
@@ -231,9 +247,11 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
     # change subplot order to allow cmap to be changed later
     # ax = plt.subplot(133)
     if horizontal:
-        ax = plt.subplot(133)
+        # ax = plt.subplot(133)
+        ax = plt.subplot(1, n_subplots, n_subplots)
     else:
-        ax = plt.subplot(313)
+        # ax = plt.subplot(313)
+        ax = plt.subplot(n_subplots, 1, n_subplots)
 
     # |E|^2 == irradiance(E)
 
@@ -243,8 +261,9 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
     irradiance /= irradiance.max()
     # add lower bound to allow plotting with log scale
     lower_bound = 1e-9
-    if 1:
+    if 0:
         lower_bound = 1e-4
+        # lower_bound = 1e-6
     np.clip(irradiance, lower_bound, None, out=irradiance)
     range = irradiance.max() - irradiance.min()
     log_cmap = range > 0.1
@@ -271,6 +290,8 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
         ticks = np.linspace(round(np.log10(mini)), 0, n_ticks, endpoint=True) \
             .round().astype(int)
         labels = [f'$10^{{{v}}}$' for v in ticks]
+        n_ticks = 6
+        labels = [f'{v:.2f}' for v in np.linspace(-9, 0, n_ticks)]
         # print(n_ticks, ticks)
         # print(labels)
         cb = plt.colorbar(fraction=0.052, pad=0.05)
@@ -284,23 +305,31 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
         del kwargs['density']
 
     markup(ax, unit='m', colorbar=not log_cmap)
+    # if not large:
+    #     plt.ylabel(None)
     plt.title('Irradiance', fontsize=16)
-    if horizontal:
-        ax = plt.subplot(132)
-    else:
-        ax = plt.subplot(312)
 
-    # cyclic cmap: hsv, twilight
-    kwargs['cmap'] = cyclic_cmap
-    if plot_func.__name__ == '_hist2d_wrapper':
-        plot_func(x, y, phi, range=(phi.min() / np.pi, phi.max() / np.pi),
-                  **kwargs)
-    else:
-        plot_func(x, y, phi, **kwargs)
+    if phase:
+        if horizontal:
+            ax = plt.subplot(1, n_subplots, n_subplots - 1)
+            # ax = plt.subplot(132)
+        else:
+            ax = plt.subplot(n_subplots, 1, n_subplots - 1)
+            # ax = plt.subplot(312)
 
-    markup(ax, unit='m', colorbar_unit='$\pi$')
+        # cyclic cmap: hsv, twilight
+        kwargs['cmap'] = cyclic_cmap
+        if plot_func.__name__ == '_hist2d_wrapper':
+            plot_func(x, y, phi, range=(phi.min() / np.pi, phi.max() / np.pi),
+                      **kwargs)
+        else:
+            plot_func(x, y, phi, **kwargs)
 
-    plt.title('Phase', fontsize=16)
+        markup(ax, unit='m', colorbar_unit='$\pi$')
+        # if not large:
+        #     plt.ylabel(None)
+        plt.title('Phase', fontsize=16)
+
     try:
         plt.tight_layout()
         # add custom subtitle after tightening layout
@@ -320,8 +349,10 @@ def amp_phase_irradiance(plot_func, x, y, phasor, title='', subtitle='', filenam
     return fig
 
 
-def sci_labels(ax, decimals=1, x=True, y=True, z=False, unit='',
+def sci_labels(ax, decimals=2, x=True, y=True, z=False, unit='',
                y_unit: str = None, rotation=30):
+    if decimals < 2:
+        print('Warning, pyplot may round labels')
     formatter = tck.EngFormatter(places=decimals, sep=u"\N{THIN SPACE}",
                                  unit=unit)
     if x:
@@ -331,6 +362,7 @@ def sci_labels(ax, decimals=1, x=True, y=True, z=False, unit='',
         # 3D plot
         ax.zaxis.set_major_formatter(formatter)
     if y:
+        plt.yticks(rotation=rotation)
         if y_unit is not None:
             formatter = tck.EngFormatter(places=decimals, sep=u"\N{THIN SPACE}",
                                          unit=y_unit)
@@ -347,7 +379,20 @@ def markup(ax, unit='', colorbar=True, colorbar_unit='', **kwargs):
         format = None
         if colorbar_unit:
             format = tck.FormatStrFormatter(f'%.2f {colorbar_unit}')
-        plt.colorbar(fraction=0.052, pad=0.05, format=format)
+        cb = plt.colorbar(fraction=0.052, pad=0.05, format=format)
+        # cax = plt.gca()
+        cb.ax.set_xticklabels([], rotation=45)
+
+
+def set_num_xyticks(n=5):
+    # # Force spacing
+    # for func in (plt.xticks, plt.yticks):
+    #     ticks, labels = func()
+    #     func(np.linspace(ticks[0], ticks[-1], n))
+    ax = plt.gca()
+    locator = tck.MaxNLocator(prune='both', nbins=n)
+    ax.xaxis.set_major_locator(locator)
+    ax.yaxis.set_major_locator(locator)
 
 
 def format_title(major, minor, info: dict = None):
@@ -458,20 +503,35 @@ def distribution1d(X, Y, title='', figshape=(1, 1), scatter=False, mean=False,
 
 
 def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
-                       err_key=None, ylog=False, standard=True,
-                       interpolate=None, translate={}, baseline=None,
+                       err_key=None, ylog=False, standard=False,
+                       interpolate=None, interpolate_lb=None,
+                       translate={}, baseline=None,
                        ylim=(0, None), fig=None, x_func=lambda x: x,
-                       err_alpha=0.15, y_unit=None, bar=False, loc=None, v=0):
-    """ Show a scatter-plot of Y as function of X,
+                       err_alpha=0.15, y_unit=None, omit_zero=False,
+                       bar=False, alpha_map=None, hatch_map=None,
+                       sort_keys=True, color_group_size=1,
+                       legend=True, loc=None, format_xlabels=True,
+                       scatter_markers=itertools.cycle('x'), v=0):
+    """ Show a scatter/bar-plot of Y as function of X,
     with conditional var Z as a third variable
 
     :standard: bool     interpolation with x in [0,1]. This also gives the
                         legend more space
 
+    alpha_map = tuple (key, {value: alpha value}), used to highlight a 3rd conditional variable
+    hatch_map = tuple (key, {value: hatch value}), used to highlight a 4rd conditional variable
+    color_group_size = int, default 1; group by color
+
     result = DataFrame with cols [x_key, y_key, z_key]
     """
-    fit_regression_line = interpolate == 'regression'
-    distinct_param_values = result.loc[:, z_keys].drop_duplicates()
+    regressions = ['regression', 'pos-regression']
+    fit_regression_line = interpolate in regressions
+    distinct_param_values = result
+    if z_keys:
+        distinct_param_values = result.loc[:, z_keys].drop_duplicates()
+    if sort_keys and z_keys:
+        distinct_param_values.sort_values(z_keys, inplace=True)
+    # print('distinct_param_values\n', distinct_param_values)
     if ylog and err_key is not None:
         print("Warning, plotting (symmetric) error bars on log axis may be incorrect")
 
@@ -480,21 +540,34 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
         fig = plt.figure(figsize=(4, 5))
     ax = plt.gca()
 
+    # assume no missing x values
+
+    # in case of missing x_values
+    # all_x_values = np.array(list(set(
+    #     (x_func(x) for x in result.loc[:, x_key]))))
     for i, (_, param_values) in enumerate(distinct_param_values.iterrows()):
         if v:
             print(param_values.to_dict())
+        if not param_values.to_dict():
+            print(param_values.to_dict())
+            raise ValueError('param_values, derived from keys(?)')
         inner = result.merge(pd.DataFrame([param_values]),
                              how='inner', right_index=True,
                              on=list(param_values.keys()))
 
         x = result.loc[inner.index, x_key]
         y = result.loc[inner.index, y_key]
-        indices = y.values.nonzero()[0]
+        if omit_zero:
+            indices = y.values.nonzero()[0]
+        else:
+            indices = np.arange(y.shape[0])
 
         x_values, y_values = x.values[indices], y.values[indices]
         x_values = x_func(x_values)
         if baseline is not None:
+            print('pre', y_values, 'ix', indices)
             y_values = np.array(baseline)[indices] / y_values
+            print('post, speedup:', y_values)
 
         if err_key is not None:
             err = result.loc[inner.index, err_key].values[indices]
@@ -525,17 +598,37 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
         #     y_values = np.log10(np.clip(y_values, 1e-15, None))
 
         if fit_regression_line:
-            slope, intercept, _, p, error = scipy.stats.linregress(x_values,
-                                                                   y_values)
+            if interpolate_lb is not None:
+                indices = x_values > interpolate_lb
+                large_x_values = x_values[indices]
+                large_y_values = y_values[indices]
+            else:
+                large_x_values = x_values
+                large_y_values = y_values
+            slope, intercept, _, p, error = scipy.stats.linregress(
+                large_x_values, large_y_values)
 
-            significant = p < 0.005
+            # significant = p < 0.005
+            significant = p < 0.001 and (
+                interpolate != 'pos-regression' or slope >= 0)
 
         # label = f'{translate[z_key]}: {z}'
         label = parse_label(param_values, z_keys, translate)
         # label = ', '.join(
         #     (f'{translate[k]}: {param_values[k]}' for k in z_keys))
         if fit_regression_line and significant:
-            label += f' (slope: {slope:0.2f})'
+            slope_scaled = x_func(slope)
+            if 10 >= slope_scaled >= 0.01:
+                label += f' ($\\angle$: {slope_scaled:0.2f})'
+            else:
+                # label += f' ($\\angle$: {slope_scaled:0.1e})'
+                round_func = np.ceil if slope_scaled > 1 else np.floor
+                e = round_func(np.log10(abs(slope_scaled))).astype(int)
+                if slope_scaled >= 10:
+                    e -= 1
+                a = slope_scaled / (10.**e)
+                label += f' ($\\angle$: {a:.1f}$\\cdot$10$^{{{e}}}$)'
+            # label += f' (slope: {slope:0.2f})'
         # elif fit_regression_line:
         #     print(f'Not significant! {z_key}: {z}, p:{p:0.3f}, {error:0.2f}')
 
@@ -548,18 +641,61 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
             left_margin = 0.18 * n_categories / 2
             x_offset = left_margin - intra_width / 2 + i * width + width / 2
             # no need to use hatches because the order is preserved in the legend
+            # y_err in the same unit as the data, not the height in pixels
+
+            # bar_indices = sum([np.where(all_x_values == x)
+            #                    for x in x_values], [])
+            # bar_indices = np.array([np.where(all_x_values == x)
+            #                         for x in x_values]).flatten()
+            # # print('bar_indices', all_x_values, x_values)
+            # print(bar_indices)
+            alpha = 1
+            if alpha_map is not None:
+                value = param_values[alpha_map[0]]
+                if value in alpha_map[1]:
+                    alpha = alpha_map[1][value]
+            hatch = ''
+            if hatch_map is not None:
+                value = param_values[hatch_map[0]]
+                if value in hatch_map[1]:
+                    hatch = hatch_map[1][value]
+
             plt.bar(np.arange(x_values.size) + x_offset, y_values, width=width,
-                    label=label, yerr=err, zorder=3)
+                    label=label, yerr=err, alpha=alpha, hatch=hatch, zorder=4,
+                    color=COLORS[i // color_group_size],
+                    linewidth='0.1',
+                    edgecolor='white' if hatch else None)
             if i == n_categories - 1:
-                # assume x_values are equal for all items
+                # x_values = all_x_values
                 ax.set_xticks(left_margin + np.arange(x_values.size))
-                ax.set_xticklabels(x_values)
+                if format_xlabels:
+                    exponents = np.log10(x_values).astype(int)
+                    scales = (x_values / (10. ** exponents)
+                              ).round().astype(int)
+                    if (scales * 10. ** exponents == x_values).all():
+                        ax.set_xticklabels([f'$10^{{{e}}}$' if b == 1 else
+                                            f'${b}\cdot 10^{{{e}}}$'
+                                            for b, e in zip(scales, exponents)
+                                            ])
+                    elif (2 ** np.log2(x_values).round() == x_values).all():
+                        ax.set_xticklabels([f'$2^{{{v}}}$'
+                                            for v in np.log2(x_values).astype(int)])
+                    elif (np.sqrt(x_values).astype(int) ** 2 == x_values).all():
+                        ax.set_xticklabels([f'${v}^2$'
+                                            for v in np.sqrt(x_values).astype(int)])
+                    elif x_values.size == 2 and (x_values == np.array([65536, 1105920])).all():
+                        ax.set_xticklabels(
+                            ['256 $\\times$ 256', '1920 $\\times$ 1080'])
+                    else:
+                        ax.set_xticklabels(x_values)
+                else:
+                    ax.set_xticklabels(x_values)
 
         else:
             assert i < len(COLORS)
             if err_key is None:
                 plt.scatter(x_values, y_values, alpha=0.85, s=12,
-                            color=COLORS[i])
+                            color=COLORS[i], marker=next(scatter_markers))
             else:
                 assert i < len(LINESTYLES), [i, len(LINESTYLES)]
                 scale = 1
@@ -568,7 +704,8 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
                     plt.fill_between(x_values, y_values - err * scale,
                                      y_values + err * scale, alpha=err_alpha)
 
-                plt.errorbar(x_values, y_values, yerr=err, fmt='x',
+                plt.errorbar(x_values, y_values, yerr=err,
+                             fmt=next(scatter_markers),
                              alpha=0.6, color=COLORS[i])
 
             plt.plot(x_values, y_values,  label=label, alpha=0.8,
@@ -578,10 +715,19 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
         if fit_regression_line and significant:
             # x_pred = np.linspace(0, 1) if standard else x.values
             if standard:
-                x_pred = np.linspace(0, 1) if slope < 4 \
+                x_pred = np.linspace(0, 1) if abs(slope) < 4 \
                     else np.linspace(0, 0.75)
             else:
-                x_pred = x.values[indices]
+                # x_pred = x_values[indices]
+                rel_margin = 0.1
+                if slope > 0:
+                    x_ceil = (large_y_values.max() - intercept) / slope
+                else:
+                    x_ceil = large_x_values.max()
+                x_pred = np.array([large_x_values.min() * (1 - rel_margin / 2),
+                                   # large_x_values.max() * (1 + rel_margin)
+                                   x_ceil * (1 + rel_margin / 2)
+                                   ])
             y_pred = slope * x_pred + intercept
             if ylog:
                 y_pred = 10 ** y_pred
@@ -590,7 +736,7 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
                      linewidth=1, color=COLORS[i])
 
         elif interpolate is True:
-            assert interpolate != 'regression', 'incorrect arg'
+            assert interpolate not in regressions, 'incorrect arg'
             plt.plot(x, y, '-', alpha=0.5,
                      linewidth=1, color=COLORS[i])
 
@@ -598,7 +744,9 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
     plt.xlabel(translate[x_key])
     plt.ylabel(translate[y_key])
     sci_labels(ax, x=False, y_unit=y_unit)
-    plt.legend(loc=loc)
+    if legend and z_keys:
+        plt.legend(loc=loc)
+        # plt.legend(loc=loc, prop={'family': 'monospace', 'size': 12})
     # plt.xlim(xlim)
     plt.ylim(ylim)
     if ylog:
@@ -606,13 +754,18 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
         # plt.yscale('symlog')
 
     # add grid
+    plt.grid(which='major', linewidth=0.7, axis='y')
+    plt.grid(which='minor', linewidth=0.2, axis='y')
     if not bar:
         plt.grid(b=None, which='major', axis='x', linewidth=0.7)
-    plt.grid(b=None, which='major', linewidth=0.3, axis='y')
-    plt.grid(b=None, which='minor', linewidth=0.3, axis='y' if bar else 'both')
+        plt.grid(b=None, which='minor', axis='x', linewidth=0.1)
     if not ylog and not bar:
-        ax.xaxis.set_minor_locator(tck.AutoMinorLocator())  # TODO tst
-        ax.yaxis.set_minor_locator(tck.AutoMinorLocator())  # TODO tst
+        ax.xaxis.set_minor_locator(tck.AutoMinorLocator())
+    if not ylog:
+        if bar:
+            ax.yaxis.set_minor_locator(tck.AutoMinorLocator())  # 4-5 (default)
+        else:
+            ax.yaxis.set_minor_locator(tck.AutoMinorLocator(n=2))
 
     # rm spines
     ax.spines['right'].set_visible(False)
@@ -621,7 +774,40 @@ def grid_search_result(result, x_key='rho', y_key='mean', z_keys=[],
 
 
 def parse_label(param_values, z_keys, translate: dict):
+    param_values = param_values.copy()
+    z_keys = z_keys.copy()
     segments = []
+    if 'convergence_threshold' in z_keys:
+        convergence_threshold = 0
+        if 'convergence_threshold' in param_values.keys():
+            convergence_threshold = param_values['convergence_threshold']
+        k = translate['MC_key']
+        if k:
+            z_keys.append(k)
+        if 'true_MC' in z_keys and 'convergence_threshold' in z_keys:
+            # Assume True MC vs. Batched MC vs. Full
+            true_MC = param_values['true_MC']
+            z_keys.remove('true_MC')
+            # z_keys.remove('convergence_threshold')
+            if true_MC:
+                param_values[k] = 'True MC'
+            elif convergence_threshold == 0:
+                param_values[k] = 'Full'
+            else:
+                param_values[k] = 'Batched MC'
+
+        else:
+            # Assume Batched MC vs. Full
+            if convergence_threshold == 0:
+                param_values[k] = 'Full'
+            else:
+                param_values[k] = 'Batched MC'
+
+        z_keys.remove('convergence_threshold')
+        if param_values[k] != 'Full':
+            # move key to end of sequence
+            z_keys.append('convergence_threshold')
+
     for k in z_keys:
         value = param_values[k]
         # translate value
@@ -633,9 +819,37 @@ def parse_label(param_values, z_keys, translate: dict):
                     value = round(value, 3)
                 else:
                     value = f'{value:0.1e}'
+            # TODO consider for monospace font
+            # elif int(value) == value:
+            #     if k != 'algorithm':
+            #         value = f'{int(value):3}'
 
         if k == 'algorithm':
-            value = f'#{value}'
+            value = f'#{int(float(value))}'
+        if k == 'n_streams':
+            value = int(value)
+        elif k == 'convergence_threshold':
+            value = float(value)
+            if float(value) in [-1., 0.]:
+                value = int(float(value))  # double casting for unkown dtypes
+            else:
+                log_value = np.log10(float(value))
+                if log_value == int(log_value):
+                    value = f'$10^{{{int(log_value)}}}$'
+                else:
+                    round_func = np.ceil if value > 1 else np.floor
+                    e = round_func(np.log10(abs(value))).astype(int)
+                    if e == 0:
+                        value = f'{value:.1f}'
+                    else:
+                        a = value / (10.**e)
+                        value = f'{a:.1f}$\\cdot$10$^{{{e}}}$'
+
+        elif k in ['N', 'n_objects', 'n_pixels', 'n_pixelsN', 'n_sample_points']:
+            sqrt = np.sqrt(value).astype(int)
+            if sqrt ** 2 == value:
+                # value = f'{sqrt} $\\times$ {sqrt}'
+                value = f'{sqrt}$^2$'
 
         # translate label
         segments.append(f'{translate[k]}: {value}' if translate[k] else value)

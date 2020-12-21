@@ -5,6 +5,8 @@ SEQUENCE_DIR := sequence-
 OUTPUT_NAME_Y := $(IMG_DIR)/ani-y.mp4
 OUTPUT_NAME_Z := $(IMG_DIR)/ani-z.mp4
 
+.PHONY: jupyter
+
 jupyter:
 	jupyter notebook
 
