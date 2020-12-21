@@ -3,7 +3,7 @@ PROJECT_DIR := /project/detrd/markv
 MNT_DIR := tmp
 REMOTE_DIR := nikhef:/project/detrd/markv/Holographic-Projector/tmp
 
-.PHONY: matlab test
+.PHONY: matlab test jupyter
 
 jupyter:
 	make -C py jupyter
@@ -20,6 +20,7 @@ run:
 	# make zip
 
 plot:
+	if [ ! -d "$(MNT_DIR)" ]; then echo "Remote dir is not mounted"; exit 1; fi
 	make -C py plot
 
 animate:
@@ -39,7 +40,6 @@ remote-run:
 	sh remote_run.sh
 
 remote-run-plot:
-	if [ ! -d "$(MNT_DIR)" ]; then echo "Remote dir is not mounted"; exit 1; fi
 	make remote-run plot
 
 ssh:
