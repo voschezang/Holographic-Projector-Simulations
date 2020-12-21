@@ -173,8 +173,7 @@ int main(int argc, char** argv) {
       // auto z = std::vector<WAVE>(n.z);
       auto z = time_transform<Direction::Forwards>(y, v, w, projection,
                                                    y_plane, z_plane,
-                                                   &t1, &t2, &dt[j], false,
-                                                   params.convergence_threshold);
+                                                   &t1, &t2, &dt[j], false);
       check_cvector(z);
       if (i == 0 && j == 0) summarize('z', z);
 

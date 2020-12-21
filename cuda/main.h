@@ -55,7 +55,6 @@ struct Params {
   bool
     quadrant_projection,
     randomize;
-  double convergence_threshold;
   unsigned int n_streams;
   dim2 thread_size;
   dim3 blockDim, gridDim;
