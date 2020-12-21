@@ -19,10 +19,9 @@
 #include "transform.cu"
 
 /**
- * Input x,u is splitted over GPU cores/threads
- * Output y,v is streamed (send in batches).
+ * Source data x,u is copied to GPU. It is assumed that they fit in x,u fit in GPU memory.
+ * Target positions v are streamed (send in batches).
  *
- * It is assumed that x,u all fit in GPU memory, but not necessarily in cache
  * Batches containing parts of y,v are send back to CPU immediately
  *
  * Naming convention
@@ -30,7 +29,7 @@
  * n,m = counters
  * N,M = sizes
  *
- * e.g. n = [0,..,N-1]
+ * e.g. n = 0, 1, 2, ..., N-1
  */
 
 int main(int argc, char** argv) {
@@ -41,6 +40,12 @@ int main(int argc, char** argv) {
    * Projecting more that ~20 points may result in a higher (and less random)
    * noise floor.
    */
+
+  // cudaFuncCachePreferNone: no preference for shared memory or L1 (default)
+  // cudaFuncCachePreferShared: prefer larger shared memory and smaller L1 cache
+  // cudaFuncCachePreferL1: prefer larger L1 cache and smaller shared memory
+  // cudaFuncCachePreferEqual: prefer equal size L1 cache and shared memory
+  cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
   auto params = input::read_args(argc, argv);
   Setup<size_t>
     &n_planes = params.n_planes,
@@ -48,9 +53,6 @@ int main(int argc, char** argv) {
 
   const auto transformation = PROJECT_PHASE ? Transformation::Full : Transformation::Amplitude;
   const bool add_reference = transformation == Transformation::Amplitude;
-  // const bool add_reference = false;
-
-  // TODO rename non-spatial xyz,uvw to setup.obj, setup.projector etc
 
   std::vector<SPACE>
     u (DIMS * n_per_plane.obj),
@@ -75,12 +77,8 @@ int main(int argc, char** argv) {
     }
   }
 #else
-  // TODO use cmd arg for x length
-  // const auto shape = Shape::Line;
-  // const auto shape = Shape::LogLine;
-  // const auto shape = Shape::DottedCircle;
   const auto shape = Shape::Circle;
-  const bool decrease_intensity = 0;
+  const bool decrease_intensity = 1;
   printf("x.amp, decrease_intensity: %d\n", decrease_intensity);
   auto x = std::vector<Polar>(n_per_plane.obj, {amp: 1, phase: 0.});
   if (decrease_intensity) {

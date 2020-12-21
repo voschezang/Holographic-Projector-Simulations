@@ -10,7 +10,6 @@
 #include <iomanip>
 #include <fstream>
 #include <iterator>     // std::ostream_iterator
-/* #include <type_traits> */
 
 #include "macros.h"
 #include "algebra.h"
@@ -297,19 +296,28 @@ template<typename T = Polar>
 void map_to_and_write_bytes(std::vector<T> &x, double (*f)(T), std::ofstream& out) {
   const unsigned int buffer_size = x.size() > 128 ? 8 : 1;
   double buffer[buffer_size];
-  if (x.size() > 128)
-    assert(x.size() == (x.size() / buffer_size) * buffer_size);
+  /* if (x.size() > 128) */
+  /*   assert(x.size() == (x.size() / buffer_size) * buffer_size); */
 
   const auto bytes = (unsigned char *) &buffer;
   auto iter = std::ostream_iterator<unsigned char>(out, "");
 
-  for (size_t i = 0; i < x.size(); i+=buffer_size) {
+  size_t i = 0;
+  for (; i < x.size() - buffer_size; i+=buffer_size) {
     // split inner loop to allow vectorization
-    size_t j;
-    for ( j = 0; j < buffer_size; ++j) {
+    for (size_t j = 0; j < buffer_size; ++j)
       buffer[j] = f(x[i+j]);
-    }
+
     std::copy(bytes, &bytes[buffer_size * sizeof(double)], iter);
+  }
+
+  // copy remainder
+  const size_t remaining = x.size() - i;
+  if (remaining) {
+    for (size_t j = 0; j < remaining; ++j)
+      buffer[j] = f(x[i+j]);
+
+    std::copy(bytes, &bytes[remaining * sizeof(double)], iter);
   }
 }
 

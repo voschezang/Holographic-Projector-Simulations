@@ -11,6 +11,7 @@ namespace reorder {
 
 template<typename T = double, unsigned dims = DIMS>
 void plane(const std::vector<T>& u0, std::vector<T>& u, size_t batch_size, double aspect_ratio = 1) {
+  // Note, some data is lost in case of mismatched dimensions
   // N = input size, M = M.x * M.y = output size, where M <= N
   // s^2 = square size
   const auto
@@ -23,6 +24,8 @@ void plane(const std::vector<T>& u0, std::vector<T>& u, size_t batch_size, doubl
   assert(aspect_ratio == 1.);
   assert(Nx == Ny);
   assert(M.x == M.y);
+  if (s * s != batch_size)
+    printf("Warning, mismatched dims for reordering, batch_size: %lu != %lu x %lu\n", batch_size, s, s);
 
   for (size_t i = 0; i < M.x; ++i)
     for (size_t j = 0; j < M.y; ++j) {

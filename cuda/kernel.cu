@@ -203,8 +203,10 @@ struct is_smaller_phasor
     // both &&   Convergence ratio: 39.6160%, 	405.668 / 1024, range: [208, 596] 	(min_n_datapoints/batch_size.x: 4.000)
     // either || Convergence ratio: 20.6661%, 	211.621 / 1024, range: [84, 356] 	(min_n_datapoints/batch_size.x: 4.000)
     // return (abs(a_amp * scale_a1 - b_amp * scale_b1) < threshold);
-    return (abs(a.x * scale_a1 - b.x * scale_b1) < threshold)
-      || (abs(a.y * scale_a1 - b.y * scale_b1) < threshold);
+    // return (abs(a.x * scale_a1 - b.x * scale_b1) < threshold)
+    //   || (abs(a.y * scale_a1 - b.y * scale_b1) < threshold);
+    return (abs(a_amp * scale_a1 - b_amp * scale_b1) < threshold)
+      || (abs(a_amp * scale_a2 - b_amp * scale_b2) < threshold);
   }
 };
 

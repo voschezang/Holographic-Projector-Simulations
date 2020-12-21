@@ -243,7 +243,7 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
 
   if (randomize && conditional_MC2 && reorder_u && p.n.x > p.batch_size.x) {
     if (sqrt(bin_size) != (size_t) sqrt(bin_size))
-      printf("Error for, bin size: %lu = %f^2, batch size: %lu, N: %lu = %0.2e\n",
+      fprintf(stderr, "Error for, bin size: %lu = %f^2, batch size: %lu, N: %lu = %0.2e\n",
              bin_size, sqrt(bin_size), p.batch_size.x, p.n.x, (double) p.n.x);
     assert(sqrt(bin_size) == (size_t) sqrt(bin_size));
   }
@@ -393,7 +393,8 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
     min_n_datapoints0 = MAX(8*1024, p.batch_size.x),
     // min_n_datapoints = 4,
     // i_shuffle_max = FLOOR(p.n_batches.x, p.n_streams); // number of batches between shuffles
-    i_shuffle_max = p.n_batches.x; // TODO rm
+    // i_shuffle_max = p.n_batches.x; // TODO rm
+    i_shuffle_max = p.n_streams; // uncomment to enforce reshuffling after each batch per stream
   size_t
     batches_per_estimate = CEIL(min_n_datapoints, p.batch_size.x),
     batches_for_first_estimate = CEIL(min_n_datapoints0, p.batch_size.x),
@@ -611,7 +612,8 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
         // cudaDeviceSynchronize(); print("sum rows post");
 
         if (randomize && !finished[i_stream] && converging && (n+1) % batches_per_estimate == 0) {
-          const double
+          // const double
+          const size_t
             prev_n = (n+1 - batches_per_estimate) * p.batch_size.x;
 
           // check either amp or both the re,im parts (implicit phase)
@@ -630,7 +632,8 @@ inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
                                                is_smaller(n_datapoints, prev_n, max_distance, threshold));
 
           if (finished[i_stream] && print_convergence > 0)
-            printf("converged/finished at batch.x: %lu/%lu \t (%3u, threshold: %.2e)\n", n, p.n_batches.x, print_convergence--, threshold);
+            printf("converged/finished at batch.x: %lu/%lu \t (%3u, threshold: %.2e)\n",
+                   n+1, p.n_batches.x, print_convergence--, threshold);
 
         }
         // if still not finished
@@ -751,7 +754,6 @@ inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
                                         const std::vector<double> &v,
                                         const Geometry& p) {
 
-  //
   auto x = x2;
   auto u = u2;
   if (0 && p.n.x >= 1000) {

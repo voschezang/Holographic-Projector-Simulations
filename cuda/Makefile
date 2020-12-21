@@ -1,11 +1,13 @@
 # full abs path is required for ssh # TODO not if sourcing .profile?
-# C := /usr/local/cuda-10.2/bin/nvcc
 # C := /usr/local/cuda-11.0/bin/nvcc
 # GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/8.3.0.1/x86_64-centos7/bin
 # GCC := /cvmfs/sft.cern.ch/lcg/releases/gcc/9.2.0/x86_64-centos7/bin
 #-ccbin=$(GCC)
-# last performance measurement: -O2 was 3% faster than -O3, with 1024^2 x 1024^2 datapoints (0.80 vs 0.77 TFLOPS)
 FLAGS := -l curand -l cublas -std=c++14
+# -lineinfo # compile with asm/ptx line numbers
+# -Xptxas -dlcm=ca
+# opt-in to caching of global memory accesses in L1
+# -Xptxas -dlcm=ca
 ARCH_FLAGS := -arch=compute_70 -code=sm_70
 EXE := run
 DIR := ../tmp
@@ -45,7 +47,8 @@ cleanup-output:
 
 # CUDA
 init-path:
-	export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}
+	export PATH=/usr/local/cuda-11.0/bin${PATH:+:${PATH}}
+	# export PATH=/usr/local/cuda-10.1/bin${PATH:+:${PATH}}
 	# export PATH=$(GCC)${PATH:+:${PATH}}
 
 test:
@@ -89,7 +92,14 @@ test-nonphase-projector-reset:
 
 profile:
 	make build
-	nvprof ./$(EXE)
+	# nvprof ./$(EXE)
+	nvprof --print-gpu-trace ./$(EXE)
+	# -m dram_write_throughput -m dram_read_throughput
+
+profile2:
+	make build
+	# --kernels should be before --analysis-metrics
+	nvprof --kernels per_block --analysis-metrics -o  out.nvprof -f ./$(EXE)
 
 vprofile:
 	make build

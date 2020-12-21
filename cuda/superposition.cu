@@ -109,8 +109,6 @@ __global__ void per_block(
           {y_global[i].x += y.x; y_global[i].y += y.y;}
         else
           y_global[i] = y;
-        assert(!isinf(cuCabs(y_global[i])));
-        assert(!isnan(cuCabs(y_global[i])));
       } }
   }
   else {
