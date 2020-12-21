@@ -1,12 +1,12 @@
-#ifndef PARAMS
-#define PARAMS
+#ifndef MAIN_H
+#define MAIN_H
 
 #include <stdlib.h>
 #include "macros.h"
 
-enum class Algorithm {Naive, Alt};
+enum class Algorithm {Naive, Reduced};
 
-enum class Shape {Line, LogLine, Cross, Circle, DottedCircle};
+enum class Shape {Line, LogLine, Circle, DottedCircle};
 enum class Transformation {Full, Amplitude}; // Full: keep phase+amp, Amplitude: rm phase
 
 template<typename T = double>
@@ -55,8 +55,8 @@ struct Params {
   int algorithm;
   bool
     quadrant_projection,
-    randomize; // TODO add option to compute local average
-
+    randomize;
+  double convergence_threshold;
   unsigned int n_streams;
   dim2 thread_size;
   dim3 blockDim, gridDim;

@@ -17,8 +17,8 @@
 /* #define N_sqrt 64 */
 /* #define N_sqrt 128 */
 /* #define N_sqrt 256 */
-/* #define N_sqrt 512 */
-#define N_sqrt 1024
+#define N_sqrt 512
+/* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
 /* #define N_sqrt 2048 */
 
@@ -51,7 +51,9 @@
 /* #define GRIDDIMX 4 */
 /* #define GRIDDIMY 4 */
 
-/* #define RANDOMIZE_SUPERPOSITION_INPUT // true MC, TODO rename & refactor */
+#ifndef RANDOMIZE_SUPERPOSITION_INPUT
+#define RANDOMIZE_SUPERPOSITION_INPUT 0 // true MC, requires monte_carlo=1, TODO rm
+#endif
 
 #define SQUARE_TARGET_BATCHES
 

@@ -13,19 +13,18 @@
 /* #include <type_traits> */
 
 #include "macros.h"
-#include "params.h"
 #include "algebra.h"
 #include "kernel.cu"
 
 #define check(x) check_complex(x, __FILE__, __LINE__)
 
 double flops(double runtime, size_t n, size_t m) {
-  // Tera or Giga FLOP/s
-  // :lscpu: 6 cores, 2x32K L1 cache, 15MB L3 cache
-  // ? https://ark.intel.com/content/www/us/en/ark/products/92994/intel-xeon-processor-e5-1650-v4-15m-cache-3-60-ghz.html
+  // :lscpu: intel xeon E5-1650 v4, 6 cores, 2x32K L1 cache, 15MB L3 cache
+  // https://ark.intel.com/content/www/us/en/ark/products/92994/intel-xeon-processor-e5-1650-v4-15m-cache-3-60-ghz.html
   // Quadro GV100: peak 7.4 TFLOPS (dp), 14.8 (sp), 59.3 (int)
   // bandwidth 870 GB/s
-  //  cores: 5120, tensor cores 640, memory: 32 GB
+  //  cores: 5120, tensor cores 640, memory: 32 GB,
+  // ? max clock 1627 MHz
   // generation Volta, compute capability 7.0 -arch=sm_72 or sm_72
   // max size: 49 152
   // printf("fpp %i, t %0.4f, N*N %0.4f\n", FLOP_PER_POINT, t, N*N * 1e-9);

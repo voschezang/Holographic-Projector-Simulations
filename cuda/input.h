@@ -17,14 +17,15 @@ namespace input {
 Params read_args(int argc, char **argv) {
   /* const double z_offset = 0.26; */
   const double z_offset = 0.35;
-  /* const double z_offset = 0.01; */
+  /* const double z_offset = 1; */
   /* const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset}; */
   const auto obj_z_offset = Range<double> {min: z_offset, max: z_offset};
   /* const double projection_width = N_sqrt * 7e-6; */
   /* const double obj_width =  PROJECTOR_WIDTH; */
   /* const double obj_width =  N_sqrt * 7e-6; */
   /* const double obj_width =  0.00003; */
-  const double obj_width =  0.0003;
+  const double obj_width =  1e-3;
+  /* const double obj_width =  100 * 100 * LAMBDA * sqrt(2.); */
   /* const double obj_width =  0.003; */
   // projector z_offset is always zero
   // TODO use json file (similar to meta data)
@@ -32,7 +33,7 @@ Params read_args(int argc, char **argv) {
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
-                    projection: 1}, // number of projection planes per obj plane
+                    projection: 2}, // number of projection planes per obj plane
      n_per_plane:  {obj: 1,
                     projector: N_sqrt * N_sqrt,
                     projection: N_sqrt * N_sqrt},
@@ -46,22 +47,32 @@ Params read_args(int argc, char **argv) {
                    y: {min: 0.0, max: 0.0},
                    z: obj_z_offset},
 
-     obj_width: {min: 0.0025, max: 0.0025},
-     /* obj_width: {min: obj_width, max: obj_width}, */
-     projector_width: {min: 1920 * 7e-6, max: 1920 * 7e-6},
-     projection_width: {min: obj_width * 1.05, max: obj_width * 1.05},
+     /* obj_width: {min: 0.0025, max: 0.0025}, */
+     obj_width: {min: obj_width, max: obj_width},
+     /* projector_width: {min: 1920 * 7e-6, max: 1920 * 7e-6}, */
+     projector_width: {min: N_sqrt * 7e-6, max: N_sqrt * 7e-6},
+     /* projection_width: {min: 6e-3, max: 6e-2}, */
+     projection_width: {min: 5e-4, max: 4e-2},
      /* projection_width: {min: 0.000018, max: 0.01}, */
      projection_z_offset: {min: 0., max: 0.}, // added to obj offset
+     /* projection_z_offset: {min: 0.2, max: 0.2}, // added to obj offset */
 
      algorithm: 2,
-     quadrant_projection: false,
-     /* quadrant_projection: true, */
+     /* quadrant_projection: false, */
+     quadrant_projection: true,
      randomize: false,
      /* randomize: true, */
+
+     // convergence_threshold = 0 disables MC, -1 enables MC but disables stopping after convergence
+     /* convergence_threshold: 0, */
+     convergence_threshold: 1e-4,
+     /* convergence_threshold: 1e-16, // select MC but don't converge */
+     /* n_streams: 32, */
      n_streams: 16,
-     /* thread_size: {4, 32}, */
-     /* thread_size: {1, 32}, */
-     thread_size: {4, 8},
+     /* thread_size: {4, 8}, */
+     /* thread_size: {256, 128}, */
+     /* thread_size: {64, 32}, */
+     thread_size: {16, 8},
      blockDim: {BLOCKDIMX, BLOCKDIMY, 1},
      gridDim: {GRIDDIMX, GRIDDIMY, 1}
     };
@@ -71,7 +82,7 @@ Params read_args(int argc, char **argv) {
   // For all ranged params the max is set to min by default.
   int ch;
   /* while ((ch = getopt(argc, argv, "c:e:hH:i:k:L:m:M:n:N:p:t:r:")) != -1) */
-  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:l:L:n:N:m:M:p:q:rs:t:T:b:B:g:G:h")) != -1)
+  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:l:L:n:N:m:M:p:qrs:t:T:b:B:g:G:ce:h")) != -1)
     {
       switch(ch) {
       case 'X': p.n_planes.obj            = strtol(optarg, 0, 10); break;
@@ -111,6 +122,7 @@ Params read_args(int argc, char **argv) {
       case 'B': p.blockDim.y =    strtol(optarg, 0, 10); break;
       case 'g': p.gridDim.x =     strtol(optarg, 0, 10); break;
       case 'G': p.gridDim.y =     strtol(optarg, 0, 10); break;
+      case 'e': p.convergence_threshold = strtod(optarg, 0); break;
       case 'h': default: show_help(argv[0]);
       }
     }
@@ -125,8 +137,8 @@ Params read_args(int argc, char **argv) {
   else
     p.n_per_plane.projection = 1;
 
-  assert(is_square(p.n_per_plane.projector));
-  assert(is_square(p.n_per_plane.projection));
+  /* assert(is_square(p.n_per_plane.projector)); */
+  /* assert(is_square(p.n_per_plane.projection)); */
 
   assert(p.blockDim.x * p.blockDim.y <= 1024);
   const double nonzero = 1e-6; // relatively small constant

@@ -17,7 +17,7 @@
 #include "kernel.cu"
 #include "init.h"
 #include "superposition.cu"
-#include "functions.cu"
+#include "transform.cu"
 
 void test_sum_rows() {
   // `y = alpha * op(A)x + beta y`
@@ -107,7 +107,7 @@ void test_superposition() {
       assert(equals(angle(y[i]), phi));
     }
     // Alt, no shared memory
-    superposition::per_block<Direction::Forwards, blockDim_x, blockDim_y, Algorithm::Alt, false><<<gridDim,blockDim>>>(N, M, N, d_x_ptr, d_u_ptr, d_v_ptr, d_y_ptr, false);
+    superposition::per_block<Direction::Forwards, blockDim_x, blockDim_y, Algorithm::Reduced, false><<<gridDim,blockDim>>>(N, M, N, d_x_ptr, d_u_ptr, d_v_ptr, d_y_ptr, false);
     y = d_y;
     // printf("x[0]: amp = %e, \tangle = %e\n", cuCabs(x[0]), angle(x[0]));
     size_t N_out = MIN(N, gridSize.x);
@@ -151,13 +151,13 @@ void test_superposition() {
             if (!allow_random)
               assert(equals(cuCabs(z[i]), N));
           }
-          z = transform_full<Direction::Forwards, Algorithm::Alt, false>(X, u, v, p);
+          z = transform_full<Direction::Forwards, Algorithm::Reduced, false>(X, u, v, p);
           for (size_t i = 0; i < M; ++i) {
             assert(equals(angle(z[i]), phi));
             if (!allow_random)
               assert(equals(cuCabs(z[i]), N));
           }
-          z = transform_full<Direction::Forwards, Algorithm::Alt, true>(X, u, v, p);
+          z = transform_full<Direction::Forwards, Algorithm::Reduced, true>(X, u, v, p);
           for (size_t i = 0; i < M; ++i) {
             assert(equals(angle(z[i]), phi));
             if (!allow_random)

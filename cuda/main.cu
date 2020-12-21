@@ -11,12 +11,12 @@
 
 #include "macros.h"
 #include "hyper_params.h"
-#include "params.h"
+#include "main.h"
 #include "kernel.cu"
 #include "util.h"
 #include "init.h"
 #include "input.h"
-#include "functions.cu"
+#include "transform.cu"
 
 /**
  * Input x,u is splitted over GPU cores/threads
@@ -175,7 +175,8 @@ int main(int argc, char** argv) {
       // auto z = std::vector<WAVE>(n.z);
       auto z = time_transform<Direction::Forwards>(y, v, w, projection,
                                                    y_plane, z_plane,
-                                                   &t1, &t2, &dt[j]);
+                                                   &t1, &t2, &dt[j], false,
+                                                   params.convergence_threshold);
       check_cvector(z);
       if (i == 0 && j == 0) summarize('z', z);
 

@@ -10,6 +10,7 @@
 
 /* #define DEBUG */
 /* #define TEST_CONST_PHASE */
+/* #define TEST_CONST_PHASE2 */
 #define STREAM_DATA
 
 #define ZERO make_cuDoubleComplex(0,0)
@@ -46,16 +47,21 @@
 
 #define SPACE_MEMORY_LAYOUT 1
 #if (SPACE_MEMORY_LAYOUT)
-#define Ix(i, dim) ((i) * DIMS + (dim))
+/* #define Ix(i, dim) ((i) * DIMS + (dim)) */
+#define Ix_(i, dim, dims) ((i) * dims + (dim))
 /* #define Ix2D(i,j,dim,n) ((k) + DIMS * ((j) + (i) * (n))) */
 #else
 #error "TODO this requires changes in superposition kernel"
-#define Ix(i, dim) ((dim) * DIMS + (i))
+/* #define Ix(i, dim) ((dim) * DIMS + (i)) */
+#define Ix_(i, dim, dims) ((dim) * dims + (i))
 /* #define Ix2D(i,j,dim,n) ((k) * DIMS + ((j) + (i) * (n))) */
 #endif
 
-// flattened indices of 2D matrix (i,j, width stride n), dimension (dim)
+#define Ix(i, dim) Ix_(i, dim, DIMS)
+
+// flattened indices of 2D matrix
 #define Ix2D(i,j,dim,n) Ix( (j) + (i) * (n), dim)
+#define Ix2D_(i,j,dim, n,dims) Ix_( (j) + (i) * (n), dim, dims)
 
 
 // phasor source (n, N) and target (m, M) data. Independent from spatial data
@@ -75,16 +81,16 @@
 
 // TODO check # operations for abs/angle etc
 // see https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
-#define WEIGHT_SQRT 4
+#define WEIGHT_SQRT 8
 #define WEIGHT 8 // complex operations
 #define FLOP_PER_POINT (                                                \
                         3     /* (u - v) with u,v \in R^3 */ +          \
-                        3+2+WEIGHT_SQRT /* power2, sum3, sqrt */ +      \
-                        2*WEIGHT    /* abs(x_i), angle(x_i) */ +        \
+                        3     /* power2 x3 */ +                         \
+                        2+WEIGHT_SQRT /* sum3, sqrt */ +                \
                         1     /* amp / distance */ +                    \
-                        3     /* phase - direction * distance * 2pi/lambda */ + \
+                        2     /* phase - direction * distance * 2pi/lambda */ + \
                         WEIGHT    /* exp(I phase) == sincos */ +        \
-                        2    /* a * {re, im} */                         \
+                        3    /* a/distance * {re, im} */                \
                         )
 
 #endif

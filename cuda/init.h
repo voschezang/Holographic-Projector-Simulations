@@ -190,19 +190,6 @@ std::vector<SPACE> sparse_plane(std::vector<SPACE> &u, Shape shape, double width
       u[Ix(i,0)] = x[i] - 1 + width / 2.;
     break;
   }
-  case Shape::Cross: {
-    const size_t half_n = n / 2;
-    const auto
-      du = width * width / (double) (n-1), // TODO use SCALE?
-      half_width = width / 2.0;
-
-    // if n is even, skip the center
-    for (unsigned int i = 0; i < n / 2; ++i) {
-      u[Ix(i, 0)] = i * du - half_width;
-      u[Ix(i + half_n/2, 0)] = i * du - half_width;
-    }
-    break;
-  }
   case Shape::Circle: {
     // Distribute datapoints over a circle
     // (using polar coordinates, s.t. $phi_i \equiv i \Delta \phi$)

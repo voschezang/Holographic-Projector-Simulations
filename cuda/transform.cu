@@ -15,8 +15,10 @@
 #include "init.h"
 #include "kernel.cu"
 #include "superposition.cu"
+#include "reorder.cu"
+#include "transpose.cu"
 
-// host superposition functions
+// host superposition transformation functions
 
 template<typename T = double>
 inline void cp_batch_data_to_device(const std::vector<T> v, const size_t v_offset,
@@ -46,7 +48,7 @@ inline void cp_batch_data_to_host(const T *d_y, T *y_pinned, const size_t len, c
                         cudaMemcpyDeviceToHost, stream ) );
 }
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
 #define SuperpositionPerBlock(blockDim_y) {                             \
     assert(blockDim_x * blockDim_y <= 1024);                            \
     superposition::per_block<direction, blockDim_x, blockDim_y, algorithm, shared_memory> \
@@ -66,7 +68,7 @@ inline void cp_batch_data_to_host(const T *d_y, T *y_pinned, const size_t len, c
   }
 #endif
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
 #define SuperpositionPerBlockHelper(blockDim_x) {                       \
     superposition_per_block_helper<direction, blockDim_x, algorithm, shared_memory> \
       (state, seed, i_stream,                                           \
@@ -84,7 +86,7 @@ inline void cp_batch_data_to_host(const T *d_y, T *y_pinned, const size_t len, c
 
 template<Direction direction, unsigned int blockDim_x, Algorithm algorithm, bool shared_memory>
 inline void superposition_per_block_helper(
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
                                            curandState *state, const unsigned int seed, const unsigned int i_stream,
                                            const unsigned int bin_size, const unsigned int bins_per_thread,
 #endif
@@ -110,7 +112,7 @@ inline void superposition_per_block_helper(
 
 template<Direction direction, Algorithm algorithm, bool shared_memory>
 inline void superposition_per_block(
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
                                     curandState *state, const unsigned int seed, const unsigned int i_stream,
                                     const unsigned int bin_size, const unsigned int bins_per_thread,
 #endif
@@ -176,39 +178,41 @@ void rm_phase(std::vector<WAVE> &c) {
 }
 
 template<Direction direction, Algorithm algorithm = Algorithm::Naive, bool shared_memory = false>
-inline std::vector<WAVE> transform(const std::vector<Polar> &x,
-                                   const std::vector<double> &u,
-                                   const std::vector<double> &v2,
-                                   const Geometry& p,
-                                   const Plane& x_plane,
-                                   const Plane& y_plane) {
+inline std::vector<WAVE> transform_MC(const std::vector<Polar> &x2,
+                                      const std::vector<double> &u2,
+                                      const std::vector<double> &v2,
+                                      const Geometry& p,
+                                      const Plane& x_plane,
+                                      const Plane& y_plane,
+                                      const double threshold) {
 
+  // TODO rm duplicate unused vars
   auto v = v2;
-  /* Performance (runtime) for randomize: 1, 1024x1024 data size
-   * reshuffle_between_kernels: 0 -> 26.112164 s
-   * reshuffle_between_kernels: 1 -> 20.338126 s // due to faster convergence? worst cases are averaged out
-   */
+  auto u = u2;
+  auto x = x2;
   const double
     // max_width = x_plane.width > y_plane.width ? x_plane.width : y_plane.width,
     // max_height = x_plane.width > y_plane.width ? x_plane.width / x_plane.aspect_ratio : y_plane.width / y_plane.aspect_ratio,
     // min_distance = y_plane.offset.z - x_plane.offset.z, // assume parallel planes, with constant third dim
     // max_distance = norm3d_host(min_distance, max_width, max_height),
-    max_distance = max_distance_between_planes(x_plane, u, y_plane, v),
-    threshold = 1e-4;
+    max_distance = max_distance_between_planes(x_plane, u, y_plane, v);
+  // combination conditional_MC2 is broken, for zoomed out data and small kernels
+  // reorder_u without conditional_MC2 works fine
   const bool
     randomize = 1 && p.n.x > 1 && p.n_batches.x > 1, // TODO rename => shuffle_source
-    reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data
+    reshuffle_between_kernels = 1 && randomize, // each kernel uses mutually excl. random input data (in parallel batches)
+    conditional_MC2 = 1 && randomize,
     shuffle_v = 0,
-    reorder_v = 1 && randomize,
-    reorder_v_rm_phase = 0, // for debugging
-    amp_convergence = 1;
-  // TODO conditional shuffling, i.e. reorder x+u (source dataset) and only shuffle rows
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+    reorder_v = 1,
+    reorder_u = 0 || conditional_MC2, // TODO find greatest common divisor in case nonsquare batch size.x
+    amp_convergence = 1; // TODO rm
+
+#if RANDOMIZE_SUPERPOSITION_INPUT
   const bool conditional_MC = 0;
-  assert(!conditional_MC); // TODO debug for min_n_datapoints > 2048
 #endif
   auto map = std::vector<size_t>(p.n.y);
   if (shuffle_v) {
+    assert(!reorder_v);
     std::iota(map.begin(), map.end(), 0);
     std::random_shuffle(map.begin(), map.end());
     for (size_t i = 0; i < map.size(); ++i)
@@ -228,44 +232,44 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   // only in case of second transformation
-  if (reorder_v && p.n.x > p.batch_size.x) {
-    // reorder v data s.t. each batch covers square area in space
-    // neglect boundary cells
+  if (1 && reorder_v && p.n.x > p.batch_size.x)
+    reorder::plane(v2, v, p.batch_size.y, y_plane.aspect_ratio);
 
-    // assume aspect ratio = 1
-    size_t m_sqrt = (size_t) sqrt(p.n.y);
-    assert(m_sqrt*m_sqrt == p.n.y);
-    size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
-    size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
-    assert(m_sqrt > 0);
+  // conditional MC (2)
+  // bin shape is inverse of batch_size.x
+  const size_t
+    bin_size = FLOOR(p.n.x, p.batch_size.x), // <= p.n_batches.x
+    n_bins = p.batch_size.x;
 
-    for (size_t i = 0; i < m_sqrt2; ++i) {
-      for (size_t j = 0; j < m_sqrt2; ++j) {
-        // define spatial 2D indices (both for target dataset y)
-        dim2
-          i_batch_major = {i / G, j / G},
-          i_batch_minor = {i % G, j % G};
-        // size_t i_transpose = (i_batch_major.x * m_sqrt2/G + i_batch_major.y) * G*G + i_batch_minor.x * G + i_batch_minor.y;
-        size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
-        for (int dim = 0; dim < DIMS; ++dim) {
-          // v[Ix(i_transpose, dim)];
-          v[Ix(i_transpose, dim)] = v2[Ix2D(i,j,dim,m_sqrt)];
-          // v[Ix2D(i_batch.x * G + g.x,
-          //        i_batch.y * G + g.y, dim, m_sqrt2)] = v2[Ix2D(i,j,dim,m_sqrt)];
-        }
-      }
-    }
+  if (randomize && conditional_MC2 && reorder_u && p.n.x > p.batch_size.x) {
+    if (sqrt(bin_size) != (size_t) sqrt(bin_size))
+      printf("Error for, bin size: %lu = %f^2, batch size: %lu, N: %lu = %0.2e\n",
+             bin_size, sqrt(bin_size), p.batch_size.x, p.n.x, (double) p.n.x);
+    assert(sqrt(bin_size) == (size_t) sqrt(bin_size));
   }
 
+  if (reorder_u && p.n.x > p.batch_size.x) {
+    // TODO add if randomize
+    reorder::plane(u2, u, bin_size, x_plane.aspect_ratio);
+    reorder::plane<Polar, 1>(x2, x, bin_size, x_plane.aspect_ratio);
 
-
+    // if (1) {
+    //   // test transpose
+    //   thrust::device_vector<Polar> d_x1 = x, d_x2 = d_x1, d_x3 = d_x1;
+    //   transpose::transpose<Polar>(bin_size, n_bins, d_x1, d_x2.begin());
+    //   transpose::transpose<Polar>(n_bins, bin_size, d_x2, d_x3.begin());
+    //   for (auto& i : range(100)) {
+    //     Polar a = d_x1[i], b = d_x3[i];
+    //     assert(equals(a.amp, b.amp));
+    //   } }
+  }
 
   // x = input or source data, y = output or target data
   if (algorithm == Algorithm::Naive) assert(!shared_memory);
 
   // derive size of matrix y_tmp
   size_t tmp_out_size = p.batch_size.x * p.batch_size.y;
-  if (algorithm == Algorithm::Alt)
+  if (algorithm == Algorithm::Reduced)
     if (shared_memory)
       tmp_out_size = MIN(p.batch_size.x, p.gridDim.x) * p.batch_size.y;
     else
@@ -288,9 +292,19 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   // Copy CPU data to GPU, don't use pinned (page-locked) memory for input data
   thrust::device_vector<Polar> d_x = x;
   thrust::device_vector<double> d_u = u;
+
   // cast to pointers to allow usage in non-thrust kernels
   Polar *d_x_ptr = thrust::raw_pointer_cast(d_x.data());
   auto *d_u_ptr = thrust::raw_pointer_cast(d_u.data());
+
+
+  // tmp copies to simplify matrix shuffling and transposing
+  // TODO don't copy twice
+  thrust::device_vector<Polar> d_x2 = x;
+  thrust::device_vector<double> d_u2 = u;
+  auto *d_u_ptr2 = thrust::raw_pointer_cast(d_u2.data());
+  thrust::device_ptr<Cartesian<double>> d_u_row_ptr2 = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_u_ptr2 );
+
 
   // d_y_tmp contains block results of (partial) superposition kernel (TODO rename => d_y_block?)
   // d_y_sum contains the full superpositions, i.e. the summed rows of d_y_tmp
@@ -334,6 +348,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   // const auto shuffle_period = FLOOR(p.n_batches.x, p.n_streams);
 
   // cu( cudaMalloc( &d_rand, p.n.x * sizeof(float) ) );
+  // auto d_rand = thrust::device_vector<float>(conditional_MC2 ? bin_size : p.n.x); // sort_by_key() requires device vectors
   auto d_rand = thrust::device_vector<float>(p.n.x); // sort_by_key() requires device vectors
   auto d_rand_ptr = thrust::raw_pointer_cast(d_rand.data());
   curandGenerator_t generator;
@@ -341,13 +356,14 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
   cudaDeviceSynchronize();
   // curandGenerateUniform(generator, d_rand_ptr, p.n.x);
-  cuR( curandGenerateUniform(generator, d_rand_ptr, p.n.x * sizeof(float) / 32) );
-  cudaDeviceSynchronize();
+  // cuR( curandGenerateUniform(generator, d_rand_ptr, d_rand.size() ) );
+  // cudaDeviceSynchronize();
 
-  // Copy indices because both keys and values will be sorted
-  auto d_rand2 = d_rand;
+  // // Copy indices because both keys and values will be sorted
+  // auto d_rand2 = d_rand;
 
-  auto d_u_row_ptr = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_u_ptr );
+  // auto d_u_row_ptr = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_u_ptr );
+  thrust::device_ptr<Cartesian<double>> d_u_row_ptr = thrust::device_ptr<Cartesian<double>> ( (Cartesian<double> *) d_u_ptr );
   const thrust::device_vector<Polar> d_x_original = d_x;
   const thrust::device_vector<Cartesian<double>> d_u_original (d_u_row_ptr, d_u_row_ptr + p.n.x);
 
@@ -358,19 +374,19 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   thrust::counting_iterator<size_t> identity(0);
   thrust::copy_n(identity, p.n.x, indices.begin());
 
-  if (0) {
-    // Sort twice, using a copy of the randomized keys
-    thrust::sort_by_key(d_rand.begin(), d_rand.end(), d_x.begin()); // Note, thrust::raw_pointer_cast causes Segfaults
-    thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), d_u_row_ptr); // reorder all dims at once
-  }
-  if (0) {
-    // Assume sorting is much more expensive than copying data (even though both are O(n))
-    // Sort once, then do scatter operations on the data
-    thrust::sort_by_key(d_rand.begin(), d_rand.end(), indices.begin());
-    // thrust::permutation_iterator(d_x.begin(), d_x.end(), indices.begin());
-    thrust::scatter(d_x_original.begin(), d_x_original.end(), indices.begin(), d_x.begin());
-    thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
-  }
+  // if (0) {
+  //   // Sort twice, using a copy of the randomized keys
+  //   thrust::sort_by_key(d_rand.begin(), d_rand.end(), d_x.begin()); // Note, thrust::raw_pointer_cast causes Segfaults
+  //   thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), d_u_row_ptr); // reorder all dims at once
+  // }
+  // if (0) {
+  //   // Assume sorting is much more expensive than copying data (even though both are O(n))
+  //   // Sort once, then do scatter operations on the data
+  //   thrust::sort_by_key(d_rand.begin(), d_rand.end(), indices.begin());
+  //   // thrust::permutation_iterator(d_x.begin(), d_x.end(), indices.begin());
+  //   thrust::scatter(d_x_original.begin(), d_x_original.end(), indices.begin(), d_x.begin());
+  //   thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
+  // }
 
   const size_t
     min_n_datapoints = MAX(4*1024, p.batch_size.x), // before convergence computation
@@ -392,9 +408,11 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       printf("Warning not enough datapoints: n: %lu, n_min: %lu\n", p.n.x, min_n_datapoints);
     if (min_n_datapoints0 > p.n.x)
       printf("Warning not enough datapoints0: n: %lu, n_min: %lu\n", p.n.x, min_n_datapoints0);
+    if (conditional_MC2)
+      assert(p.n.x % p.batch_size.x == 0.);
   }
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
   static unsigned int seed = 12345;
   seed++; // TODO handle properly
   curandState *rng_state;
@@ -449,32 +467,36 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
     for (unsigned int i_stream = 0; i_stream < p.n_streams; ++i_stream) {
       if (randomize && i_shuffle >= i_shuffle_max) {
         // TODO use stages; this can be done in parallel with copying data but not with superposition kernels
-        cudaDeviceSynchronize(); // finish all superposition kernels
-        cuR( curandGenerateUniform(generator, d_rand_ptr, p.n.x * sizeof(float) / 32) );
-        cudaDeviceSynchronize();
-        if (0) {
-          d_rand2 = d_rand;
-          thrust::sort_by_key(d_rand.begin(), d_rand.end(), d_x.begin()); // Note, thrust::raw_pointer_cast causes Segfaults
-          thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), d_u_row_ptr); // reorder all dims at once
-          // thrust::sort_by_key(d_rand2.begin(), d_rand2.end(), d_u_vector.begin()); // reorder all dims at once
+        // use floats to define a random ordering
+        cuR( curandGenerateUniform(generator, d_rand_ptr, d_rand.size() ) );
+        cudaDeviceSynchronize(); // finish rand & finish all superposition kernels
 
-          // (optional), update d_u
-          // d_u = thrust::device_vector<double>(d_u_vector_ptr, 3*p.n.x + d_u_vector_ptr);
+        if (conditional_MC2) {
+          // conditional shuffling for conditional MC
+          const size_t n_sqrt = sqrt(p.n.x);
+          assert(n_sqrt * n_sqrt == p.n.x);
+          // shuffle samples per bin (i.e. each row)
+          assert(bin_size * n_bins <= p.n.x);
+          assert(bin_size * n_bins == p.n.x);
+
+          // TODO consider generating a random matrix instead of re-generating each row (d_rand)
+          for (size_t i = 0; i < n_bins; ++i) {
+            const auto di = i * bin_size;
+            thrust::sort_by_key(d_rand.begin(), d_rand.begin() + bin_size, indices.begin());
+            // thrust::scatter :: ( iter1.first, iter1.last, map, result.first )
+            thrust::scatter(d_x_original.begin() + di, d_x_original.begin() + di + bin_size, indices.begin(), d_x2.begin() + di);
+            thrust::scatter(d_u_original.begin() + di, d_u_original.begin() + di + bin_size, indices.begin(), d_u_row_ptr2 + di);
+          }
+          if (1) cudaDeviceSynchronize();
+          // each column now corresponds to a representative set
+          // transpose data s.t. each batch uses 1 sample from each bin
+          transpose::transpose<Polar>(n_bins, bin_size, d_x2.begin(), d_x.begin());
+          transpose::transpose<Cartesian<double>>(n_bins, bin_size, d_u_row_ptr2, d_u_row_ptr);
+
         } else {
           thrust::sort_by_key(d_rand.begin(), d_rand.end(), indices.begin());
-            thrust::scatter(d_x_original.begin(), d_x_original.end(), indices.begin(), d_x.begin());
-            thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
-          //   // conditional shuffling for conditional MC
-          //   // TODO this requires reordering of x/u, -> make new reordering (transpose) function
-          //   const size_t n_sqrt = sqrt(p.n.x);
-          //   assert(n_sqrt * n_sqrt == p.n.x);
-          //   for (size_t i = 0; i < n_sqrt; ++i) {
-          //     const auto di = i * n_sqrt;
-          //     thrust::scatter(d_x_original.begin() + di, d_x_original.begin() + (i+1) * n_sqrt, indices.begin() + di, d_x.begin() + di);
-          //     thrust::scatter(d_u_original.begin() + di, d_u_original.begin() + (i+1) * n_sqrt, indices.begin() + di, d_u_row_ptr + di);
-          //   }
-          // }
-
+          thrust::scatter(d_x_original.begin(), d_x_original.end(), indices.begin(), d_x.begin());
+          thrust::scatter(d_u_original.begin(), d_u_original.end(), indices.begin(), d_u_row_ptr);
         }
         i_shuffle = 0;
       }
@@ -494,14 +516,11 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
 
       // Derive current batch size in case of underutilized x-batches
       size_t local_batch_size = p.batch_size.x;
-      if (!randomize)
-        if (p.n.x != p.n_batches.x * p.batch_size.x && n == p.n_batches.x - 1)
-          local_batch_size = p.n.x - n * p.batch_size.x;
 
-      // if (101) { // TODO rm
-      //   finished[i_stream] = 1;
-      //   // local_batch_size = 1;
-      // }
+      // in case of final batch
+      if (!randomize && p.n.x != p.n_batches.x * p.batch_size.x)
+        if (n == p.n_batches.x - 1)
+          local_batch_size = p.n.x - n * p.batch_size.x;
 
       // size_t n_offset = n * p.batch_size.x;
       size_t n_offset = (reshuffle_between_kernels ? i_shuffle : n ) * p.batch_size.x;
@@ -517,12 +536,13 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
           assert(n_offset + p.batch_size.x <= p.n.x);
         } }
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
       if (p.n.x > p.gridSize.x) {
         assert(p.n.x == p.n_batches.x * p.batch_size.x); // underutilized x-batches would invalidate the estimate (E[Y|Z])
         assert(local_batch_size == p.batch_size.x);
 
         if (conditional_MC) {
+          assert(0); // This implementation is broken. The bins created by reorder_v don't correspond to those used here. (Per batch vs per thread)
           // TODO use with reorder_v
           n_offset = potential_batch_size * (n % batches_per_estimate);
           assert(n_offset < p.n.x);
@@ -548,7 +568,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
       // cudaDeviceSynchronize(); print("pre s kernel");
       superposition_per_block<direction, algorithm, shared_memory>  \
         (
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
          rng_state, seed, i_stream, sample_bin_size, p.thread_size.x,
 #endif
          p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
@@ -590,7 +610,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
         cu( cudaPeekAtLastError() );
         // cudaDeviceSynchronize(); print("sum rows post");
 
-        if (!finished[i_stream] && converging && (n+1) % batches_per_estimate == 0) {
+        if (randomize && !finished[i_stream] && converging && (n+1) % batches_per_estimate == 0) {
           const double
             prev_n = (n+1 - batches_per_estimate) * p.batch_size.x;
 
@@ -679,7 +699,7 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   for (auto& handle : handles)
     cuB( cublasDestroy(handle) );
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
   if (p.n.x > p.gridSize.x)
     cu( cudaFree(rng_state) );
 #endif
@@ -710,89 +730,8 @@ inline std::vector<WAVE> transform(const std::vector<Polar> &x,
   }
 
   // only in case of second transformation
-  if (reorder_v && p.n.x > p.batch_size.x) {
-    // revert y data (v data)
-    assert(!shuffle_v);
-    // assume aspect ratio = 1
-    auto y2 = y;
-    size_t m_sqrt = (size_t) sqrt(p.n.y);
-    assert(m_sqrt*m_sqrt == p.n.y);
-    size_t G = (size_t) sqrt(p.batch_size.y); // batch_size
-    size_t m_sqrt2 = FLOOR(m_sqrt, G) * G; // minus boundaries
-    assert(m_sqrt > 0);
-
-    for (size_t i = 0; i < m_sqrt; ++i) {
-      for (size_t j = 0; j < m_sqrt; ++j) {
-        y2[i * m_sqrt + j] = {0,0};
-      } }
-    for (size_t i = 0; i < m_sqrt; ++i) {
-      for (size_t j = 0; j < m_sqrt; ++j) {
-        if (i >= m_sqrt2 || j >= m_sqrt2) {
-          // clear unused boundary indices
-          y2[i * m_sqrt + j] = from_polar(1, 0.111);
-          continue;
-        }
-        // define spatial 2D indices (both for target dataset y)
-        dim2
-          i_batch_major = {i / G, j / G},
-          i_batch_minor = {i % G, j % G};
-        // size_t i_transpose = (i_batch_major.x * m_sqrt2/G + i_batch_major.y) * G*G + i_batch_minor.x * G + i_batch_minor.y;
-        size_t i_transpose = (i_batch_major.x * m_sqrt2 + i_batch_major.y * G) * G + i_batch_minor.x * G + i_batch_minor.y;
-        assert(i_transpose < p.n.y);
-        // if (i_transpose >= m_sqrt2*m_sqrt2)
-        // if (i_batch_major.x == 0 && i_batch_major.y < 2 && i_batch_minor.y == 0)
-        //   printf("i_t: %zu / %zu \t[%zu,%zu] (/ %zu)\t[%zu,%5u]\t(%zu^2 = %zu)\n", i_transpose, m_sqrt2*m_sqrt2,
-        //          i_batch_major.x, i_batch_major.y, m_sqrt2 / G,
-        //          i_batch_minor.x, i_batch_minor.y,
-        //          G, p.batch_size.y);
-        assert(i_transpose < m_sqrt2*m_sqrt2);
-        y2[i * m_sqrt + j] = y[i_transpose];
-        // y2[j * m_sqrt + i] = y[i_transpose];
-        // y2[i * m_sqrt + j] = from_polar(i_batch_minor.x / (double) G, i_batch_minor.y / (double) G);
-
-        // // add offset to avoid zero amp, which can influence phase
-        // y2[i * m_sqrt + j] = from_polar(1 + (i_batch_minor.x * G + i_batch_minor.y) / (double) G,
-        //                                 1 + (i_batch_major.x * G*m_sqrt2 + i_batch_major.y * G) / (double) p.n.y);
-        // y2[i * m_sqrt + j] = from_polar(1, rand());
-
-            if (reorder_v_rm_phase) {
-              if (i_batch_major.x % 2 == 0)
-                if (i_batch_major.y % 2 == 0)
-                  y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
-                else
-                  y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0.5);
-              else
-                if (i_batch_major.y % 2 == 0)
-                  y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1);
-                else
-                  y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
-            }
-
-      } }
-
-    // for (size_t i = 0; i < m_sqrt2; ++i) {
-    //   for (size_t j = 0; j < m_sqrt2; ++j) {
-    //     dim2
-    //       i_batch = {i / G, j / G},
-    //       g = {i % G, j % G};
-    //     size_t i_transpose = (i_batch.x * m_sqrt2/G + i_batch.y) * G*G + g.x * G + g.y;
-    //     y2[i * m_sqrt + j] = y[i_transpose];
-    //     if (reorder_v_rm_phase) {
-    //       if (i_batch.x % 2 == 0)
-    //         if (i_batch.y % 2 == 0)
-    //           y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 0);
-    //         else
-    //           y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 1.5);
-    //       else
-    //         if (i_batch.y % 2 == 0)
-    //           y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 3);
-    //         else
-    //           y2[i * m_sqrt + j] = from_polar(cuCabs(y2[i * m_sqrt + j]), 4.5);
-    //     }
-    //   }
-    // }
-    return y2;
-  }
+  if (reorder_v && p.n.x > p.batch_size.x)
+    return reorder::inverse(y, p.batch_size.y, y_plane.aspect_ratio);
 
   if (shuffle_v) {
     auto y2 = y;
@@ -846,7 +785,7 @@ inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
 
   // derive size of matrix y_tmp
   size_t tmp_out_size = p.batch_size.x * p.batch_size.y;
-  if (algorithm == Algorithm::Alt)
+  if (algorithm == Algorithm::Reduced)
     if (shared_memory)
       tmp_out_size = MIN(p.batch_size.x, p.gridDim.x) * p.batch_size.y;
     else
@@ -930,13 +869,13 @@ inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
         const bool append_result = n > 0;
         const size_t n_offset = n * p.batch_size.x;
 
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
         assert(0); // not implemented (TODO)
         curandState rng_placeholder;
 #endif
         superposition_per_block<direction, algorithm, shared_memory> \
           (
-#ifdef RANDOMIZE_SUPERPOSITION_INPUT
+#if RANDOMIZE_SUPERPOSITION_INPUT
            &rng_placeholder, 0,0,0,0,
 #endif
            p.gridDim, p.blockDim, streams[i_stream], local_batch_size, p.batch_size.y,
@@ -1003,7 +942,7 @@ inline std::vector<WAVE> transform_full(const std::vector<Polar> &x2,
   for (auto& handle : handles)
     cuB( cublasDestroy(handle) );
 
-  cu( cudaFree(d_y_tmp_ptr ) );
+  cu( cudaFree(d_y_tmp_ptr   ) );
   cu( cudaFree(d_v_ptr       ) );
   cu( cudaFreeHost(v_pinned_ptr ) );
   cu( cudaFreeHost(y_pinned_ptr ) );
@@ -1022,7 +961,9 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
                                   const Plane& x_plane,
                                   const Plane& y_plane,
                                   struct timespec *t1, struct timespec *t2, double *dt,
-                                  bool verbose = false) {
+                                  const bool verbose = false,
+                                  const double convergence_threshold = 0) {
+  printf(">> MC Convergence Threshold: %.2e\n", convergence_threshold);
   clock_gettime(CLOCK_MONOTONIC, t1);
   auto weights = std::vector<double> {1,
                                       add_constant_wave ? 1 : 0,
@@ -1035,18 +976,30 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
   // (2.7 speedup)
   // for one-to-many input: speedup was at least ~10
 
+#if RANDOMIZE_SUPERPOSITION_INPUT
+  assert(p.algorithm == 2);
+#endif
+
   std::vector<WAVE> y;
-  // switch (p.algorithm) {
-  // case 1: y = transform<direction, Algorithm::Naive, false>(x, u, v, p); break;
-  // case 2: y = transform<direction, Algorithm::Alt, false>(x, u, v, p); break;
-  // case 3: y = transform<direction, Algorithm::Alt, true>(x, u, v, p); break;
-  // default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
-  // }
-// #ifdef RANDOMIZE_SUPERPOSITION_INPUT
-  y = transform<direction, Algorithm::Alt, false>(x, u, v, p, x_plane, y_plane);
-// #else
-  // y = transform_full<direction, Algorithm::Alt, false>(x, u, v, p);
-// #endif
+#if RANDOMIZE_SUPERPOSITION_INPUT
+  y = transform_MC<direction, Algorithm::Reduced, false>(x, u, v, p, x_plane, y_plane, convergence_threshold);
+#else
+  // Note, convergence_threshold = -1 can be used to disable stopping after convergence
+  if (convergence_threshold == 0.)
+    switch (p.algorithm) {
+    case 1: y = transform_full<direction, Algorithm::Naive,   false>(x, u, v, p); break;
+    case 2: y = transform_full<direction, Algorithm::Reduced, false>(x, u, v, p); break;
+    case 3: y = transform_full<direction, Algorithm::Reduced, true> (x, u, v, p); break;
+    default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
+    }
+  else
+    switch (p.algorithm) {
+    case 1: y = transform_MC<direction, Algorithm::Naive,   false>(x, u, v, p, x_plane, y_plane, convergence_threshold); break;
+    case 2: y = transform_MC<direction, Algorithm::Reduced, false>(x, u, v, p, x_plane, y_plane, convergence_threshold); break;
+    case 3: y = transform_MC<direction, Algorithm::Reduced, true> (x, u, v, p, x_plane, y_plane, convergence_threshold); break;
+    default: {fprintf(stderr, "algorithm is incorrect"); exit(1); }
+    }
+#endif
 
   // average of transformation and constant if any
   normalize_amp<add_constant_wave>(y, weights[0] + weights[1]);
@@ -1061,7 +1014,7 @@ std::vector<Polar> time_transform(const std::vector<Polar> &x,
     // TODO do this on CPU?
     const double z_offset = v[2] - DISTANCE_REFERENCE_WAVE; // assume v[:, 2] is constant
     const bool shared_memory = false;
-    auto y_reference = transform_full<Direction::Forwards, Algorithm::Alt, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
+    auto y_reference = transform_full<Direction::Forwards, Algorithm::Reduced, shared_memory>({{1, 0.}}, {{0., 0., z_offset}}, v, p);
     normalize_amp<false>(y_reference, weights[2]);
     // let full reference wave (amp+phase) interfere with original wave
     add_complex(y, y_reference);
