@@ -22,5 +22,4 @@ The main files are `cuda/main.h,.cu`, in which functions declared in `cuda/trans
 The are a number of variants of `SuperpositionPerBlockHelper` macros which are used in combination with `superposition_per_block_helper()` functions.
 They allow the GPU geometry to be included as templates, which is required for CUB library functions.
 
-Additionally `cuda/macros.h` contain macros and constants.
-The file `cuda/hyper_params.h` will be removed.
+Additionally, the files `cuda/macros.h` `cuda/hyper_params.h` contain macros and constants.
