@@ -11,7 +11,7 @@ High performance simulations of holographic projectors for GPU's.
 
 ### Overview of CUDA code
 
-The main kernel to compute superpositions is `superposition::per_kernel`, 
+The main kernel to compute superpositions is `superposition::per_block`, 
 which repeatedly calls `superposition::phasor_displacement`.
 
 The main files are `cuda/main.h,.cu`, in which functions declared in `cuda/transform.cu` are called to compute superposition transformations:
