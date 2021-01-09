@@ -8,7 +8,6 @@
 /* #include <gsl/gsl_linalg.h> */
 
 #include "macros.h"
-#include "hyper_params.h"
 #include "algebra.h"
 #include "util.h"
 

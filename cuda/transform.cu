@@ -10,7 +10,6 @@
 #include <cuda_runtime.h>
 
 #include "macros.h"
-#include "hyper_params.h"
 #include "util.h"
 #include "init.h"
 #include "kernel.cu"

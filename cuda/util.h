@@ -53,10 +53,10 @@ bool equals(double a, double b, double max_rel_error=1e-6) {
 
 void check_complex(WAVE z, const char *file, int line) {
   /* double a = creal(z), b = cimag(z); */
-  if (isnan(z.x)) {fprintf(stderr, "[%s:%d] complex.re is nan\n", file, line); exit(1);}
-  if (isinf(z.x)) {fprintf(stderr, "[%s:%d] complex.re is inf\n", file, line); exit(1);}
-  if (isnan(z.y)) {fprintf(stderr, "[%s:%d] complex.im is nan\n", file, line); exit(1);}
-  if (isinf(z.y)) {fprintf(stderr, "[%s:%d] complex.im is inf\n", file, line); exit(1);}
+  if (isnan(z.x)) {fprintf(stderr, "[%s:%d] complex.re is nan\n", file, line); exit(4);}
+  if (isinf(z.x)) {fprintf(stderr, "[%s:%d] complex.re is inf\n", file, line); exit(4);}
+  if (isnan(z.y)) {fprintf(stderr, "[%s:%d] complex.im is nan\n", file, line); exit(4);}
+  if (isinf(z.y)) {fprintf(stderr, "[%s:%d] complex.im is inf\n", file, line); exit(4);}
 }
 
 void check_hyper_params(Geometry p) {
@@ -139,10 +139,8 @@ void print_result(std::vector<double> dt, size_t n = 1, size_t m = 1) {
   const double mu = mean(dt);
   printf("TFLOPS:   \t%0.5f \t (%i FLOP_PER_POINT) \t E[runtime]: %f s\n",  \
          flops(mu, n, m) * 1e-12, FLOP_PER_POINT, mu);
-  // TODO correct bandwidth datasize
-  // TODO multiply dt.size() with n,m inside func instead of outside?
-  printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(mu, n, m, false));
-  printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(mu, n, m, true));
+  // printf("Bandwidth: \t%0.5f Mb/s (excl. shared memory)\n", bandwidth(mu, n, m, false));
+  // printf("Bandwidth: \t%0.5f MB/s (incl. shared memory)\n", bandwidth(mu, n, m, true));
   if (dt.size() > 1) {
     double var = variance(dt);
     printf("Var[dt]: %e, Var[dt]/E[dt]: %e\n", var, var / mu);
@@ -261,9 +259,10 @@ std::vector<T> read_bytes(std::string fn) {
 
   // init stream at end of stream to obtain size
   std::ifstream file (fn, std::ios::in|std::ios::binary|std::ios::ate);
-  if (!file.is_open()) exit(1);;
+  if (!file.is_open()) print("Cannot open file. Wrong path?");
+  assert(file.is_open());
   size = file.tellg();
-  if (size == 0) exit(2);
+  assert(size > 0);
   /* printf("sizes: %u, %i; %i %u\n", size, (int) size, sizeof(double)); */
   /* printf("sizes: %i / %i\n", (int) size, sizeof(double)); */
   memblock = new char [size];
@@ -271,7 +270,7 @@ std::vector<T> read_bytes(std::string fn) {
   file.seekg (0, std::ios::beg);
   file.read (memblock, size);
   file.close();
-  std::cout << "the entire file content is in memory\n";
+  print("the entire file content is in memory");
 
   T *ptr = (T*) memblock;
   printf("data: %f, %f \n", ptr[0], ptr[1]);
@@ -279,6 +278,7 @@ std::vector<T> read_bytes(std::string fn) {
   // TODO use proper memory handling
   /* delete[] memblock; */
   /* return unique_ptr<T>  */
+  print("return");
   return std::vector<T>(ptr, ptr + size / sizeof(T));
 }
 
@@ -409,12 +409,11 @@ void write_dot(char name, WAVE *x, SPACE *u, size_t len) {
 
 void write_arrays(std::vector<Polar> &x, std::vector<double> &u,
                   std::string k1, std::string k2, Plane p,
-                  double dt = 0., double flops = 0.) {
+                  double dt = 0., double flops = 0.,
+		  std::string dir = "../tmp/") {
   static bool overwrite = true;
-  if (overwrite)
-    print("Save results as txt");
+  if (overwrite) print("Save results as txt");
 
-  auto dir = std::string{"../tmp/"};
   auto mode = overwrite ? std::ofstream::binary : std::ofstream::app;
   std::ofstream out;
 
@@ -425,6 +424,7 @@ void write_arrays(std::vector<Polar> &x, std::vector<double> &u,
   /* out << std::scientific; // to allow e.g. 1.0e-50 */
   out << std::fixed;
   out << std::setprecision(IO_PRECISION);
+  print("writing to: " + dir + k1 + "...dat");
 
   out.open(dir + k1 + "_amp.dat", std::ofstream::binary);
   /* map_to_and_write_array(x, cuCabs, ',', out); */

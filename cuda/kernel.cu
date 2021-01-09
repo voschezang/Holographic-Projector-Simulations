@@ -16,7 +16,6 @@
 #include <cusolverDn.h>
 
 #include "macros.h"
-#include "hyper_params.h"
 
 #define cu(result) cudaCheck((result), __FILE__, __LINE__)
 #define cuB(result) cudaBlasCheck((result), __FILE__, __LINE__)

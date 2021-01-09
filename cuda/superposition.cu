@@ -8,7 +8,6 @@
 #include <cub/cub.cuh>
 
 #include "macros.h"
-#include "hyper_params.h"
 #include "util.h"
 #include "kernel.cu"
 

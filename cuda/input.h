@@ -6,10 +6,10 @@
 
 void show_help(const char *p) {
   // TODO extend help
-  printf("Usage %s [OPTION]..\n\n"
+  printf("Usage %s [OPTION]..\n"
          "\t-n, -N set min, max"
-         "\n for attr.max is set to min if it is not provided after the corresponding .min"
-         , p);
+         "\n if .max is not provided it defaults to the corresponding .min"
+	 "\n", p);
 }
 
 namespace input {
@@ -17,21 +17,18 @@ namespace input {
 Params read_args(int argc, char **argv) {
   const double z_offset = 0.35;
   const auto obj_z_offset = Range<double> {min: z_offset, max: 0.25};
-  const double obj_width =  1e-4;
+  const double obj_width =  1e-3;
   // note: projector z_offset is always zero
   auto p = Params
     {n_planes:     {obj: 1,
                     projector: 1, // unused
                     projection: 1}, // number of projection planes per obj plane
      n_per_plane:  {obj: 1,
-                    /* obj: N_sqrt * N_sqrt, */
                     projector: N_sqrt * N_sqrt,
-                    /* projector: N_sqrt * 4, */
-                    /* projection: N_sqrt * N_sqrt */
                     projection: N_sqrt * N_sqrt
      },
      aspect_ratio: {obj: 1.,
-                    projector: HD,
+                    projector: 1.,
                     projection: 1.
      },
      obj_offset:  {x: {min: 0.0, max: 0.0},
@@ -39,7 +36,7 @@ Params read_args(int argc, char **argv) {
                    z: obj_z_offset},
 
      obj_width: {min: obj_width, max: obj_width},
-     projector_width: {min: 1920 * 7e-6, max: 1920 * 7e-6},
+     projector_width: {min: N_sqrt * 7e-6, max: N_sqrt * 7e-6},
      projection_width: {min: obj_width*1.2, max: obj_width*1.2},
      projection_z_offset: {min: 0., max: 0.}, // added to obj offset
      algorithm: 2,
@@ -50,13 +47,15 @@ Params read_args(int argc, char **argv) {
      thread_size: {256, 128},
      // thread_size: {64, 32}, // for algorithm = 1
      blockDim: {32, 32, 1},
-     gridDim: {8, 8, 1}
+     gridDim: {8, 8, 1},
+     files: std::string {""},
+     projection: false,
     };
 
   // For all ranged params the max is set to min by default.
   int ch;
   /* while ((ch = getopt(argc, argv, "c:e:hH:i:k:L:m:M:n:N:p:t:r:")) != -1) */
-  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:l:L:n:N:m:M:p:qrs:t:T:b:B:g:G:ce:h")) != -1)
+  while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:l:L:n:N:m:M:p:qrs:t:T:b:B:g:G:f:Fh")) != -1)
     {
       switch(ch) {
       case 'X': p.n_planes.obj            = strtol(optarg, 0, 10); break;
@@ -96,7 +95,9 @@ Params read_args(int argc, char **argv) {
       case 'B': p.blockDim.y =    strtol(optarg, 0, 10); break;
       case 'g': p.gridDim.x =     strtol(optarg, 0, 10); break;
       case 'G': p.gridDim.y =     strtol(optarg, 0, 10); break;
-      case 'h': default: show_help(argv[0]);
+      case 'f': p.files = std::string {optarg} + "/"; print("here" + p.files);  break;
+      case 'F': p.projection = true; break;
+      case 'h': default: show_help(argv[0]); exit(0);
       }
     }
 

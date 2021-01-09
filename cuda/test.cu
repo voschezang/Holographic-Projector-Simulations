@@ -13,7 +13,6 @@
 #include <thrust/device_vector.h>
 
 #include "macros.h"
-#include "hyper_params.h"
 #include "util.h"
 #include "kernel.cu"
 #include "init.h"

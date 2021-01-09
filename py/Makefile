@@ -1,5 +1,5 @@
 PY := python3
-IMG_DIR := ../img
+IMG_DIR := ../tmp
 # SEQUENCE_DIR is relative to IMG_DIR
 SEQUENCE_DIR := sequence-
 OUTPUT_NAME_Y := $(IMG_DIR)/ani-y.mp4
@@ -51,6 +51,8 @@ clean-plot:
 	mkdir -p $(IMG_DIR)/$(SEQUENCE_DIR)z
 	rm -rf $(IMG_DIR)/$(SEQUENCE_DIR)y/*
 	rm -rf $(IMG_DIR)/$(SEQUENCE_DIR)z/*
+	mkdir -p $(IMG_DIR)/$(SEQUENCE_DIR)y
+	mkdir -p $(IMG_DIR)/$(SEQUENCE_DIR)z
 
 deps:
 	# make sure python, python-pip are installed

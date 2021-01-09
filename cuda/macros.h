@@ -1,6 +1,18 @@
 #ifndef MACROS
 #define MACROS
 
+
+#define PROJECT_PHASE 1
+
+/* #define N_sqrt 128 */
+/* #define N_sqrt 256 */
+#define N_sqrt 512
+/* #define N_sqrt 1024 */
+/* #define N_sqrt 1440 */
+/* #define N_sqrt 2048 */
+
+
+
 // integer functions
 /* #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int) */
 #define CEIL(x,y) ((x + y - 1) / (y)) // ceil(int, int)
@@ -10,7 +22,11 @@
 
 /* #define DEBUG */
 /* #define TEST_CONST_PHASE */
-#define TEST_CONST_PHASE2
+/* #define TEST_CONST_PHASE2 */
+
+#ifndef READ_INPUT
+#define READ_INPUT 1
+#endif
 
 #define ZERO make_cuDoubleComplex(0,0)
 /* #define VOL(type, x) *((type *) &x) */
