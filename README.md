@@ -16,12 +16,16 @@ More info can be found on [wikipedia](https://en.wikipedia.org/wiki/Wave_interfe
 
 ### Setup & Usage
 
-Compile the CUDA program using `make build`.
-This creates a CLI application `cuda/run` that can compute superpositions. 
-It computes superpositions for each `target` position and w.r.t. all `source` positions.
-
-The source and target datasets can be generated using the CLI application, or using an external program.
-For example, `matlab/projector.m` can be used to generate the necessary dataset files.
+Compile the CUDA program using
+```
+make build
+```
+Then you can run the CLI application
+```
+cuda/holo
+```
+The application computes superpositions for each `target` position and w.r.t. all `source` positions.
+By default, the source and target datasets are generated automatically.
 
 The distributions that are computed are the projector distribution and the projection distribution.
 To use external data, use the flag `-f {directory}` to incdicate the name of the directory that contains the dataset files.
