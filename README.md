@@ -11,6 +11,7 @@ More info can be found on [wikipedia](https://en.wikipedia.org/wiki/Wave_interfe
 
 - `/py` contains legacy Python code, and does not require a GPU.
 
+
 <img src='img_readme/True_MC.png' alt='Holographic Projection Example'>
 
 
@@ -37,11 +38,11 @@ These files should be binary arrays for double-precision floating-point values (
 
 ---
 
+Interference patterns of 1 an 5 points.
 
+<img src='img_readme/1pt.png' alt='Interference Pattern 1 Point'>
 
-<img src='img_readme/1pt.png'>
-
-<img src='img_readme/5pt.png'>
+<img src='img_readme/5pt.png' alt='Interference Pattern 5 Points'>
 
 
 
