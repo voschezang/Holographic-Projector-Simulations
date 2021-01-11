@@ -1,7 +1,7 @@
 # full abs path is required for ssh # TODO not if sourcing .profile?
 FLAGS := -l curand -l cublas -std=c++14
 ARCH_FLAGS := -arch=compute_70 -code=sm_70
-EXE := run
+EXE := holo
 DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat

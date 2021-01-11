@@ -31,6 +31,10 @@ void show_help(const char *p) {
 	"\t-m, -M    \tSet .min, .max projection offset in z-dimension.\n"
 	"\t-q        \tLimit projection to a single quadrant.\n"
 	"\t-r        \tRandomize projector pixel positions.\n"
+	"\n\tCompile options. Re-compile with `nvcc main.cu -D{compile_options}`\n"
+	"\t LAMBDA \t Wavelength (default 0.65e-6 m)\n"
+	"\t PROJECT_PHASE \t Boolean (0 or 1), simulate phase-variable pixels (default 1)\n"
+	"\t DISTANCE_REFERENCE_WAVE \t used if (default 0.25 m)\n"
 	"\n", p);
 }
 

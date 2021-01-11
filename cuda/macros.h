@@ -1,20 +1,15 @@
 #ifndef MACROS
 #define MACROS
 
-
+#ifndef PROJECT_PHASE
 #define PROJECT_PHASE 1
+#endif
 
-/* #define N_sqrt 128 */
-/* #define N_sqrt 256 */
 #define N_sqrt 512
 /* #define N_sqrt 1024 */
 /* #define N_sqrt 1440 */
-/* #define N_sqrt 2048 */
-
-
 
 // integer functions
-/* #define DIV(x,y) ((x + y - 1) / y) // ceil(int, int) */
 #define CEIL(x,y) ((x + y - 1) / (y)) // ceil(int, int)
 #define FLOOR(x,y) ((x) / (y)) // integer division
 #define MIN(x,y) (x < y ? x : y)
@@ -22,16 +17,8 @@
 
 /* #define DEBUG */
 /* #define TEST_CONST_PHASE */
-/* #define TEST_CONST_PHASE2 */
-
-#ifndef READ_INPUT
-#define READ_INPUT 1
-#endif
 
 #define ZERO make_cuDoubleComplex(0,0)
-/* #define VOL(type, x) *((type *) &x) */
-
-/* #define LAMBDA (0.6328e-6)  // wavelength in vacuum: 632.8 nm (HeNe laser) */
 
 #ifndef LAMBDA
 #define LAMBDA 0.65e-6 // 650 nm
@@ -55,7 +42,7 @@
 #define SPACE double // space type (for each x,y,z in a cartesian coordinate)
 
 #ifndef NORM_3D
-#define NORM_3D norm3d // CUDA math api
+#define NORM_3D norm3d // CUDA math api, can be replaced with a CPU-only function
 #endif
 
 #define SPACE_MEMORY_LAYOUT 1
