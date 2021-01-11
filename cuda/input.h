@@ -5,11 +5,33 @@
 
 
 void show_help(const char *p) {
-  // TODO extend help
-  printf("Usage %s [OPTION]..\n"
-         "\t-n, -N set min, max"
-         "\n if .max is not provided it defaults to the corresponding .min"
-	 "\n", p);
+  printf("Usage %s [OPTION]...\n"
+        "Note: for each attribute, if .max is not provided it defaults to the corresponding .min.\n"
+	"\t -h       \tShow help. \n"
+	"\n\tUse external data (optional)\n"
+	"\t -f {dir} \t Read input files from `dir`: `x0_amp.dat, x0_phase.dat, u0.dat`."
+	" These files should be binary arrays representing double-precision floating-point numbers\n."
+	"\t-F        \t Compute projection distribution (w) w.r.t. the projector (v).\n"
+	"\n\tPerformance parameters\n"
+	"\t-s        \tSet number of streams (default: 8, s > 1).\n"
+	"\t-t, -T    \tSet number of source, target datapoints per thread.\n"
+	"\t-b, -B    \tSet CUDA blockDim .x, .y.\n"
+	"\t-g, -G    \tSet CUDA gridDim .x, .y.\n"
+	"\t-p        \tSelect algorithm 1 or 2 (default: 2). Note: algorithm 1 is cannot be used with large block/grid- Dims.\n"
+	"\n\tGenerate data (used if `-f {dir}` is not supplied).\n"
+        "\t-X, -Y, -Z\tSet number of input, projector, projection planes.\n"
+        "\t-x, -y, -z\tSet number of input, projector, projection datapoints per plane.\n"
+	"\t-a, -A    \tSet aspect ratio for projector, projection.\n"
+        "\t-u, -U    \tSet .min, .max offset in x-dimension for input objects.\n"
+        "\t-v, -V    \tSet .min, .max offset in y-dimension for input objects.\n"
+        "\t-w, -W    \tSet .min, .max offset in z-dimension for input objects.\n"
+	"\t-o, -O    \tSet .min, .max object width.\n"
+	"\t-l, -L    \tSet .min, .max projector width.\n"
+	"\t-n, -N    \tSet .min, .max projection width.\n"
+	"\t-m, -M    \tSet .min, .max projection offset in z-dimension.\n"
+	"\t-q        \tLimit projection to a single quadrant.\n"
+	"\t-r        \tRandomize projector pixel positions.\n"
+	"\n", p);
 }
 
 namespace input {
@@ -54,9 +76,8 @@ Params read_args(int argc, char **argv) {
 
   // For all ranged params the max is set to min by default.
   int ch;
-  /* while ((ch = getopt(argc, argv, "c:e:hH:i:k:L:m:M:n:N:p:t:r:")) != -1) */
   while ((ch = getopt(argc, argv, "X:Z:x:y:z:a:A:u:U:v:V:w:W:o:O:l:L:n:N:m:M:p:qrs:t:T:b:B:g:G:f:Fh")) != -1)
-    {
+  {
       switch(ch) {
       case 'X': p.n_planes.obj            = strtol(optarg, 0, 10); break;
       /* 'Y': p.n_planes.projector is constant */
