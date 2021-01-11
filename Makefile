@@ -66,6 +66,13 @@ mount:
 umount:
 	umount $(MNT_DIR)
 
+rsync:
+	# rsync -a $(REMOTE_DIR) $(MNT_DIR)
+	# :z to compress, :P to show progress bar
+	# --delete  enable file removal
+	# --backup --backup-dir=$(MNT_DIR)_backup/
+	rsync -azP $(REMOTE_DIR) $(MNT_DIR)
+
 info:
 	lscpu
 	lspci -vnn | grep VGA -A 12
