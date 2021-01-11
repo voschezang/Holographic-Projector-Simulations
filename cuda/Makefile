@@ -5,15 +5,16 @@ EXE := holo
 DIR := ../tmp
 ZIP := ../tmp/out.zip
 REL_OUTPUT_FILES := *.dat
+NVCC := /usr/local/cuda-11.0/bin/nvcc
 # TODO add stream size, kernel size, x distribution, Ny, Nz
 .PHONY: $(EXE) test
 
 build:
-	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
+	$(NVCC) -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS)
 	mkdir -p $(DIR)
 
 debug:
-	nvcc -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS) -g -G
+	$(NVCC) -o $(EXE) main.cu $(FLAGS) $(ARCH_FLAGS) -g -G
 	echo $(EXE)
 	cuda-gdb
 
