@@ -3,6 +3,9 @@
 High performance simulations of [holographic](https://en.wikipedia.org/wiki/Holography) projectors for GPU's, using [CUDA](https://docs.nvidia.com/cuda/).
 More info can be found on [wikipedia](https://en.wikipedia.org/wiki/Wave_interference).
 
+The main CLI application `cuda/holo` computes superpositions of multiple target positions w.r.t multiple source positions.
+
+
 ### Project structure
 
 - `/cuda` contains C++/CUDA code. Additionally the CUDA libraries cuBLAS, thrust and CUB are used.
@@ -15,26 +18,54 @@ More info can be found on [wikipedia](https://en.wikipedia.org/wiki/Wave_interfe
 <img src='img_readme/True_MC.png' alt='Holographic Projection Example'>
 
 
-### Setup & Usage
+### Setup & Dependenceis
+
+The main dependencies are `nvcc` and `gcc`. Make sure they are installed and added to the path.
+E.g. in case of Nikhef intranet:
+```
+/usr/local/cuda-11.0/bin
+/cvmfs/sft.cern.ch/lcg/releases/gcc/8.3.0.1/x86_64-centos7/bin
+```
+and optionally run
+```
+LD_LIBRARY_PATH=/cvmfs/sft.cern.ch/lcg/releases/gcc/8.3.0.1/x86_64-centos7/lib64:$LD_LIBRARY_PATH
+```
+
+### Usage
 
 Compile the CUDA program using
 ```
 make build
 ```
-Then you can run the CLI application
+which is an alias for `nvcc -o holo main.cu -l curand -l cublas -std=c++14 -arch=compute_70 -code=sm_70`.
+The compile-time constants can be changed by appending `-D{compile_time_constants}`.
+Then you can run the CLI application using
 ```
 cuda/holo
 ```
-The application computes superpositions for each `target` position and w.r.t. all `source` positions.
-By default, the source and target datasets are generated automatically.
+Run `cuda/holo -h` to list all valid arguments.
 
-The distributions that are computed are the projector distribution and the projection distribution.
-To use external data, use the flag `-f {directory}` to incdicate the name of the directory that contains the dataset files.
+
+By default, the required source and target positions are generated automatically.
+There are `3` types of distributions, and they are indicated using the symbols:
+- `x` the original input distribution, with positions `u`.
+- `y` the _projector_ distribution, with positions `v`.
+- `z` the _projection_ distribution, with positions `w`. This distribution will represent the original input distribution.
+
+Using `x` as source, a target distribution `y` can be computed. 
+Then, using `y` as source, `z` can be computed.
+
+Alternatively it is possible to use external data.
+Use the flag `-f {directory}` to incdicate the name of the directory that contains the dataset files.
 These files should be binary arrays for double-precision floating-point values (Little-endian encoding by default) and should be named as follows.
 - `x0_amp.dat, x0_phase.dat`
 - `u0.dat` (for the source data)
 - `v0.dat` (for the _projector_ target positions)
-- `w0.dat` (for the _projection_ target positions) - this file is only used if the boolean flag `-F` is supplied.
+- `w0_0.dat` (for the _projection_ target positions) - this file is only used if the boolean flag `-F` is supplied.
+
+The projector distribution is written to `y0_amp.dat` and the projection distribution is written to `z0_0_amp.dat`.
+
+
 
 ---
 
