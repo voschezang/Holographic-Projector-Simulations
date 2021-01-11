@@ -14,6 +14,8 @@ More info can be found on [wikipedia](https://en.wikipedia.org/wiki/Wave_interfe
 <img src='img_readme/True_MC.png' alt='Holographic Projection Example'>
 
 
+### Setup & Usage
+
 Compile the CUDA program using `make build`.
 This creates a CLI application `cuda/run` that can compute superpositions. 
 It computes superpositions for each `target` position and w.r.t. all `source` positions.
@@ -28,6 +30,10 @@ These files should be binary arrays for double-precision floating-point values (
 - `u0.dat` (for the source data)
 - `v0.dat` (for the _projector_ target positions)
 - `w0.dat` (for the _projection_ target positions) - this file is only used if the boolean flag `-F` is supplied.
+
+---
+
+
 
 <img src='img_readme/1pt.png'>
 
