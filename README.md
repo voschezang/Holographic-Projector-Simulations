@@ -1,7 +1,8 @@
 # Holographic-Projector
 
 High performance simulations of [holographic](https://en.wikipedia.org/wiki/Holography) projectors for GPU's, using [CUDA](https://docs.nvidia.com/cuda/).
-More info can be found on [wikipedia](https://en.wikipedia.org/wiki/Wave_interference).
+The implementations are explained in [this paper](https://link.springer.com/chapter/10.1007/978-3-030-77970-2_11
+).
 
 The main CLI application `cuda/holo` computes superpositions of multiple target positions w.r.t multiple source positions.
 
@@ -24,7 +25,7 @@ The main dependencies are `nvcc` and `gcc`. Make sure they are installed and add
 E.g. in case of Nikhef intranet:
 ```
 /usr/local/cuda-11.0/bin
-/cvmfs/sft.cern.ch/lcg/releases/gcc/8.3.0.1/x86_64-centos7/bin
+/cvmfs/sft.cern.ch/lcg/releases/gcc/*/bin
 ```
 and optionally run
 ```
