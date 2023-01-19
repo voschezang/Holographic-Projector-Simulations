@@ -9,14 +9,41 @@ The main CLI application `cuda/holo` computes superpositions of multiple target 
 
 ### Project structure
 
-- `/cuda` contains C++/CUDA code. Additionally the CUDA libraries cuBLAS, thrust and CUB are used.
+```sh
+cuda # C++/CUDA code. Additionally the CUDA libraries cuBLAS, thrust and CUB are used.
+matlab # Matlab scripts that can be used to run simulations.
+py # legacy Python code which was used for prototyping. This does not require a GPU.
+```
 
-- `/matlab` contains Matlab scripts, that can be used to run simulations.
-
-- `/py` contains legacy Python code, and does not require a GPU.
+## Results
 
 
-<img src='img_readme/True_MC.png' alt='Holographic Projection Example'>
+<img src='img_readme/True_MC.png' alt='Holographic Projection Example' style='width:80%'>
+
+<details>
+<summary><b>Quality</b></summary>
+<br>
+<p>A brute-force simulation.</p>
+<img src='img_readme/estimation-full.png' alt='Brute-force simulation' style='width:80%'>
+<p>A Monte Carlo simulation (approximation).</p>
+<img src='img_readme/estimation-z-mc.png' alt='Monte Carlo simulation' style='width:80%'>
+</details>
+
+### Performance
+
+Three algorithms, in comparison to a baseline.
+
+<img src='img_readme/speedup_baseline.png' alt='Speedup' style='width:230px'>
+
+<details>
+<summary><b>More</b></summary>
+<br>
+<img src='img_readme/efficiency_baseline.png' alt='Efficiency' style='width:300px'>
+<br/>
+<img src='img_readme/exp-perf2k-FLOPS-0.png' alt='FLOPS' style='width:60%'>
+<img src='img_readme/exp-perf2k-Runtime-0.png' alt='Runtime' style='width:60%'>
+</details>
+
 
 
 ### Setup & Dependenceis
